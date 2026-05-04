@@ -28,6 +28,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -35,7 +38,7 @@ jobs:
 
       - name: Install deps
         working-directory: web
-        run: npm install
+        run: npm ci
 
       - name: Build web
         working-directory: web
