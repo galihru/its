@@ -44,7 +44,14 @@ type AppConfig = {
   githubBranch?: string;
 };
 
-const FALLBACK: Required<Snapshot> = {
+type FallbackState = {
+  updatedAt: number;
+  source: string;
+  devices: DeviceRecord[];
+  events: EventRecord[];
+};
+
+const FALLBACK: FallbackState = {
   updatedAt: 1777870000000,
   source: "demo",
   devices: [
@@ -110,6 +117,8 @@ const FALLBACK: Required<Snapshot> = {
     },
   ],
 };
+
+const DEFAULT_SELECTED_DEVICE = FALLBACK.devices[0]!;
 
 const app = document.querySelector<HTMLDivElement>("#app");
 if (!app) {
@@ -212,11 +221,23 @@ const DEFAULT_CONFIG: Required<Pick<AppConfig, "snapshotUrl" | "refreshMs" | "ma
   mapLabel: "Custom ITS map",
 };
 
-const state = {
+type AppState = {
+  devices: DeviceRecord[];
+  events: EventRecord[];
+  backend: BackendMode;
+  selectedId: string;
+  updatedAt: number;
+  zoom: number;
+  config: typeof DEFAULT_CONFIG;
+  refreshTimer: number;
+  refreshBusy: boolean;
+};
+
+const state: AppState = {
   devices: [...FALLBACK.devices],
   events: [...FALLBACK.events],
-  backend: "github-json" as BackendMode,
-  selectedId: FALLBACK.devices[0].id,
+  backend: "github-json",
+  selectedId: DEFAULT_SELECTED_DEVICE.id,
   updatedAt: FALLBACK.updatedAt,
   zoom: 1,
   config: DEFAULT_CONFIG,
@@ -281,7 +302,11 @@ function renderBackground(): void {
 }
 
 function selectedDevice(): DeviceRecord {
-  return state.devices.find((device) => device.id === state.selectedId) || state.devices[0];
+  return state.devices.find((device) => device.id === state.selectedId) ?? state.devices[0] ?? DEFAULT_SELECTED_DEVICE;
+}
+
+function fallbackDeviceAt(index: number): DeviceRecord {
+  return FALLBACK.devices[index % FALLBACK.devices.length] ?? DEFAULT_SELECTED_DEVICE;
 }
 
 function render(): void {
@@ -407,23 +432,26 @@ async function loadSnapshot(): Promise<void> {
     if (!response.ok) throw new Error("snapshot not found");
     const snapshot = (await response.json()) as Snapshot;
     if (Array.isArray(snapshot.devices) && snapshot.devices.length) {
-      state.devices = snapshot.devices.map((device, index) => ({
-        id: String(device.id || FALLBACK.devices[index % FALLBACK.devices.length].id),
-        label: String(device.label || FALLBACK.devices[index % FALLBACK.devices.length].label),
-        district: String(device.district || FALLBACK.devices[index % FALLBACK.devices.length].district),
-        ip: String(device.ip || ""),
-        status: (device.status as DeviceStatus) || FALLBACK.devices[index % FALLBACK.devices.length].status,
-        vehicles: Number(device.vehicles ?? 0),
-        congestion: Number(device.congestion ?? 0),
-        speedKph: Number(device.speedKph ?? 0),
-        camera: String(device.camera || "pending"),
-        note: String(device.note || ""),
-        lastSeen: Number(device.lastSeen ?? Date.now()),
-        position: {
-          x: Number(device.position?.x ?? FALLBACK.devices[index % FALLBACK.devices.length].position.x),
-          y: Number(device.position?.y ?? FALLBACK.devices[index % FALLBACK.devices.length].position.y),
-        },
-      }));
+      state.devices = snapshot.devices.map((device, index) => {
+        const fallbackDevice = fallbackDeviceAt(index);
+        return {
+          id: String(device.id || fallbackDevice.id),
+          label: String(device.label || fallbackDevice.label),
+          district: String(device.district || fallbackDevice.district),
+          ip: String(device.ip || ""),
+          status: (device.status as DeviceStatus) || fallbackDevice.status,
+          vehicles: Number(device.vehicles ?? 0),
+          congestion: Number(device.congestion ?? 0),
+          speedKph: Number(device.speedKph ?? 0),
+          camera: String(device.camera || "pending"),
+          note: String(device.note || ""),
+          lastSeen: Number(device.lastSeen ?? Date.now()),
+          position: {
+            x: Number(device.position?.x ?? fallbackDevice.position.x),
+            y: Number(device.position?.y ?? fallbackDevice.position.y),
+          },
+        };
+      });
     }
     if (Array.isArray(snapshot.events) && snapshot.events.length) {
       state.events = snapshot.events.map((event) => ({

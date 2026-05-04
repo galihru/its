@@ -34,6 +34,7 @@ cd controller
 ## GitHub Pages
 
 Project ini tidak memakai Firebase. Deploy disarankan lewat GitHub Pages dari folder `web/dist`.
+URL Pages untuk repo target `hanifasepthi/its` adalah https://hanifasepthi.github.io/its/
 
 Jika ingin sumber data benar-benar live dari GitHub, isi `web/public/data/its-config.json` dengan URL raw file JSON milik repo kamu, lalu biarkan controller Scala menulis snapshot ke file itu sebelum commit/push.
 

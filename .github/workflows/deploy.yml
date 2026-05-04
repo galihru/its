@@ -4,7 +4,9 @@ on:
   push:
     branches: ["main"]
     paths:
-      - "its-maps/**"
+      - "web/**"
+      - "controller/**"
+      - "README.md"
       - ".github/workflows/deploy.yml"
   workflow_dispatch:
 
@@ -32,17 +34,17 @@ jobs:
           node-version: 20
 
       - name: Install deps
-        working-directory: its-maps/web
+        working-directory: web
         run: npm install
 
       - name: Build web
-        working-directory: its-maps/web
+        working-directory: web
         run: npm run build
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: its-maps/web/dist
+          path: web/dist
 
   deploy:
     environment:
