@@ -1,0 +1,16 @@
+[Unit]
+Description=ITS Raspberry Controller
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=raspberry5its
+WorkingDirectory=/home/raspberry5its/its-controller
+Environment=ITS_OUTPUT_PATH=/home/raspberry5its/its-maps/web/public/data/its-state.json
+ExecStart=/home/raspberry5its/its-controller/run-controller.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
