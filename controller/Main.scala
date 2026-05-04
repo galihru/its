@@ -14,11 +14,10 @@ object ItsController {
   private val speedKph = envInt("ITS_SPEED_KPH", 31)
   private val intervalSeconds = math.max(5, envInt("ITS_INTERVAL_SECONDS", 15))
   private val outputPath = env("ITS_OUTPUT_PATH", "../web/public/data/its-state.json")
-  private val once = args.contains("--once")
 
   def main(args: Array[String]): Unit = {
     println(s"ITS controller started for $deviceId -> $outputPath")
-    if (once) {
+    if (args.contains("--once")) {
       writeSnapshot()
       return
     }
