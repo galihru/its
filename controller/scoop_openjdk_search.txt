@@ -1,0 +1,30 @@
+﻿Results from other known buckets...
+(add them using 'scoop bucket add <bucket name>')
+
+Name                Source
+----                ------
+openjdk-ea          java  
+openjdk             java  
+openjdk10           java  
+openjdk11           java  
+openjdk12           java  
+openjdk13           java  
+openjdk14           java  
+openjdk15           java  
+openjdk16           java  
+openjdk17           java  
+openjdk18           java  
+openjdk19           java  
+openjdk20           java  
+openjdk21           java  
+openjdk22           java  
+openjdk23           java  
+openjdk24           java  
+openjdk25           java  
+openjdk26           java  
+openjdk7-unofficial java  
+openjdk8-redhat-jre java  
+openjdk8-redhat     java  
+openjdk9            java  
+
+

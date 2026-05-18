@@ -1,0 +1,15 @@
+[Unit]
+Description=ITS Raspberry Pi Camera Stream
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=raspberry5its
+WorkingDirectory=/home/raspberry5its/its/controller
+ExecStart=/home/raspberry5its/its/controller/camera-stream.sh /dev/video0 8080 640 480 10 5
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
