@@ -1,4 +1,4 @@
-name: Deploy ITS Maps and Controller Artifacts
+name: Deploy ITS Maps and Controller Artifact
 
 on:
   push:
