@@ -11,8 +11,6 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
-import java.security.MessageDigest
-import scala.jdk.CollectionConverters.*
 
 object ItsController {
   private case class GeoLocation(
@@ -22,82 +20,6 @@ object ItsController {
     label: String,
     accuracyM: Int
   )
-
-  private trait GpioOutput {
-    def high(): Unit
-    def low(): Unit
-    def shutdown(): Unit = low()
-  }
-
-  private class SysfsGpioOutput(pin: Int) extends GpioOutput {
-    private val actualPin = resolveGpioPin(pin)
-    private val gpioBase = Paths.get(s"/sys/class/gpio/gpio$actualPin")
-    private val gpioDir = gpioBase.resolve("direction")
-    private val gpioVal = gpioBase.resolve("value")
-
-    private def write(path: java.nio.file.Path, value: String): Unit = {
-      try {
-        Files.writeString(path, value, StandardCharsets.UTF_8)
-      } catch {
-        case ex: Exception =>
-          println(s"[GPIO] write failed for $path: ${ex.getMessage}")
-      }
-    }
-
-    if (!Files.exists(gpioBase)) {
-      println(s"[GPIO] exporting BCM $pin as sysfs gpio$actualPin")
-      write(Paths.get("/sys/class/gpio/export"), actualPin.toString)
-      Thread.sleep(100)
-    }
-    write(gpioDir, "out")
-    write(gpioVal, "0")
-
-    def high(): Unit = write(gpioVal, "1")
-    def low(): Unit = write(gpioVal, "0")
-  }
-
-  private def resolveGpioPin(pin: Int): Int = {
-    val directPath = Paths.get(s"/sys/class/gpio/gpio$pin")
-    if (Files.exists(directPath)) return pin
-
-    findGpioMapping(pin).getOrElse {
-      println(s"[GPIO] warning: cannot resolve BCM $pin to sysfs value; using $pin")
-      pin
-    }
-  }
-
-  private def findGpioMapping(pin: Int): Option[Int] = {
-    parseGpioinfo(pin).orElse(parseDebugGpio(pin))
-  }
-
-  private def parseGpioinfo(pin: Int): Option[Int] = {
-    val output = runCommand("gpioinfo")
-    output.flatMap { text =>
-      val pattern = ("gpio-(\\d+).*?\\(GPIO" + pin + "\\b").r
-      pattern.findFirstMatchIn(text).map(m => m.group(1).toInt)
-    }
-  }
-
-  private def parseDebugGpio(pin: Int): Option[Int] = {
-    val output = runCommand("cat /sys/kernel/debug/gpio")
-    output.flatMap { text =>
-      val pattern = ("gpio-(\\d+).*?\\(GPIO" + pin + "\\b").r
-      pattern.findFirstMatchIn(text).map(m => m.group(1).toInt)
-    }
-  }
-
-  private def runCommand(command: String): Option[String] = {
-    try {
-      val proc = new ProcessBuilder("bash", "-lc", command)
-        .redirectErrorStream(true)
-        .start()
-      val output = scala.io.Source.fromInputStream(proc.getInputStream, StandardCharsets.UTF_8.name()).mkString
-      proc.waitFor()
-      Some(output)
-    } catch {
-      case _: Exception => None
-    }
-  }
 
   private val offlineAfterMs      = math.max(60_000, envInt("ITS_OFFLINE_AFTER_MS", 60_000))
   private val staleDeleteAfterMs  = math.max(offlineAfterMs, envInt("ITS_STALE_DELETE_AFTER_MS", 60_000).toLong)
@@ -112,27 +34,6 @@ object ItsController {
   private val explicitLongitude  = envDoubleOpt("ITS_LONGITUDE")
   private val locationMode       = env("ITS_LOCATION_MODE", "ip").toLowerCase(Locale.ROOT)
 
-  private val cameraEnabled       = env("ITS_CAMERA_ENABLED", "true").toLowerCase(Locale.ROOT) != "false"
-  private val webrtcEnabled       = env("ITS_WEBRTC_ENABLED", "true").toLowerCase(Locale.ROOT) != "false"
-  private val cameraMode          = {
-    val requested = env("ITS_CAMERA_MODE", "mjpeg").toLowerCase(Locale.ROOT)
-    if (requested == "webrtc" || requested == "mjpeg") requested else "mjpeg"
-  }
-  private val cameraStreamEnabled = env(
-    "ITS_CAMERA_STREAM_ENABLED",
-    if (cameraMode == "mjpeg") "true" else "false"
-  ).toLowerCase(Locale.ROOT) != "false"
-  private val cameraStreamPort    = math.max(1024, envInt("ITS_CAMERA_STREAM_PORT", 8080))
-  private val cameraStreamWidth   = math.max(160, envInt("ITS_CAMERA_STREAM_WIDTH", 640))
-  private val cameraStreamHeight  = math.max(120, envInt("ITS_CAMERA_STREAM_HEIGHT", 480))
-  private val cameraStreamFps     = math.max(1, envInt("ITS_CAMERA_STREAM_FPS", 10))
-  private val cameraDevice        = env("ITS_CAMERA_DEVICE", "/dev/video0")
-  private val ffmpegPath          = env("ITS_FFMPEG_PATH", "ffmpeg")
-  private val webrtcSignalPath    = env("ITS_WEBRTC_SIGNAL_PATH", s"webrtc/devices/$deviceId")
-
-  private def cameraUrl: String =
-    env("ITS_CAMERA_URL", if (cameraMode == "mjpeg" && cameraStreamEnabled) cameraStreamPublicUrl() else "")
-
   private val intervalSeconds     = math.max(5, envInt("ITS_INTERVAL_SECONDS", 15))
   private val geoRefreshMs        = math.max(5_000L, envInt("ITS_GEO_REFRESH_SECONDS", intervalSeconds).toLong * 1000L)
   private val outputPath          = env("ITS_OUTPUT_PATH", "../web/public/data/its-state.json")
@@ -146,97 +47,35 @@ object ItsController {
   )
   private val firebaseAuth    = env("ITS_FIREBASE_AUTH", "")
   private var firebaseEnabled = env("ITS_FIREBASE_ENABLED", "true").toLowerCase(Locale.ROOT) != "false"
-  private val updateCheckIntervalSeconds = math.max(300, envInt("ITS_UPDATE_CHECK_SECONDS", 3600))
   private var cachedLocation: Option[(Long, GeoLocation)] = None
-  private val redLed: GpioOutput = new SysfsGpioOutput(17)
-  private val yellowLed: GpioOutput = new SysfsGpioOutput(27)
-  private val greenLed: GpioOutput = new SysfsGpioOutput(22)
 
-  private var cameraStreamProcess: Option[Process] = None
+  private val cameraEnabled = env("ITS_CAMERA_ENABLED", "true").toLowerCase(Locale.ROOT) != "false"
+  private val cameraWebrtcUrl = resolveCameraWebrtcUrl()
+
+  @volatile private var cameraStatus: String = if (cameraEnabled && cameraWebrtcUrl.nonEmpty) "online" else "disabled"
+  @volatile private var cameraUpdatedAt: Long = 0L
+  @volatile private var cameraError: String = ""
+
   private val httpClient = HttpClient.newHttpClient()
   private val lastSeenFormatter = DateTimeFormatter
     .ofPattern("EEEE, dd MMMM yyyy HH:mm:ss")
     .withLocale(new Locale("id", "ID"))
     .withZone(ZoneId.systemDefault())
 
-  private def cameraStreamPath(): String = s"http://0.0.0.0:$cameraStreamPort/stream.mjpg"
-  private def cameraStreamPublicUrl(): String = getLocalIpv4Address().map(ip => s"http://$ip:$cameraStreamPort/stream.mjpg").getOrElse("")
-
-  private def startCameraStream(): Unit = {
-    if (!cameraEnabled || !cameraStreamEnabled) return
-    try {
-      val outUrl = cameraStreamPath() + "?listen=1"
-      val command = Seq(
-        ffmpegPath,
-        "-f", "v4l2",
-        "-framerate", cameraStreamFps.toString,
-        "-video_size", s"${cameraStreamWidth}x${cameraStreamHeight}",
-        "-i", cameraDevice,
-        "-c:v", "mjpeg",
-        "-q:v", "5",
-        "-f", "mjpeg",
-        outUrl
-      )
-      val proc = new ProcessBuilder(command.asJava)
-        .redirectErrorStream(true)
-        .start()
-      cameraStreamProcess = Some(proc)
-      val reader = new Thread(() => {
-        try {
-          scala.io.Source.fromInputStream(proc.getInputStream, StandardCharsets.UTF_8.name()).getLines().foreach { line =>
-            println(s"[camera-stream] $line")
-          }
-        } catch {
-          case _: Exception => ()
-        }
-      })
-      reader.setDaemon(true)
-      reader.start()
-      println(s"[camera-stream] started $cameraDevice -> ${cameraStreamPublicUrl()}")
-    } catch {
-      case ex: Exception =>
-        println(s"[camera-stream] failed to start: ${ex.getMessage}")
-    }
-  }
-
-  private def stopCameraStream(): Unit = {
-    cameraStreamProcess.foreach { proc =>
-      try proc.destroy()
-      catch { case _: Throwable => () }
-    }
-    cameraStreamProcess = None
-  }
-
   def main(args: Array[String]): Unit = {
+    initCameraState()
+
     val startupLocation = currentLocation()
     println(s"ITS controller started — device=$deviceId lat=${startupLocation.lat} lng=${startupLocation.lng} source=${startupLocation.source} -> $outputPath")
-    println(s"Camera mode=$cameraMode enabled=$cameraEnabled webrtc=$webrtcEnabled mjpeg=$cameraStreamEnabled")
-    if (cameraEnabled && cameraMode == "mjpeg" && cameraStreamEnabled) startCameraStream()
-    println("Initializing GPIO outputs: red=GPIO17, yellow=GPIO27, green=GPIO22")
-    redLed.low()
-    yellowLed.low()
-    greenLed.low()
-    Runtime.getRuntime.addShutdownHook(new Thread(() => {
-      publishOfflineDevice()
-      stopCameraStream()
-      redLed.shutdown()
-      yellowLed.shutdown()
-      greenLed.shutdown()
-    }))
+    Runtime.getRuntime.addShutdownHook(new Thread(() => publishOfflineDevice()))
     // Saat startup: cek dan hapus node lama yang masih berisi nested snapshot wrapper
     migrateLegacyFirebaseNode()
     if (args.contains("--once")) {
       writeSnapshot()
       return
     }
-    var updateCheckCounter = 0
     while (true) {
       writeSnapshot()
-      updateCheckCounter += 1
-      if (updateCheckCounter * intervalSeconds >= updateCheckIntervalSeconds) {
-        updateCheckCounter = 0
-        checkForUpdates()
-      }
       Thread.sleep(intervalSeconds * 1000L)
     }
   }
@@ -276,18 +115,7 @@ object ItsController {
   }
 
   private def writeSnapshot(): Unit = {
-    val random = new scala.util.Random
-    val ledColor = random.nextInt(3) match {
-      case 0 => "red"
-      case 1 => "yellow"
-      case 2 => "green"
-    }
-    ledColor match {
-      case "red" => redLed.high(); yellowLed.low(); greenLed.low()
-      case "yellow" => redLed.low(); yellowLed.high(); greenLed.low()
-      case "green" => redLed.low(); yellowLed.low(); greenLed.high()
-    }
-    val (snapshotJson, deviceJson) = buildJsonPair(ledColor)
+    val (snapshotJson, deviceJson) = buildJsonPair()
 
     // Tulis file lokal (format snapshot penuh untuk web)
     val path = Paths.get(outputPath)
@@ -318,7 +146,7 @@ object ItsController {
    * alih-alih {id, label, status, lastSeen, position, ...}.
    * Frontend membaca Firebase dan mengharapkan struktur device langsung.
    */
-  private def buildJsonPair(ledColor: String): (String, String) = {
+  private def buildJsonPair(): (String, String) = {
     val lastSeen    = System.currentTimeMillis()
     val updatedAt   = lastSeen
     val lastSeenText = lastSeenFormatter.format(Instant.ofEpochMilli(lastSeen))
@@ -333,17 +161,14 @@ object ItsController {
          |  "lastSeen": $lastSeen,
          |  "lastSeenText": "${escapeJson(lastSeenText)}",
          |  "note": "${escapeJson(note)}",
-         |  "led": "${escapeJson(ledColor)}",
-         |  "cameraEnabled": ${cameraEnabled},
-         |  "cameraMode": "${escapeJson(cameraMode)}",
-         |  "webrtcEnabled": ${cameraEnabled && webrtcEnabled},
-         |  "webrtcPath": "${escapeJson(webrtcSignalPath)}",
-         |  "cameraReady": ${cameraEnabled && ((cameraMode == "webrtc" && webrtcEnabled) || (cameraMode == "mjpeg" && cameraStreamEnabled))},
-         |  "cameraUrl": "${escapeJson(if (cameraEnabled) cameraUrl else "")}",
          |  "roadName": "${escapeJson(location.label)}",
          |  "locationSource": "${escapeJson(location.source)}",
          |  "locationLabel": "${escapeJson(location.label)}",
          |  "locationAccuracyM": ${location.accuracyM},
+         |  "cameraUrl": "${escapeJson(cameraWebrtcUrl)}",
+         |  "cameraStatus": "${escapeJson(cameraStatus)}",
+         |  "cameraUpdatedAt": ${cameraUpdatedAt},
+         |  "cameraNote": "${escapeJson(cameraError)}",
          |  "position": {
          |    "lat": ${location.lat},
          |    "lng": ${location.lng}
@@ -468,18 +293,27 @@ object ItsController {
   /** Sama dengan authSuffix tapi untuk URL yang sudah diakhiri .json */
   private def authSuffixQuery(): String = authSuffix()
 
-  private def defaultCameraUrl(): String = {
-    getLocalIpv4Address().map(ip => s"http://$ip:$cameraStreamPort/stream.mjpg").getOrElse("")
-  }
+  private def initCameraState(): Unit = {
+    if (!cameraEnabled) {
+      cameraStatus = "disabled"
+      cameraUpdatedAt = 0L
+      cameraError = "camera disabled by ITS_CAMERA_ENABLED=false"
+      println(s"[${java.time.LocalDateTime.now()}] ${cameraError}")
+      return
+    }
 
-  private def getLocalIpv4Address(): Option[String] = {
-    val ifaces = java.net.NetworkInterface.getNetworkInterfaces.asScala.toList
-    ifaces
-      .filter(ni => ni.isUp && !ni.isLoopback && !ni.isVirtual)
-      .flatMap(ni => ni.getInetAddresses.asScala.toList.collect {
-        case addr: java.net.Inet4Address => addr.getHostAddress
-      })
-      .find(_.nonEmpty)
+    if (cameraWebrtcUrl.trim.isEmpty) {
+      cameraStatus = "error"
+      cameraUpdatedAt = 0L
+      cameraError = "ITS_CAMERA_WEBRTC_URL belum di-set"
+      println(s"[${java.time.LocalDateTime.now()}] ${cameraError}")
+      return
+    }
+
+    cameraStatus = "online"
+    cameraUpdatedAt = System.currentTimeMillis()
+    cameraError = ""
+    println(s"[${java.time.LocalDateTime.now()}] WebRTC camera URL active: $cameraWebrtcUrl")
   }
 
   private def publishOfflineDevice(): Unit = {
@@ -495,13 +329,6 @@ object ItsController {
          |  "lastSeen": $lastSeen,
          |  "lastSeenText": "${escapeJson(lastSeenText)}",
          |  "note": "${escapeJson(note)}; controller berhenti",
-         |  "led": "off",
-         |  "cameraEnabled": ${cameraEnabled},
-         |  "cameraMode": "${escapeJson(cameraMode)}",
-         |  "webrtcEnabled": ${cameraEnabled && webrtcEnabled},
-         |  "webrtcPath": "${escapeJson(webrtcSignalPath)}",
-         |  "cameraReady": false,
-         |  "cameraUrl": "${escapeJson(if (cameraEnabled) cameraUrl else "")}",
          |  "roadName": "${escapeJson(location.label)}",
          |  "locationSource": "${escapeJson(location.source)}",
          |  "locationLabel": "${escapeJson(location.label)}",
@@ -513,79 +340,6 @@ object ItsController {
          |}""".stripMargin
     try publishFirebaseDevice(body)
     catch { case _: Throwable => () }
-  }
-
-  private def checkForUpdates(): Unit = {
-    if (!firebaseEnabled || firebaseUrl.trim.isEmpty) return
-    try {
-      val updatePath = s"${firebaseUrl.stripSuffix("/")}/../updates/Main.scala.json${authSuffixQuery()}"
-      val request = HttpRequest
-        .newBuilder(URI.create(updatePath))
-        .header("Accept", "application/json")
-        .GET()
-        .build()
-      val response = httpClient.send(request, HttpResponse.BodyHandlers.ofString())
-      if (response.statusCode() < 200 || response.statusCode() >= 300) return
-
-      val body = response.body()
-      val remoteCode = extractString(body, "code").getOrElse("")
-      val remoteVersion = extractString(body, "version").getOrElse("0")
-      val remoteChecksum = extractString(body, "checksum").getOrElse("")
-
-      if (remoteCode.nonEmpty && isNewVersion(remoteVersion, remoteChecksum)) {
-        println(s"[${java.time.LocalDateTime.now()}] Update available: version=$remoteVersion. Applying update...")
-        downloadAndApplyUpdate(remoteCode)
-      }
-    } catch {
-      case ex: Exception =>
-        println(s"[${java.time.LocalDateTime.now()}] Update check error: ${ex.getMessage}")
-    }
-  }
-
-  private def isNewVersion(remoteVersion: String, remoteChecksum: String): Boolean = {
-    try {
-      val localFile = Paths.get("Main.scala")
-      if (!Files.exists(localFile)) return true
-      val localContent = Files.readString(localFile, StandardCharsets.UTF_8)
-      val localChecksum = computeChecksum(localContent)
-      remoteChecksum != localChecksum
-    } catch {
-      case _: Exception => false
-    }
-  }
-
-  private def computeChecksum(content: String): String = {
-    val md = MessageDigest.getInstance("MD5")
-    val digest = md.digest(content.getBytes(StandardCharsets.UTF_8))
-    digest.map("%02x".format(_)).mkString
-  }
-
-  private def downloadAndApplyUpdate(newCode: String): Unit = {
-    try {
-      val tmpFile = Paths.get("Main.scala.tmp")
-      Files.writeString(tmpFile, newCode, StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
-      println(s"[${java.time.LocalDateTime.now()}] Downloaded update to Main.scala.tmp")
-
-      // Compile temp file
-      val compileCmd = s"scalac -d out Main.scala.tmp"
-      val compileResult = Runtime.getRuntime.exec(compileCmd).waitFor()
-      if (compileResult != 0) {
-        println(s"[${java.time.LocalDateTime.now()}] Compilation failed for update")
-        Files.delete(tmpFile)
-        return
-      }
-
-      println(s"[${java.time.LocalDateTime.now()}] Compilation successful. Applying update...")
-      // Replace original file
-      Files.move(tmpFile, Paths.get("Main.scala"), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-
-      // Exit with code 42 to signal restart needed
-      println(s"[${java.time.LocalDateTime.now()}] Update applied. Restarting...")
-      System.exit(42)
-    } catch {
-      case ex: Exception =>
-        println(s"[${java.time.LocalDateTime.now()}] Update apply error: ${ex.getMessage}")
-    }
   }
 
   private def currentLocation(): GeoLocation = {
@@ -824,4 +578,26 @@ object ItsController {
       .replace("\n", "\\n")
       .replace("\r", "\\r")
       .replace("\t", "\\t")
+
+  private def resolveCameraWebrtcUrl(): String = {
+    val explicit = env("ITS_CAMERA_WEBRTC_URL", "")
+    if (explicit.nonEmpty) return explicit
+
+    val port = envInt("ITS_CAMERA_WEBRTC_PORT", 8889)
+    val path = env("ITS_CAMERA_WEBRTC_PATH", "cam/").trim.stripPrefix("/")
+    val host = primaryNonLoopbackIpv4().getOrElse("127.0.0.1")
+    s"http://$host:$port/$path"
+  }
+
+  private def primaryNonLoopbackIpv4(): Option[String] = {
+    import java.net.{Inet4Address, NetworkInterface}
+    import scala.jdk.CollectionConverters._
+
+    NetworkInterface.getNetworkInterfaces.asScala
+      .filter(_.isUp)
+      .flatMap(_.getInetAddresses.asScala)
+      .collectFirst {
+        case addr: Inet4Address if !addr.isLoopbackAddress && !addr.isLinkLocalAddress => addr.getHostAddress
+      }
+  }
 }

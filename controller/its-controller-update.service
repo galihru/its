@@ -1,0 +1,8 @@
+[Unit]
+Description=ITS Controller Auto Update
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/home/raspberry5its/its-controller
+ExecStart=/usr/bin/bash /home/raspberry5its/its-controller/update-controller.sh
