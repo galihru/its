@@ -17,7 +17,7 @@ rm -rf "$BUILD_DIR"/*
 rm -f "$JAR_FILE"
 
 if command -v scala-cli >/dev/null 2>&1; then
-  scala-cli package "$SOURCE_FILE" --assembly --force --main-class ItsController -o "$JAR_FILE"
+  scala-cli --power package "$SOURCE_FILE" --server=false --assembly --force --main-class ItsController -o "$JAR_FILE"
 else
   scalac -d "$BUILD_DIR" "$SOURCE_FILE"
   jar cfm "$JAR_FILE" "$MANIFEST_FILE" -C "$BUILD_DIR" .
