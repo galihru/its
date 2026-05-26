@@ -38,6 +38,7 @@ final case class YoloFrameSummary(
   frameWidth: Int,
   frameHeight: Int,
   objectCount: Int,
+  outputShape: String,
   vehicleCount: Int,
   vehicleBreakdown: VehicleBreakdown,
   detections: Seq[YoloDetection]
@@ -131,7 +132,7 @@ object YoloDetector {
     else new OpenCvYoloDetector(config)
 
   def empty(status: String, note: String): YoloFrameSummary =
-    YoloFrameSummary(status, note, System.currentTimeMillis(), 0.0, 0, 0, 0, 0, VehicleBreakdown(), Seq.empty)
+    YoloFrameSummary(status, note, System.currentTimeMillis(), 0.0, 0, 0, 0, "", 0, VehicleBreakdown(), Seq.empty)
 }
 
 final class DisabledYoloDetector(reason: String) extends YoloDetector {
@@ -224,18 +225,26 @@ final class OpenCvYoloRuntime private (
         }
 
       try {
+        val outputShape = refs.outputShape(output)
         val detections = refs.extractDetections(output, config, frameWidth, frameHeight)
         val fps = 1000000000.0 / math.max(1L, System.nanoTime() - started)
         val vehicleDetections = detections.filter(det => config.vehicleClassNames.contains(det.label.toLowerCase(Locale.ROOT)))
         val breakdown = vehicleDetections.foldLeft(VehicleBreakdown())((acc, det) => acc.add(det.label))
+        val note =
+          if (detections.isEmpty) {
+            f"YOLO online, no objects >= ${config.confidenceThreshold}%.2f; frame=${frameWidth}x$frameHeight output=$outputShape"
+          } else {
+            s"YOLO realtime detection active; objects=${detections.length} vehicles=${breakdown.total} output=$outputShape"
+          }
         YoloFrameSummary(
           status = "online",
-          note = "YOLO realtime detection active",
+          note = note,
           updatedAt = System.currentTimeMillis(),
           fps = fps,
           frameWidth = frameWidth,
           frameHeight = frameHeight,
           objectCount = detections.length,
+          outputShape = outputShape,
           vehicleCount = breakdown.total,
           vehicleBreakdown = breakdown,
           detections = detections.take(config.maxDetections)
@@ -362,6 +371,11 @@ final class OpenCvRefs private (
     frameHeight: Int
   ): Seq[YoloDetection] = {
     if (rows <= 0 || attrs < 6) return Seq.empty
+    if (attrs == 6) {
+      val parsed = parseSixAttributeOutput(data, rows, index, config, frameWidth, frameHeight)
+      if (parsed.nonEmpty) return parsed
+    }
+
     val classStart = if (attrs >= 85) 5 else 4
     val hasObjectness = attrs >= 85
 
@@ -399,6 +413,42 @@ final class OpenCvRefs private (
     }
   }
 
+  private def parseSixAttributeOutput(
+    data: Array[Float],
+    rows: Int,
+    index: (Int, Int) => Int,
+    config: YoloConfig,
+    frameWidth: Int,
+    frameHeight: Int
+  ): Seq[YoloDetection] =
+    (0 until rows).flatMap { row =>
+      val a0 = read(data, index(row, 0))
+      val a1 = read(data, index(row, 1))
+      val a2 = read(data, index(row, 2))
+      val a3 = read(data, index(row, 3))
+      val a4 = read(data, index(row, 4))
+      val a5 = read(data, index(row, 5))
+
+      val classAndScore =
+        if (isClassId(a5) && isScore(a4)) Some(a5.toInt -> a4)
+        else if (isClassId(a4) && isScore(a5)) Some(a4.toInt -> a5)
+        else None
+
+      classAndScore.flatMap { case (classId, score) =>
+        val label = YoloDetector.CocoLabels(classId)
+        val labelKey = label.toLowerCase(Locale.ROOT)
+        if (
+          score < config.confidenceThreshold ||
+          (config.detectionClassNames.nonEmpty && !config.detectionClassNames.contains(labelKey))
+        ) None
+        else if (a2 > a0 && a3 > a1) {
+          Some(toDetectionFromCorners(label, score, a0, a1, a2, a3, frameWidth, frameHeight, config.inputSize))
+        } else {
+          Some(toDetection(label, score, a0, a1, a2, a3, frameWidth, frameHeight, config.inputSize))
+        }
+      }
+    }
+
   private def toDetection(
     label: String,
     confidence: Double,
@@ -418,6 +468,27 @@ final class OpenCvRefs private (
     val x = clamp((cx * scaleX) - boxW / 2.0, 0.0, frameWidth.toDouble)
     val y = clamp((cy * scaleY) - boxH / 2.0, 0.0, frameHeight.toDouble)
     YoloDetection(label, confidence, x, y, boxW, boxH)
+  }
+
+  private def toDetectionFromCorners(
+    label: String,
+    confidence: Double,
+    x1: Double,
+    y1: Double,
+    x2: Double,
+    y2: Double,
+    frameWidth: Int,
+    frameHeight: Int,
+    inputSize: Int
+  ): YoloDetection = {
+    val normalized = Seq(x1, y1, x2, y2).forall(v => v >= 0.0 && v <= 1.5)
+    val scaleX = if (normalized) frameWidth.toDouble else frameWidth.toDouble / inputSize.toDouble
+    val scaleY = if (normalized) frameHeight.toDouble else frameHeight.toDouble / inputSize.toDouble
+    val left = clamp(x1 * scaleX, 0.0, frameWidth.toDouble)
+    val top = clamp(y1 * scaleY, 0.0, frameHeight.toDouble)
+    val right = clamp(x2 * scaleX, 0.0, frameWidth.toDouble)
+    val bottom = clamp(y2 * scaleY, 0.0, frameHeight.toDouble)
+    YoloDetection(label, confidence, left, top, math.max(0.0, right - left), math.max(0.0, bottom - top))
   }
 
   private def nonMaxSuppression(detections: Seq[YoloDetection], iouThreshold: Double): Seq[YoloDetection] = {
@@ -457,6 +528,18 @@ final class OpenCvRefs private (
     data
   }
 
+  def outputShape(mat: AnyRef): String = {
+    try {
+      val dims = invokeInt(mat, "dims")
+      val shape = (0 until dims).map(i => invokeInt(mat, "size", classOf[Int], Int.box(i))).mkString("x")
+      val rows = try invokeInt(mat, "rows") catch { case NonFatal(_) => 0 }
+      val cols = try invokeInt(mat, "cols") catch { case NonFatal(_) => 0 }
+      if (shape.nonEmpty) s"$shape rows=$rows cols=$cols" else s"rows=$rows cols=$cols"
+    } catch {
+      case NonFatal(ex) => s"unknown (${ex.getMessage})"
+    }
+  }
+
   def release(value: AnyRef): Unit =
     try invokeVoid(value, "release")
     catch { case NonFatal(_) => () }
@@ -487,6 +570,14 @@ final class OpenCvRefs private (
 
   private def read(data: Array[Float], index: Int): Double =
     if (index >= 0 && index < data.length) data(index).toDouble else 0.0
+
+  private def isClassId(value: Double): Boolean = {
+    val rounded = math.rint(value)
+    math.abs(value - rounded) <= 0.001 && rounded >= 0 && rounded < YoloDetector.CocoLabels.length
+  }
+
+  private def isScore(value: Double): Boolean =
+    value >= 0.0 && value <= 1.5
 
   private def clamp(value: Double, min: Double, max: Double): Double =
     math.max(min, math.min(max, value))

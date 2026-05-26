@@ -66,8 +66,15 @@ type DeviceRecord = {
   detectorFps?: number;
   detectorFrameWidth?: number;
   detectorFrameHeight?: number;
+  detectorCameraSource?: string;
+  detectorConfidence?: number;
+  detectorOutputShape?: string;
   objectCount?: number;
   detections?: YoloDetection[];
+  trafficSource?: string;
+  gpioBackend?: string;
+  gpioReady?: boolean;
+  gpioNote?: string;
   position: { lat: number; lng: number };
 };
 
@@ -110,6 +117,7 @@ type TrafficColor = "red" | "yellow" | "green";
 type TrafficState = {
   color: TrafficColor;
   duration: number;
+  phaseStartedAt: number;
   vehicleCount: number;
   roadName: string;
   recommendation: string;
@@ -1498,6 +1506,7 @@ function buildTrafficState(device: DeviceRecord): TrafficState {
   return {
     color,
     duration,
+    phaseStartedAt: device.trafficStartedAt || 0,
     vehicleCount,
     roadName,
     recommendation: trafficColorLabel(color),
@@ -1651,8 +1660,15 @@ function normalizeOneDevice(raw: SnapshotDevice): DeviceRecord | null {
     detectorFps: finiteNumber(rawRecord.detectorFps),
     detectorFrameWidth: finiteNumber(rawRecord.detectorFrameWidth),
     detectorFrameHeight: finiteNumber(rawRecord.detectorFrameHeight),
+    detectorCameraSource: typeof rawRecord.detectorCameraSource === "string" ? rawRecord.detectorCameraSource.trim() || undefined : undefined,
+    detectorConfidence: finiteNumber(rawRecord.detectorConfidence),
+    detectorOutputShape: typeof rawRecord.detectorOutputShape === "string" ? rawRecord.detectorOutputShape.trim() || undefined : undefined,
     objectCount: Math.max(0, Math.round(finiteNumber(rawRecord.objectCount) ?? detections.length)),
     detections,
+    trafficSource: typeof rawRecord.trafficSource === "string" ? rawRecord.trafficSource.trim() || undefined : undefined,
+    gpioBackend: typeof rawRecord.gpioBackend === "string" ? rawRecord.gpioBackend.trim() || undefined : undefined,
+    gpioReady: typeof rawRecord.gpioReady === "boolean" ? rawRecord.gpioReady : undefined,
+    gpioNote: typeof rawRecord.gpioNote === "string" ? rawRecord.gpioNote.trim() || undefined : undefined,
     position: { lat: clamp(lat, -90, 90), lng: clamp(lng, -180, 180) },
   };
 }
@@ -1698,11 +1714,19 @@ function normalizeDevices(snapshot: Snapshot): DeviceRecord[] {
 function trafficStateForDevice(device: DeviceRecord): TrafficState {
   const cached = state.trafficById.get(device.id);
   const roadName = state.roadNameById.get(device.id) || device.roadName || device.roadHint || device.label;
-  if (cached && cached.roadName === roadName && Date.now() - cached.updatedAt < 2500) {
+  const next = buildTrafficState({ ...device, roadName });
+  if (
+    cached &&
+    cached.roadName === next.roadName &&
+    cached.color === next.color &&
+    cached.duration === next.duration &&
+    cached.phaseStartedAt === next.phaseStartedAt &&
+    cached.vehicleCount === next.vehicleCount &&
+    Date.now() - cached.updatedAt < 1200
+  ) {
     return cached;
   }
 
-  const next = buildTrafficState({ ...device, roadName });
   state.trafficById.set(device.id, next);
   return next;
 }
@@ -1736,6 +1760,10 @@ function renderDeviceModal(device: DeviceRecord, traffic: TrafficState): string 
   const breakdown = escapeHtml(vehicleBreakdownText(device.vehicleBreakdown));
   const objects = escapeHtml(detectionSummaryText(device.detections));
   const topObject = escapeHtml(topDetectionText(device.detections));
+  const detectorNote = escapeHtml(device.detectorNote || "-");
+  const detectorSource = escapeHtml(device.detectorCameraSource || "-");
+  const gpio = escapeHtml(`${device.gpioBackend || "-"}${device.gpioReady === false ? " / error" : ""}`);
+  const gpioNote = escapeHtml(device.gpioNote || "-");
   return `
     <div class="modal-header">
       <button class="modal-close" data-action="close">×</button>
@@ -1758,6 +1786,8 @@ function renderDeviceModal(device: DeviceRecord, traffic: TrafficState): string 
         <div class="info-row"><span class="label">Age</span><span class="value" data-field="device-age">${formatAge(device.lastSeen)}</span></div>
         <div class="info-row"><span class="label">Road</span><span class="value" data-field="device-road">${road}</span></div>
         <div class="info-row"><span class="label">AI Detector</span><span class="value">${escapeHtml(detector)}</span></div>
+        <div class="info-row"><span class="label">AI Source</span><span class="value">${detectorSource}</span></div>
+        <div class="info-row"><span class="label">AI Note</span><span class="value">${detectorNote}</span></div>
         <div class="info-row"><span class="label">Objek</span><span class="value">${objects}</span></div>
         <div class="info-row"><span class="label">Akurasi Tertinggi</span><span class="value">${topObject}</span></div>
       </div>
@@ -1767,6 +1797,8 @@ function renderDeviceModal(device: DeviceRecord, traffic: TrafficState): string 
         <div class="info-row"><span class="label">Rincian</span><span class="value">${breakdown}</span></div>
         <div class="info-row"><span class="label">Durasi Lampu</span><span class="value" data-field="traffic-duration">${traffic.duration}s (${traffic.color})</span></div>
         <div class="info-row"><span class="label">Rekomendasi</span><span class="value" data-field="traffic-recommendation">${recommendation}</span></div>
+        <div class="info-row"><span class="label">GPIO</span><span class="value">${gpio}</span></div>
+        <div class="info-row"><span class="label">GPIO Note</span><span class="value">${gpioNote}</span></div>
       </div>
     </div>`;
 }
@@ -3584,6 +3616,8 @@ function renderITSSheetContent(): void {
     : "-";
   const objectCount = device?.objectCount ?? device?.detections?.length ?? 0;
   const topObject = topDetectionText(device?.detections);
+  const detectorNote = device?.detectorNote || "";
+  const gpioText = device ? `${device.gpioBackend || "-"}${device.gpioReady === false ? " / error" : ""}` : "-";
 
   const colorMap: Record<string, string> = {
     red: "#ef4444", yellow: "#facc15", green: "#22c55e",
@@ -3621,10 +3655,12 @@ function renderITSSheetContent(): void {
         <div><span>Objek</span><strong>${objectCount}</strong></div>
         <div><span>Top</span><strong>${escapeHtml(topObject)}</strong></div>
         <div><span>Kendaraan</span><strong>${traffic?.vehicleCount ?? 0}</strong></div>
+        <div><span>GPIO</span><strong>${escapeHtml(gpioText)}</strong></div>
         <div><span>Mobil</span><strong>${breakdown?.car ?? 0}</strong></div>
         <div><span>Motor</span><strong>${breakdown?.motorcycle ?? 0}</strong></div>
       </div>` : ""}
       ${device ? renderDetectionChips(device.detections) : ""}
+      ${detectorNote ? `<div class="m-detector-note">${escapeHtml(detectorNote)}</div>` : ""}
     </div>
 
     ${traffic ? `

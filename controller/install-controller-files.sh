@@ -36,6 +36,7 @@ copy_controller_file "run-controller-public.sh" 0755
 copy_controller_file "run-controller-with-updates.sh" 0755
 copy_controller_file "update-controller.sh" 0755
 copy_controller_file "install-yolo-runtime.sh" 0755
+copy_controller_file "test-leds.sh" 0755
 copy_controller_file "requirements-webrtc.txt" 0644
 copy_controller_file "webrtc-camera.py" 0755
 copy_controller_file "webrtc-camera.sh" 0755

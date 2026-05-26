@@ -34,7 +34,7 @@ object ItsController {
   private val explicitLongitude  = envDoubleOpt("ITS_LONGITUDE")
   private val locationMode       = env("ITS_LOCATION_MODE", "ip").toLowerCase(Locale.ROOT)
 
-  private val intervalSeconds     = math.max(5, envInt("ITS_INTERVAL_SECONDS", 15))
+  private val intervalSeconds     = math.max(1, envInt("ITS_INTERVAL_SECONDS", 15))
   private val geoRefreshMs        = math.max(5_000L, envInt("ITS_GEO_REFRESH_SECONDS", intervalSeconds).toLong * 1000L)
   private val outputPath          = env("ITS_OUTPUT_PATH", "../web/public/data/its-state.json")
   private val ipGeolocationUrls   = env(
@@ -205,6 +205,9 @@ object ItsController {
          |  "detectorFrameWidth": ${detector.frameWidth},
          |  "detectorFrameHeight": ${detector.frameHeight},
          |  "objectCount": ${detector.objectCount},
+         |  "detectorCameraSource": "${escapeJson(yoloConfig.cameraSource)}",
+         |  "detectorConfidence": ${formatDouble(yoloConfig.confidenceThreshold)},
+         |  "detectorOutputShape": "${escapeJson(detector.outputShape)}",
          |  "vehicleCount": ${detector.vehicleCount},
          |  "vehicleBreakdown": ${vehicleBreakdownJson(detector.vehicleBreakdown)},
          |  "detections": ${detectionsJson(detector.detections)},
@@ -214,6 +217,7 @@ object ItsController {
          |  "trafficSource": "${escapeJson(signal.source)}",
          |  "gpioBackend": "${escapeJson(signal.gpioBackend)}",
          |  "gpioReady": ${signal.gpioReady},
+         |  "gpioNote": "${escapeJson(signal.gpioNote)}",
          |  "position": {
          |    "lat": ${location.lat},
          |    "lng": ${location.lng}
@@ -402,6 +406,9 @@ object ItsController {
          |  "detectorFrameWidth": ${detector.frameWidth},
          |  "detectorFrameHeight": ${detector.frameHeight},
          |  "objectCount": 0,
+         |  "detectorCameraSource": "${escapeJson(yoloConfig.cameraSource)}",
+         |  "detectorConfidence": ${formatDouble(yoloConfig.confidenceThreshold)},
+         |  "detectorOutputShape": "${escapeJson(detector.outputShape)}",
          |  "vehicleCount": ${detector.vehicleCount},
          |  "vehicleBreakdown": ${vehicleBreakdownJson(detector.vehicleBreakdown)},
          |  "detections": [],
@@ -411,6 +418,7 @@ object ItsController {
          |  "trafficSource": "${escapeJson(signal.source)}",
          |  "gpioBackend": "${escapeJson(signal.gpioBackend)}",
          |  "gpioReady": ${signal.gpioReady},
+         |  "gpioNote": "${escapeJson(signal.gpioNote)}",
          |  "position": {
          |    "lat": ${location.lat},
          |    "lng": ${location.lng}
@@ -680,7 +688,6 @@ object ItsController {
     Seq(
       env("ITS_YOLO_CAMERA_SOURCE", ""),
       env("ITS_CAMERA_SOURCE", ""),
-      env("ITS_CAMERA_DEVICE", ""),
-      cameraPublicUrl
+      env("ITS_CAMERA_DEVICE", "")
     ).find(_.nonEmpty).getOrElse("/dev/video0")
 }

@@ -134,10 +134,12 @@ fi
 export ITS_CAMERA_ENABLED="${ITS_CAMERA_ENABLED:-true}"
 export ITS_CAMERA_MODE="${ITS_CAMERA_MODE:-webrtc}"
 export ITS_WEBRTC_ENABLED="${ITS_WEBRTC_ENABLED:-true}"
+export ITS_YOLO_CAMERA_SOURCE="${ITS_YOLO_CAMERA_SOURCE:-${ITS_CAMERA_SOURCE:-${ITS_CAMERA_DEVICE:-/dev/video0}}}"
 export ITS_CAMERA_PUBLIC_URL="$public_camera_url"
 export ITS_CAMERA_WEBRTC_URL="$public_camera_url"
 
 echo "Public camera URL: $ITS_CAMERA_WEBRTC_URL"
+echo "YOLO camera source: $ITS_YOLO_CAMERA_SOURCE"
 if command -v curl >/dev/null 2>&1; then
   if ! curl -fsS --max-time 8 "$ITS_CAMERA_WEBRTC_URL" >/dev/null; then
     echo "Warning: public camera URL is not serving yet. Check MediaMTX/IP-camera service on 127.0.0.1:$LOCAL_PORT." >&2

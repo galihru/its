@@ -52,7 +52,14 @@ export ITS_GPIO_ENABLED=true
 export ITS_GPIO_RED_PIN=17
 export ITS_GPIO_YELLOW_PIN=27
 export ITS_GPIO_GREEN_PIN=22
+export ITS_GPIO_SELF_TEST=true
+export ITS_GPIO_SELF_TEST_SECONDS=2
+export ITS_GPIO_ACTIVE_LOW=false
 ```
+
+Saat controller start, LED akan menyala berurutan `red -> yellow -> green`.
+Urutan ini juga dikirim ke Firebase sebagai `trafficSource=startup-test`, sehingga
+animasi lampu di website ikut warna fisik yang sedang diuji.
 
 Di Raspberry Pi OS baru, controller akan mencoba `pinctrl`, lalu `raspi-gpio`, lalu sysfs.
 Pastikan service berjalan dengan akses group:
@@ -72,7 +79,13 @@ export ITS_YOLO_CAMERA_SOURCE="rtsp://user:pass@camera-ip/stream1"
 export ITS_YOLO_CONFIDENCE=0.25
 ```
 
-`ITS_YOLO_CAMERA_SOURCE` bisa berupa `/dev/video0`, RTSP, HTTP MJPEG, atau URL kamera publik yang benar-benar stream video. Jika tidak diisi, controller memakai URL kamera publik (`ITS_CAMERA_PUBLIC_URL` / `ITS_CAMERA_WEBRTC_URL`) atau fallback `/dev/video0`.
+`ITS_YOLO_CAMERA_SOURCE` bisa berupa `/dev/video0`, RTSP, HTTP MJPEG, atau URL kamera publik yang benar-benar stream video. Jika tidak diisi, controller memakai `ITS_CAMERA_SOURCE`, `ITS_CAMERA_DEVICE`, lalu fallback `/dev/video0`.
+
+Untuk deteksi realtime, pastikan `ITS_YOLO_CAMERA_SOURCE` bukan halaman web biasa. OpenCV hanya bisa membaca device atau stream video langsung. Kalau kamera WebRTC memakai `/dev/video0` dan YOLO tidak bisa membuka kamera karena device sibuk, pakai stream yang bisa dibaca bersama, misalnya RTSP atau MJPEG lokal:
+
+```bash
+export ITS_YOLO_CAMERA_SOURCE="http://127.0.0.1:8080/stream.mjpg"
+```
 
 Detector sekarang mengirim semua objek COCO yang lolos confidence threshold, termasuk `person`. Variabel `vehicleCount` dan LED tetap hanya menghitung kelas kendaraan:
 
@@ -101,12 +114,14 @@ vehicleCount
 vehicleBreakdown.car / motorcycle / bus / truck / bicycle
 detections[].label / confidence / vehicle / x / y / width / height
 detectorFrameWidth / detectorFrameHeight
+detectorCameraSource / detectorConfidence / detectorOutputShape
 objectCount
 detectorStatus
 detectorFps
 trafficColor
 trafficDurationSec
 gpioReady
+gpioNote
 ```
 
 ## WebRTC camera
