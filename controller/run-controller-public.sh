@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 JAR_FILE="${ITS_CONTROLLER_JAR:-$SCRIPT_DIR/ItsController.jar}"
+. "$SCRIPT_DIR/controller-classpath.sh"
 LOCAL_PORT="${ITS_CAMERA_WEBRTC_PORT:-8889}"
 CAMERA_PATH="${ITS_CAMERA_WEBRTC_PATH:-cam/}"
 RETRY_DELAY_SECONDS="${ITS_TUNNEL_RETRY_DELAY_SECONDS:-60}"
@@ -143,7 +144,7 @@ if command -v curl >/dev/null 2>&1; then
   fi
 fi
 
-java -jar "$JAR_FILE" "$@" &
+controller_java "$JAR_FILE" "$@" &
 JAVA_PID=$!
 
 while kill -0 "$JAVA_PID" 2>/dev/null; do

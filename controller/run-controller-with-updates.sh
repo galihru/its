@@ -3,8 +3,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 OUT_DIR="$SCRIPT_DIR/out"
-SOURCE_FILE="$SCRIPT_DIR/Main.scala"
 MAIN_CLASS="ItsController"
+. "$SCRIPT_DIR/controller-classpath.sh"
 
 mkdir -p "$OUT_DIR"
 
@@ -15,15 +15,28 @@ while [ $restart_code -eq 42 ]; do
   restart_code=0
   
   # Compile if needed
-  if [ ! -f "$OUT_DIR/${MAIN_CLASS}.class" ] || [ "$SOURCE_FILE" -nt "$OUT_DIR/${MAIN_CLASS}.class" ]; then
-    echo "[$(date)] Compiling Main.scala..."
-    scalac -d "$OUT_DIR" "$SOURCE_FILE" || exit 1
+  needs_compile=false
+  if [ ! -f "$OUT_DIR/${MAIN_CLASS}.class" ]; then
+    needs_compile=true
+  else
+    while IFS= read -r source_file; do
+      if [ "$source_file" -nt "$OUT_DIR/${MAIN_CLASS}.class" ]; then
+        needs_compile=true
+        break
+      fi
+    done < <(find "$SCRIPT_DIR" -maxdepth 1 -name "*.scala" ! -name "MainWithGpio.scala" | sort)
+  fi
+
+  if [ "$needs_compile" = true ]; then
+    echo "[$(date)] Compiling controller Scala sources..."
+    mapfile -t SCALA_SOURCES < <(find "$SCRIPT_DIR" -maxdepth 1 -name "*.scala" ! -name "MainWithGpio.scala" | sort)
+    scalac -d "$OUT_DIR" "${SCALA_SOURCES[@]}" || exit 1
     echo "[$(date)] Compilation successful"
   fi
 
   # Run scala controller
   echo "[$(date)] Starting controller..."
-  scala -cp "$OUT_DIR" "$MAIN_CLASS" || restart_code=$?
+  scala -cp "$OUT_DIR:$(controller_classpath "$SCRIPT_DIR/ItsController.jar")" "$MAIN_CLASS" || restart_code=$?
 
   if [ $restart_code -eq 42 ]; then
     echo "[$(date)] Update detected, restarting..."

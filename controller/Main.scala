@@ -62,6 +62,10 @@ object ItsController {
   @volatile private var cameraUpdatedAt: Long = 0L
   @volatile private var cameraError: String = ""
 
+  private val yoloConfig = YoloConfig.fromEnv(defaultCameraSource = resolveYoloCameraFallback())
+  private val yoloDetector = YoloDetector.create(yoloConfig)
+  private val trafficSignal = TrafficSignalController.fromEnv(() => yoloDetector.snapshot().vehicleCount)
+
   private val httpClient = HttpClient.newHttpClient()
   private val lastSeenFormatter = DateTimeFormatter
     .ofPattern("EEEE, dd MMMM yyyy HH:mm:ss")
@@ -70,15 +74,25 @@ object ItsController {
 
   def main(args: Array[String]): Unit = {
     initCameraState()
+    yoloDetector.start()
+    trafficSignal.start()
 
     val startupLocation = currentLocation()
     println(s"ITS controller started — device=$deviceId lat=${startupLocation.lat} lng=${startupLocation.lng} source=${startupLocation.source} -> $outputPath")
     println(s"Camera mode=$cameraMode enabled=$cameraEnabled webrtc=$webrtcEnabled publicUrl=${if (cameraPublicUrl.nonEmpty) cameraPublicUrl else "(firebase-signaling)"}")
-    Runtime.getRuntime.addShutdownHook(new Thread(() => publishOfflineDevice()))
+    println(s"YOLO enabled=${yoloConfig.enabled} model=${yoloConfig.modelPath} source=${yoloConfig.cameraSource}")
+    Runtime.getRuntime.addShutdownHook(new Thread(() => {
+      trafficSignal.stop()
+      yoloDetector.close()
+      publishOfflineDevice()
+    }))
     // Saat startup: cek dan hapus node lama yang masih berisi nested snapshot wrapper
     migrateLegacyFirebaseNode()
     if (args.contains("--once")) {
+      Thread.sleep(math.min(1200L, yoloConfig.sampleEveryMs))
       writeSnapshot()
+      trafficSignal.stop()
+      yoloDetector.close()
       return
     }
     while (true) {
@@ -158,6 +172,8 @@ object ItsController {
     val updatedAt   = lastSeen
     val lastSeenText = lastSeenFormatter.format(Instant.ofEpochMilli(lastSeen))
     val location = currentLocation()
+    val detector = yoloDetector.snapshot()
+    val signal = trafficSignal.snapshot()
 
     // Device JSON — struktur flat yang sesuai dengan SnapshotDevice di frontend
     val deviceJson =
@@ -182,6 +198,19 @@ object ItsController {
          |  "cameraStatus": "${escapeJson(cameraStatus)}",
          |  "cameraUpdatedAt": ${cameraUpdatedAt},
          |  "cameraNote": "${escapeJson(cameraError)}",
+         |  "detectorStatus": "${escapeJson(detector.status)}",
+         |  "detectorNote": "${escapeJson(detector.note)}",
+         |  "detectorUpdatedAt": ${detector.updatedAt},
+         |  "detectorFps": ${formatDouble(detector.fps)},
+         |  "vehicleCount": ${detector.vehicleCount},
+         |  "vehicleBreakdown": ${vehicleBreakdownJson(detector.vehicleBreakdown)},
+         |  "detections": ${detectionsJson(detector.detections)},
+         |  "trafficColor": "${escapeJson(signal.color)}",
+         |  "trafficStartedAt": ${signal.startedAt},
+         |  "trafficDurationSec": ${signal.durationSec},
+         |  "trafficSource": "${escapeJson(signal.source)}",
+         |  "gpioBackend": "${escapeJson(signal.gpioBackend)}",
+         |  "gpioReady": ${signal.gpioReady},
          |  "position": {
          |    "lat": ${location.lat},
          |    "lng": ${location.lng}
@@ -342,6 +371,8 @@ object ItsController {
     val lastSeen = System.currentTimeMillis()
     val lastSeenText = lastSeenFormatter.format(Instant.ofEpochMilli(lastSeen))
     val location = currentLocation()
+    val detector = yoloDetector.snapshot()
+    val signal = trafficSignal.snapshot()
     val body =
       s"""{
          |  "id": "${escapeJson(deviceId)}",
@@ -361,6 +392,19 @@ object ItsController {
          |  "webrtcUrl": "${escapeJson(if (cameraEnabled) cameraPublicUrl else "")}",
          |  "cameraReady": false,
          |  "cameraUrl": "${escapeJson(if (cameraEnabled) cameraPublicUrl else "")}",
+         |  "detectorStatus": "${escapeJson(detector.status)}",
+         |  "detectorNote": "controller offline",
+         |  "detectorUpdatedAt": ${detector.updatedAt},
+         |  "detectorFps": 0,
+         |  "vehicleCount": ${detector.vehicleCount},
+         |  "vehicleBreakdown": ${vehicleBreakdownJson(detector.vehicleBreakdown)},
+         |  "detections": [],
+         |  "trafficColor": "${escapeJson(signal.color)}",
+         |  "trafficStartedAt": ${signal.startedAt},
+         |  "trafficDurationSec": ${signal.durationSec},
+         |  "trafficSource": "${escapeJson(signal.source)}",
+         |  "gpioBackend": "${escapeJson(signal.gpioBackend)}",
+         |  "gpioReady": ${signal.gpioReady},
          |  "position": {
          |    "lat": ${location.lat},
          |    "lng": ${location.lng}
@@ -607,9 +651,29 @@ object ItsController {
       .replace("\r", "\\r")
       .replace("\t", "\\t")
 
+  private def vehicleBreakdownJson(value: VehicleBreakdown): String =
+    s"""{"car":${value.car},"motorcycle":${value.motorcycle},"bus":${value.bus},"truck":${value.truck},"bicycle":${value.bicycle},"total":${value.total}}"""
+
+  private def detectionsJson(values: Seq[YoloDetection]): String =
+    values.map { detection =>
+      s"""{"label":"${escapeJson(detection.label)}","confidence":${formatDouble(detection.confidence)},"x":${formatDouble(detection.x)},"y":${formatDouble(detection.y)},"width":${formatDouble(detection.width)},"height":${formatDouble(detection.height)}}"""
+    }.mkString("[", ",", "]")
+
+  private def formatDouble(value: Double): String =
+    if (value.isNaN || value.isInfinity) "0"
+    else java.lang.String.format(Locale.US, "%.4f", Double.box(value))
+
   private def resolveCameraPublicUrl(): String =
     Seq("ITS_CAMERA_PUBLIC_URL", "ITS_CAMERA_WEBRTC_URL", "ITS_CAMERA_URL")
       .map(name => env(name, ""))
       .find(_.nonEmpty)
       .getOrElse("")
+
+  private def resolveYoloCameraFallback(): String =
+    Seq(
+      env("ITS_YOLO_CAMERA_SOURCE", ""),
+      env("ITS_CAMERA_SOURCE", ""),
+      env("ITS_CAMERA_DEVICE", ""),
+      cameraPublicUrl
+    ).find(_.nonEmpty).getOrElse("/dev/video0")
 }

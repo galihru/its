@@ -59,8 +59,8 @@ object ItsController {
 
   // ─── GPIO Pins for Traffic Light LEDs ─────────────────────────────────
   private val redPin    = 17
-  private val yellowPin = 22
-  private val greenPin  = 27
+  private val yellowPin = 27
+  private val greenPin  = 22
 
   @volatile private var currentTrafficColor: String = "red"
   @volatile private var trafficStartedAt: Long = System.currentTimeMillis()

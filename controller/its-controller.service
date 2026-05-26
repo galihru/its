@@ -6,8 +6,15 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=raspberry5its
+SupplementaryGroups=gpio video
 WorkingDirectory=/home/raspberry5its/its-controller
 Environment=ITS_OUTPUT_PATH=/home/raspberry5its/its-maps/web/public/data/its-state.json
+Environment=ITS_GPIO_ENABLED=true
+Environment=ITS_GPIO_RED_PIN=17
+Environment=ITS_GPIO_YELLOW_PIN=27
+Environment=ITS_GPIO_GREEN_PIN=22
+Environment=ITS_YOLO_ENABLED=true
+Environment=ITS_YOLO_MODEL_PATH=/home/raspberry5its/models/yolo26n.onnx
 ExecStart=/usr/bin/bash /home/raspberry5its/its-controller/run-controller-public.sh
 Restart=always
 RestartSec=5
