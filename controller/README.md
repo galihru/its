@@ -201,6 +201,28 @@ sudo systemctl start camera-stream.service
 Pakai file [its-controller.service](its-controller.service) lalu aktifkan dengan systemd.
 
 Kalau ingin auto-update JAR dari hosting Firebase, aktifkan juga [its-controller-update.timer](its-controller-update.timer) dan [its-controller-update.service](its-controller-update.service).
+Script [update-controller.sh](update-controller.sh) sekarang memakai alur aman:
+
+1. download JAR baru ke file sementara,
+2. bandingkan dengan `ItsController.jar` yang sedang terpasang,
+3. jika berbeda, stop `its-controller.service`,
+4. backup JAR lama ke `ItsController.jar.previous`,
+5. timpa `ItsController.jar`,
+6. default reboot Raspberry Pi agar service auto-start menjalankan JAR baru.
+
+Kalau ingin restart service tanpa reboot penuh, set:
+
+```bash
+export ITS_CONTROLLER_REBOOT_AFTER_UPDATE=false
+```
+
+Untuk memasang file controller tertentu saja dari folder repo ke Raspberry Pi:
+
+```bash
+cd /home/raspberry5its/its/controller
+chmod +x install-controller-files.sh
+./install-controller-files.sh
+```
 
 Verifikasi setelah reboot:
 
