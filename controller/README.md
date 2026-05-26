@@ -42,6 +42,57 @@ export ITS_LATITUDE="-7.280734"
 export ITS_LONGITUDE="112.794963"
 ```
 
+## Traffic LED GPIO
+
+Controller utama sekarang mengendalikan LED dari `Main.scala` lewat modul `TrafficLight.scala`.
+Pin default mengikuti wiring Raspberry Pi:
+
+```bash
+export ITS_GPIO_ENABLED=true
+export ITS_GPIO_RED_PIN=17
+export ITS_GPIO_YELLOW_PIN=27
+export ITS_GPIO_GREEN_PIN=22
+```
+
+Di Raspberry Pi OS baru, controller akan mencoba `pinctrl`, lalu `raspi-gpio`, lalu sysfs.
+Pastikan service berjalan dengan akses group:
+
+```ini
+SupplementaryGroups=gpio video
+```
+
+## YOLO vehicle detector
+
+YOLO dijalankan sebagai modul Scala `YoloDetector.scala` dengan model ONNX. Model default:
+
+```bash
+export ITS_YOLO_ENABLED=true
+export ITS_YOLO_MODEL_PATH="/home/raspberry5its/models/yolo26n.onnx"
+export ITS_YOLO_CAMERA_SOURCE="rtsp://user:pass@camera-ip/stream1"
+```
+
+`ITS_YOLO_CAMERA_SOURCE` bisa berupa `/dev/video0`, RTSP, HTTP MJPEG, atau URL kamera publik yang benar-benar stream video. Jika tidak diisi, controller memakai URL kamera publik (`ITS_CAMERA_PUBLIC_URL` / `ITS_CAMERA_WEBRTC_URL`) atau fallback `/dev/video0`.
+
+Install runtime dan export model ONNX di Raspberry Pi:
+
+```bash
+cd /home/raspberry5its/its/controller
+chmod +x install-yolo-runtime.sh
+./install-yolo-runtime.sh
+```
+
+Output detector dikirim ke Firebase dan JSON lokal sebagai:
+
+```text
+vehicleCount
+vehicleBreakdown.car / motorcycle / bus / truck / bicycle
+detectorStatus
+detectorFps
+trafficColor
+trafficDurationSec
+gpioReady
+```
+
 ## WebRTC camera
 
 Mode utama kamera sekarang adalah WebRTC. Firebase RTDB dipakai untuk signaling

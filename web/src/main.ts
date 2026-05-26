@@ -22,6 +22,14 @@ declare module "leaflet" {
 
 type DeviceStatus = "online" | "offline" | "degraded";
 type CameraMode = "webrtc" | "mjpeg";
+type VehicleBreakdown = {
+  car: number;
+  motorcycle: number;
+  bus: number;
+  truck: number;
+  bicycle: number;
+  total: number;
+};
 
 type DeviceRecord = {
   id: string;
@@ -40,7 +48,13 @@ type DeviceRecord = {
   roadHint?: string;
   trafficColor?: "red" | "yellow" | "green";
   trafficDuration?: number;
+  trafficStartedAt?: number;
   vehicleCount?: number;
+  vehicleBreakdown?: VehicleBreakdown;
+  detectorStatus?: string;
+  detectorNote?: string;
+  detectorUpdatedAt?: number;
+  detectorFps?: number;
   position: { lat: number; lng: number };
 };
 
@@ -1321,7 +1335,24 @@ function isDeviceStatus(v: unknown): v is DeviceStatus {
 function isCameraMode(v: unknown): v is CameraMode {
   return v === "webrtc" || v === "mjpeg";
 }
+function isTrafficColor(v: unknown): v is TrafficColor {
+  return v === "red" || v === "yellow" || v === "green";
+}
 function clamp(v: number, min: number, max: number) { return Math.min(max, Math.max(min, v)); }
+function finiteNumber(v: unknown): number | undefined {
+  return typeof v === "number" && Number.isFinite(v) ? v : undefined;
+}
+function normalizeVehicleBreakdown(v: unknown): VehicleBreakdown | undefined {
+  if (!v || typeof v !== "object") return undefined;
+  const raw = v as Record<string, unknown>;
+  const car = Math.max(0, Math.round(finiteNumber(raw.car) ?? 0));
+  const motorcycle = Math.max(0, Math.round(finiteNumber(raw.motorcycle) ?? 0));
+  const bus = Math.max(0, Math.round(finiteNumber(raw.bus) ?? 0));
+  const truck = Math.max(0, Math.round(finiteNumber(raw.truck) ?? 0));
+  const bicycle = Math.max(0, Math.round(finiteNumber(raw.bicycle) ?? 0));
+  const total = Math.max(car + motorcycle + bus + truck + bicycle, Math.round(finiteNumber(raw.total) ?? 0));
+  return { car, motorcycle, bus, truck, bicycle, total };
+}
 function normalizeEpoch(v: number): number {
   if (!Number.isFinite(v) || v <= 0) return 0;
   return v < 1e11 ? v * 1000 : v;
@@ -1391,12 +1422,16 @@ function trafficColorLabel(color: TrafficColor): string {
 }
 
 function trafficColorFor(device: DeviceRecord): TrafficColor {
+  if (device.trafficColor) return device.trafficColor;
   const seed = hashString(`${device.id}:${Math.floor(Date.now() / 4000)}`);
   const colors: TrafficColor[] = ["red", "yellow", "green"];
   return colors[seed % colors.length];
 }
 
 function trafficDurationFor(color: TrafficColor, device: DeviceRecord): number {
+  if (typeof device.trafficDuration === "number" && Number.isFinite(device.trafficDuration)) {
+    return Math.max(1, Math.round(device.trafficDuration));
+  }
   const seed = hashString(`${device.id}:${Math.floor(Date.now() / 4000)}:${color}`);
   if (color === "red") return 8 + (seed % 18);
   if (color === "yellow") return 3 + (seed % 4);
@@ -1404,6 +1439,9 @@ function trafficDurationFor(color: TrafficColor, device: DeviceRecord): number {
 }
 
 function vehicleCountFor(device: DeviceRecord): number {
+  if (typeof device.vehicleCount === "number" && Number.isFinite(device.vehicleCount)) {
+    return Math.max(0, Math.round(device.vehicleCount));
+  }
   const seed = hashString(`${device.id}:${Math.floor(Date.now() / 5000)}`);
   return 5 + (seed % 70);
 }
@@ -1421,6 +1459,18 @@ function buildTrafficState(device: DeviceRecord): TrafficState {
     recommendation: trafficColorLabel(color),
     updatedAt: Date.now(),
   };
+}
+
+function vehicleBreakdownText(breakdown?: VehicleBreakdown): string {
+  if (!breakdown) return "-";
+  const parts = [
+    ["Mobil", breakdown.car],
+    ["Motor", breakdown.motorcycle],
+    ["Bus", breakdown.bus],
+    ["Truk", breakdown.truck],
+    ["Sepeda", breakdown.bicycle],
+  ].filter(([, value]) => Number(value) > 0);
+  return parts.length ? parts.map(([label, value]) => `${label} ${value}`).join(" / ") : "0 kendaraan";
 }
 
 async function resolveRoadName(device: DeviceRecord): Promise<string> {
@@ -1477,6 +1527,12 @@ function normalizeOneDevice(raw: SnapshotDevice): DeviceRecord | null {
     : cameraUrl || webrtcUrl
       ? "mjpeg"
       : undefined;
+  const trafficDuration = finiteNumber(rawRecord.trafficDuration)
+    ?? finiteNumber(rawRecord.trafficDurationSec);
+  const vehicleCount = finiteNumber(rawRecord.vehicleCount)
+    ?? finiteNumber(rawRecord.vehicles)
+    ?? normalizeVehicleBreakdown(rawRecord.vehicleBreakdown)?.total;
+  const vehicleBreakdown = normalizeVehicleBreakdown(rawRecord.vehicleBreakdown);
   return {
     id: raw.id?.trim() || "raspberry-its",
     label: raw.label?.trim() || "Raspberry Pi 5 Controller",
@@ -1491,13 +1547,15 @@ function normalizeOneDevice(raw: SnapshotDevice): DeviceRecord | null {
     cameraReady: typeof rawRecord.cameraReady === "boolean" ? rawRecord.cameraReady : undefined,
     roadName: raw.roadName?.trim() || undefined,
     roadHint: raw.roadHint?.trim() || undefined,
-    trafficColor: isDeviceStatus(raw.status) ? undefined : undefined,
-    trafficDuration: typeof (raw as Record<string, unknown>).trafficDuration === "number"
-      ? (raw as Record<string, unknown>).trafficDuration as number
-      : undefined,
-    vehicleCount: typeof (raw as Record<string, unknown>).vehicleCount === "number"
-      ? (raw as Record<string, unknown>).vehicleCount as number
-      : undefined,
+    trafficColor: isTrafficColor(rawRecord.trafficColor) ? rawRecord.trafficColor : undefined,
+    trafficDuration,
+    trafficStartedAt: finiteNumber(rawRecord.trafficStartedAt),
+    vehicleCount,
+    vehicleBreakdown,
+    detectorStatus: typeof rawRecord.detectorStatus === "string" ? rawRecord.detectorStatus.trim() || undefined : undefined,
+    detectorNote: typeof rawRecord.detectorNote === "string" ? rawRecord.detectorNote.trim() || undefined : undefined,
+    detectorUpdatedAt: finiteNumber(rawRecord.detectorUpdatedAt),
+    detectorFps: finiteNumber(rawRecord.detectorFps),
     position: { lat: clamp(lat, -90, 90), lng: clamp(lng, -180, 180) },
   };
 }
@@ -1575,6 +1633,10 @@ function makeTrafficLightSvg(state: TrafficState, size: number): string {
 function renderDeviceModal(device: DeviceRecord, traffic: TrafficState): string {
   const road = escapeHtml(traffic.roadName);
   const recommendation = escapeHtml(traffic.recommendation);
+  const detector = device.detectorStatus
+    ? `${device.detectorStatus}${device.detectorFps ? ` (${device.detectorFps.toFixed(1)} FPS)` : ""}`
+    : "-";
+  const breakdown = escapeHtml(vehicleBreakdownText(device.vehicleBreakdown));
   return `
     <div class="modal-header">
       <button class="modal-close" data-action="close">×</button>
@@ -1596,10 +1658,12 @@ function renderDeviceModal(device: DeviceRecord, traffic: TrafficState): string 
         <div class="info-row"><span class="label">Last Seen</span><span class="value" data-field="device-last-seen">${escapeHtml(device.lastSeenText || formatTime(device.lastSeen))}</span></div>
         <div class="info-row"><span class="label">Age</span><span class="value" data-field="device-age">${formatAge(device.lastSeen)}</span></div>
         <div class="info-row"><span class="label">Road</span><span class="value" data-field="device-road">${road}</span></div>
+        <div class="info-row"><span class="label">AI Detector</span><span class="value">${escapeHtml(detector)}</span></div>
       </div>
       <div class="modal-tab-pane" data-tab="traffic">
         <div class="info-row"><span class="label">Jalan</span><span class="value" data-field="traffic-road">${road}</span></div>
         <div class="info-row"><span class="label">Jumlah Kendaraan</span><span class="value" data-field="traffic-count">${traffic.vehicleCount}</span></div>
+        <div class="info-row"><span class="label">Rincian</span><span class="value">${breakdown}</span></div>
         <div class="info-row"><span class="label">Durasi Lampu</span><span class="value" data-field="traffic-duration">${traffic.duration}s (${traffic.color})</span></div>
         <div class="info-row"><span class="label">Rekomendasi</span><span class="value" data-field="traffic-recommendation">${recommendation}</span></div>
       </div>
@@ -3413,6 +3477,10 @@ function renderITSSheetContent(): void {
   const device = state.device;
   const traffic = device ? trafficStateForDevice(device) : null;
   const cameraSurface = renderCameraSurface(device, "m-camera-img", "m-camera-frame");
+  const breakdown = device?.vehicleBreakdown;
+  const detectorStatus = device?.detectorStatus
+    ? `${device.detectorStatus}${device.detectorFps ? ` / ${device.detectorFps.toFixed(1)} FPS` : ""}`
+    : "-";
 
   const colorMap: Record<string, string> = {
     red: "#ef4444", yellow: "#facc15", green: "#22c55e",
@@ -3444,6 +3512,12 @@ function renderITSSheetContent(): void {
       <div class="m-its-chart-wrap">
         <canvas id="m-traffic-chart" width="320" height="180"></canvas>
       </div>
+      ${device ? `<div class="m-ai-scan-grid">
+        <div><span>AI</span><strong>${escapeHtml(detectorStatus)}</strong></div>
+        <div><span>Total</span><strong>${traffic?.vehicleCount ?? 0}</strong></div>
+        <div><span>Mobil</span><strong>${breakdown?.car ?? 0}</strong></div>
+        <div><span>Motor</span><strong>${breakdown?.motorcycle ?? 0}</strong></div>
+      </div>` : ""}
     </div>
 
     ${traffic ? `
@@ -3458,6 +3532,7 @@ function renderITSSheetContent(): void {
           <div class="m-traffic-recom" style="color:${bulbColor}">${escapeHtml(traffic.recommendation)}</div>
           <div class="m-traffic-meta">
             <span>🚗 ${traffic.vehicleCount} kendaraan</span>
+            <span>${escapeHtml(vehicleBreakdownText(device?.vehicleBreakdown))}</span>
             <span>⏱ ${traffic.duration}s</span>
           </div>
         </div>

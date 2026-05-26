@@ -6,6 +6,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=raspberry5its
+SupplementaryGroups=video
 WorkingDirectory=/home/raspberry5its/its/controller
 Environment=ITS_DEVICE_ID=raspberry-its
 Environment=ITS_DEVICE_LABEL=Raspberry Pi 5 Controller
