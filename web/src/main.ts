@@ -30,6 +30,15 @@ type VehicleBreakdown = {
   bicycle: number;
   total: number;
 };
+type YoloDetection = {
+  label: string;
+  confidence: number;
+  vehicle?: boolean;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
 
 type DeviceRecord = {
   id: string;
@@ -55,6 +64,10 @@ type DeviceRecord = {
   detectorNote?: string;
   detectorUpdatedAt?: number;
   detectorFps?: number;
+  detectorFrameWidth?: number;
+  detectorFrameHeight?: number;
+  objectCount?: number;
+  detections?: YoloDetection[];
   position: { lat: number; lng: number };
 };
 
@@ -1353,6 +1366,37 @@ function normalizeVehicleBreakdown(v: unknown): VehicleBreakdown | undefined {
   const total = Math.max(car + motorcycle + bus + truck + bicycle, Math.round(finiteNumber(raw.total) ?? 0));
   return { car, motorcycle, bus, truck, bicycle, total };
 }
+const VEHICLE_LABELS = new Set(["car", "motorcycle", "bus", "truck", "bicycle"]);
+const DETECTION_LABELS_ID: Record<string, string> = {
+  person: "Orang",
+  bicycle: "Sepeda",
+  car: "Mobil",
+  motorcycle: "Motor",
+  bus: "Bus",
+  truck: "Truk",
+  "traffic light": "Lampu",
+};
+function detectionLabel(label: string): string {
+  const key = label.trim().toLowerCase();
+  return DETECTION_LABELS_ID[key] || label;
+}
+function normalizeDetections(v: unknown): YoloDetection[] {
+  if (!Array.isArray(v)) return [];
+  return v.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const raw = item as Record<string, unknown>;
+    const label = typeof raw.label === "string" ? raw.label.trim() : "";
+    const confidence = clamp(finiteNumber(raw.confidence) ?? 0, 0, 1);
+    const x = Math.max(0, finiteNumber(raw.x) ?? 0);
+    const y = Math.max(0, finiteNumber(raw.y) ?? 0);
+    const width = Math.max(0, finiteNumber(raw.width) ?? 0);
+    const height = Math.max(0, finiteNumber(raw.height) ?? 0);
+    if (!label || confidence <= 0 || width <= 0 || height <= 0) return [];
+    const key = label.toLowerCase();
+    const vehicle = typeof raw.vehicle === "boolean" ? raw.vehicle : VEHICLE_LABELS.has(key);
+    return [{ label, confidence, vehicle, x, y, width, height }];
+  }).sort((a, b) => b.confidence - a.confidence).slice(0, 80);
+}
 function normalizeEpoch(v: number): number {
   if (!Number.isFinite(v) || v <= 0) return 0;
   return v < 1e11 ? v * 1000 : v;
@@ -1473,6 +1517,54 @@ function vehicleBreakdownText(breakdown?: VehicleBreakdown): string {
   return parts.length ? parts.map(([label, value]) => `${label} ${value}`).join(" / ") : "0 kendaraan";
 }
 
+function detectionSummaryText(detections?: YoloDetection[]): string {
+  if (!detections?.length) return "Belum ada objek";
+  const counts = new Map<string, number>();
+  detections.forEach((d) => counts.set(d.label, (counts.get(d.label) || 0) + 1));
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([label, count]) => `${detectionLabel(label)} ${count}`)
+    .join(" / ");
+}
+
+function topDetectionText(detections?: YoloDetection[]): string {
+  const top = detections?.[0];
+  if (!top) return "-";
+  return `${detectionLabel(top.label)} ${(top.confidence * 100).toFixed(0)}%`;
+}
+
+function renderDetectionChips(detections?: YoloDetection[]): string {
+  if (!detections?.length) return `<div class="m-detection-empty">Belum ada objek terdeteksi</div>`;
+  return `<div class="m-detection-chips">
+    ${detections.slice(0, 12).map((d) => `
+      <span class="m-detection-chip${d.vehicle ? " is-vehicle" : ""}">
+        ${escapeHtml(detectionLabel(d.label))}
+        <strong>${(d.confidence * 100).toFixed(0)}%</strong>
+      </span>
+    `).join("")}
+  </div>`;
+}
+
+function renderDetectionOverlay(device: DeviceRecord | null): string {
+  const detections = device?.detections || [];
+  const frameWidth = device?.detectorFrameWidth || 0;
+  const frameHeight = device?.detectorFrameHeight || 0;
+  if (!detections.length || frameWidth <= 0 || frameHeight <= 0) return "";
+  return `<div class="m-detection-overlay" aria-hidden="true">
+    ${detections.slice(0, 12).map((d) => {
+      const left = clamp((d.x / frameWidth) * 100, 0, 100);
+      const top = clamp((d.y / frameHeight) * 100, 0, 100);
+      const width = clamp((d.width / frameWidth) * 100, 1, 100 - left);
+      const height = clamp((d.height / frameHeight) * 100, 1, 100 - top);
+      const label = `${detectionLabel(d.label)} ${(d.confidence * 100).toFixed(0)}%`;
+      return `<span class="m-detection-box${d.vehicle ? " is-vehicle" : ""}${top < 8 ? " is-top-edge" : ""}" style="left:${left}%;top:${top}%;width:${width}%;height:${height}%">
+        <span class="m-detection-label">${escapeHtml(label)}</span>
+      </span>`;
+    }).join("")}
+  </div>`;
+}
+
 async function resolveRoadName(device: DeviceRecord): Promise<string> {
   const cached = state.roadNameById.get(device.id);
   if (cached) return cached;
@@ -1533,6 +1625,7 @@ function normalizeOneDevice(raw: SnapshotDevice): DeviceRecord | null {
     ?? finiteNumber(rawRecord.vehicles)
     ?? normalizeVehicleBreakdown(rawRecord.vehicleBreakdown)?.total;
   const vehicleBreakdown = normalizeVehicleBreakdown(rawRecord.vehicleBreakdown);
+  const detections = normalizeDetections(rawRecord.detections);
   return {
     id: raw.id?.trim() || "raspberry-its",
     label: raw.label?.trim() || "Raspberry Pi 5 Controller",
@@ -1556,6 +1649,10 @@ function normalizeOneDevice(raw: SnapshotDevice): DeviceRecord | null {
     detectorNote: typeof rawRecord.detectorNote === "string" ? rawRecord.detectorNote.trim() || undefined : undefined,
     detectorUpdatedAt: finiteNumber(rawRecord.detectorUpdatedAt),
     detectorFps: finiteNumber(rawRecord.detectorFps),
+    detectorFrameWidth: finiteNumber(rawRecord.detectorFrameWidth),
+    detectorFrameHeight: finiteNumber(rawRecord.detectorFrameHeight),
+    objectCount: Math.max(0, Math.round(finiteNumber(rawRecord.objectCount) ?? detections.length)),
+    detections,
     position: { lat: clamp(lat, -90, 90), lng: clamp(lng, -180, 180) },
   };
 }
@@ -1637,6 +1734,8 @@ function renderDeviceModal(device: DeviceRecord, traffic: TrafficState): string 
     ? `${device.detectorStatus}${device.detectorFps ? ` (${device.detectorFps.toFixed(1)} FPS)` : ""}`
     : "-";
   const breakdown = escapeHtml(vehicleBreakdownText(device.vehicleBreakdown));
+  const objects = escapeHtml(detectionSummaryText(device.detections));
+  const topObject = escapeHtml(topDetectionText(device.detections));
   return `
     <div class="modal-header">
       <button class="modal-close" data-action="close">×</button>
@@ -1659,6 +1758,8 @@ function renderDeviceModal(device: DeviceRecord, traffic: TrafficState): string 
         <div class="info-row"><span class="label">Age</span><span class="value" data-field="device-age">${formatAge(device.lastSeen)}</span></div>
         <div class="info-row"><span class="label">Road</span><span class="value" data-field="device-road">${road}</span></div>
         <div class="info-row"><span class="label">AI Detector</span><span class="value">${escapeHtml(detector)}</span></div>
+        <div class="info-row"><span class="label">Objek</span><span class="value">${objects}</span></div>
+        <div class="info-row"><span class="label">Akurasi Tertinggi</span><span class="value">${topObject}</span></div>
       </div>
       <div class="modal-tab-pane" data-tab="traffic">
         <div class="info-row"><span class="label">Jalan</span><span class="value" data-field="traffic-road">${road}</span></div>
@@ -3481,6 +3582,8 @@ function renderITSSheetContent(): void {
   const detectorStatus = device?.detectorStatus
     ? `${device.detectorStatus}${device.detectorFps ? ` / ${device.detectorFps.toFixed(1)} FPS` : ""}`
     : "-";
+  const objectCount = device?.objectCount ?? device?.detections?.length ?? 0;
+  const topObject = topDetectionText(device?.detections);
 
   const colorMap: Record<string, string> = {
     red: "#ef4444", yellow: "#facc15", green: "#22c55e",
@@ -3498,6 +3601,7 @@ function renderITSSheetContent(): void {
                </svg>
                <span>Belum ada kamera</span>
              </div>`}
+        ${cameraSurface ? renderDetectionOverlay(device) : ""}
         <button class="m-camera-fullscreen" aria-label="Fullscreen">
           <svg viewBox="0 0 16 16" fill="none" width="14" height="14">
             <path d="M1 6V1h5M10 1h5v5M15 10v5h-5M6 15H1v-5"
@@ -3514,10 +3618,13 @@ function renderITSSheetContent(): void {
       </div>
       ${device ? `<div class="m-ai-scan-grid">
         <div><span>AI</span><strong>${escapeHtml(detectorStatus)}</strong></div>
-        <div><span>Total</span><strong>${traffic?.vehicleCount ?? 0}</strong></div>
+        <div><span>Objek</span><strong>${objectCount}</strong></div>
+        <div><span>Top</span><strong>${escapeHtml(topObject)}</strong></div>
+        <div><span>Kendaraan</span><strong>${traffic?.vehicleCount ?? 0}</strong></div>
         <div><span>Mobil</span><strong>${breakdown?.car ?? 0}</strong></div>
         <div><span>Motor</span><strong>${breakdown?.motorcycle ?? 0}</strong></div>
       </div>` : ""}
+      ${device ? renderDetectionChips(device.detections) : ""}
     </div>
 
     ${traffic ? `

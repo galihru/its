@@ -61,7 +61,7 @@ Pastikan service berjalan dengan akses group:
 SupplementaryGroups=gpio video
 ```
 
-## YOLO vehicle detector
+## YOLO object detector
 
 YOLO dijalankan sebagai modul Scala `YoloDetector.scala` dengan model ONNX. Model default:
 
@@ -69,9 +69,22 @@ YOLO dijalankan sebagai modul Scala `YoloDetector.scala` dengan model ONNX. Mode
 export ITS_YOLO_ENABLED=true
 export ITS_YOLO_MODEL_PATH="/home/raspberry5its/models/yolo26n.onnx"
 export ITS_YOLO_CAMERA_SOURCE="rtsp://user:pass@camera-ip/stream1"
+export ITS_YOLO_CONFIDENCE=0.25
 ```
 
 `ITS_YOLO_CAMERA_SOURCE` bisa berupa `/dev/video0`, RTSP, HTTP MJPEG, atau URL kamera publik yang benar-benar stream video. Jika tidak diisi, controller memakai URL kamera publik (`ITS_CAMERA_PUBLIC_URL` / `ITS_CAMERA_WEBRTC_URL`) atau fallback `/dev/video0`.
+
+Detector sekarang mengirim semua objek COCO yang lolos confidence threshold, termasuk `person`. Variabel `vehicleCount` dan LED tetap hanya menghitung kelas kendaraan:
+
+```bash
+export ITS_YOLO_VEHICLE_CLASSES="car,motorcycle,bus,truck,bicycle"
+```
+
+Kalau ingin membatasi objek yang ditampilkan untuk debugging, isi `ITS_YOLO_DETECTION_CLASSES`. Biarkan kosong agar semua objek dikirim:
+
+```bash
+export ITS_YOLO_DETECTION_CLASSES=""
+```
 
 Install runtime dan export model ONNX di Raspberry Pi:
 
@@ -86,6 +99,9 @@ Output detector dikirim ke Firebase dan JSON lokal sebagai:
 ```text
 vehicleCount
 vehicleBreakdown.car / motorcycle / bus / truck / bicycle
+detections[].label / confidence / vehicle / x / y / width / height
+detectorFrameWidth / detectorFrameHeight
+objectCount
 detectorStatus
 detectorFps
 trafficColor

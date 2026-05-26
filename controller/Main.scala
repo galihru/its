@@ -202,6 +202,9 @@ object ItsController {
          |  "detectorNote": "${escapeJson(detector.note)}",
          |  "detectorUpdatedAt": ${detector.updatedAt},
          |  "detectorFps": ${formatDouble(detector.fps)},
+         |  "detectorFrameWidth": ${detector.frameWidth},
+         |  "detectorFrameHeight": ${detector.frameHeight},
+         |  "objectCount": ${detector.objectCount},
          |  "vehicleCount": ${detector.vehicleCount},
          |  "vehicleBreakdown": ${vehicleBreakdownJson(detector.vehicleBreakdown)},
          |  "detections": ${detectionsJson(detector.detections)},
@@ -396,6 +399,9 @@ object ItsController {
          |  "detectorNote": "controller offline",
          |  "detectorUpdatedAt": ${detector.updatedAt},
          |  "detectorFps": 0,
+         |  "detectorFrameWidth": ${detector.frameWidth},
+         |  "detectorFrameHeight": ${detector.frameHeight},
+         |  "objectCount": 0,
          |  "vehicleCount": ${detector.vehicleCount},
          |  "vehicleBreakdown": ${vehicleBreakdownJson(detector.vehicleBreakdown)},
          |  "detections": [],
@@ -656,7 +662,8 @@ object ItsController {
 
   private def detectionsJson(values: Seq[YoloDetection]): String =
     values.map { detection =>
-      s"""{"label":"${escapeJson(detection.label)}","confidence":${formatDouble(detection.confidence)},"x":${formatDouble(detection.x)},"y":${formatDouble(detection.y)},"width":${formatDouble(detection.width)},"height":${formatDouble(detection.height)}}"""
+      val isVehicle = yoloConfig.vehicleClassNames.contains(detection.label.toLowerCase(Locale.ROOT))
+      s"""{"label":"${escapeJson(detection.label)}","confidence":${formatDouble(detection.confidence)},"vehicle":${isVehicle},"x":${formatDouble(detection.x)},"y":${formatDouble(detection.y)},"width":${formatDouble(detection.width)},"height":${formatDouble(detection.height)}}"""
     }.mkString("[", ",", "]")
 
   private def formatDouble(value: Double): String =

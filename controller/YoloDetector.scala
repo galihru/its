@@ -35,6 +35,9 @@ final case class YoloFrameSummary(
   note: String,
   updatedAt: Long,
   fps: Double,
+  frameWidth: Int,
+  frameHeight: Int,
+  objectCount: Int,
   vehicleCount: Int,
   vehicleBreakdown: VehicleBreakdown,
   detections: Seq[YoloDetection]
@@ -49,6 +52,7 @@ final case class YoloConfig(
   nmsThreshold: Double,
   sampleEveryMs: Long,
   maxDetections: Int,
+  detectionClassNames: Set[String],
   vehicleClassNames: Set[String]
 )
 
@@ -64,16 +68,22 @@ object YoloConfig {
       .map(_.trim.toLowerCase(Locale.ROOT))
       .filter(_.nonEmpty)
       .toSet
+    val detectionClasses = env("ITS_YOLO_DETECTION_CLASSES", "")
+      .split(",")
+      .map(_.trim.toLowerCase(Locale.ROOT))
+      .filter(_.nonEmpty)
+      .toSet
 
     YoloConfig(
       enabled = env("ITS_YOLO_ENABLED", "true").toLowerCase(Locale.ROOT) != "false",
       modelPath = modelPath,
       cameraSource = if (cameraSource.nonEmpty) cameraSource else "/dev/video0",
       inputSize = math.max(160, envInt("ITS_YOLO_INPUT_SIZE", 640)),
-      confidenceThreshold = clamp(envDouble("ITS_YOLO_CONFIDENCE", 0.35), 0.01, 0.99),
+      confidenceThreshold = clamp(envDouble("ITS_YOLO_CONFIDENCE", 0.25), 0.01, 0.99),
       nmsThreshold = clamp(envDouble("ITS_YOLO_NMS", 0.45), 0.01, 0.99),
       sampleEveryMs = math.max(100L, envInt("ITS_YOLO_SAMPLE_MS", 1000).toLong),
-      maxDetections = math.max(1, envInt("ITS_YOLO_MAX_DETECTIONS", 40)),
+      maxDetections = math.max(1, envInt("ITS_YOLO_MAX_DETECTIONS", 80)),
+      detectionClassNames = detectionClasses,
       vehicleClassNames = if (classes.nonEmpty) classes else Set("car", "motorcycle", "bus", "truck", "bicycle")
     )
   }
@@ -121,7 +131,7 @@ object YoloDetector {
     else new OpenCvYoloDetector(config)
 
   def empty(status: String, note: String): YoloFrameSummary =
-    YoloFrameSummary(status, note, System.currentTimeMillis(), 0.0, 0, VehicleBreakdown(), Seq.empty)
+    YoloFrameSummary(status, note, System.currentTimeMillis(), 0.0, 0, 0, 0, 0, VehicleBreakdown(), Seq.empty)
 }
 
 final class DisabledYoloDetector(reason: String) extends YoloDetector {
@@ -216,12 +226,16 @@ final class OpenCvYoloRuntime private (
       try {
         val detections = refs.extractDetections(output, config, frameWidth, frameHeight)
         val fps = 1000000000.0 / math.max(1L, System.nanoTime() - started)
-        val breakdown = detections.foldLeft(VehicleBreakdown())((acc, det) => acc.add(det.label))
+        val vehicleDetections = detections.filter(det => config.vehicleClassNames.contains(det.label.toLowerCase(Locale.ROOT)))
+        val breakdown = vehicleDetections.foldLeft(VehicleBreakdown())((acc, det) => acc.add(det.label))
         YoloFrameSummary(
           status = "online",
           note = "YOLO realtime detection active",
           updatedAt = System.currentTimeMillis(),
           fps = fps,
+          frameWidth = frameWidth,
+          frameHeight = frameHeight,
+          objectCount = detections.length,
           vehicleCount = breakdown.total,
           vehicleBreakdown = breakdown,
           detections = detections.take(config.maxDetections)
@@ -309,7 +323,7 @@ final class OpenCvRefs private (
       if (shape.length >= 3) parseThreeDimensionalOutput(data, shape, config, frameWidth, frameHeight)
       else parseTwoDimensionalOutput(data, invokeInt(output, "rows"), invokeInt(output, "cols"), config, frameWidth, frameHeight)
 
-    nonMaxSuppression(rawDetections, config.nmsThreshold).take(config.maxDetections)
+    nonMaxSuppression(rawDetections, config.nmsThreshold)
   }
 
   private def parseThreeDimensionalOutput(
@@ -376,7 +390,11 @@ final class OpenCvRefs private (
         s"class-$bestClass"
       }
 
-      if (bestScore < config.confidenceThreshold || !config.vehicleClassNames.contains(label)) None
+      val labelKey = label.toLowerCase(Locale.ROOT)
+      if (
+        bestScore < config.confidenceThreshold ||
+        (config.detectionClassNames.nonEmpty && !config.detectionClassNames.contains(labelKey))
+      ) None
       else Some(toDetection(label, bestScore, cx, cy, w, h, frameWidth, frameHeight, config.inputSize))
     }
   }
