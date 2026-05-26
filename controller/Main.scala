@@ -49,10 +49,16 @@ object ItsController {
   private var firebaseEnabled = env("ITS_FIREBASE_ENABLED", "true").toLowerCase(Locale.ROOT) != "false"
   private var cachedLocation: Option[(Long, GeoLocation)] = None
 
-  private val cameraEnabled = env("ITS_CAMERA_ENABLED", "true").toLowerCase(Locale.ROOT) != "false"
-  private val cameraWebrtcUrl = resolveCameraWebrtcUrl()
+  private val cameraEnabled    = env("ITS_CAMERA_ENABLED", "true").toLowerCase(Locale.ROOT) != "false"
+  private val webrtcEnabled    = env("ITS_WEBRTC_ENABLED", "true").toLowerCase(Locale.ROOT) != "false"
+  private val cameraMode       = {
+    val requested = env("ITS_CAMERA_MODE", "webrtc").toLowerCase(Locale.ROOT)
+    if (requested == "webrtc" || requested == "mjpeg") requested else "webrtc"
+  }
+  private val webrtcSignalPath = env("ITS_WEBRTC_SIGNAL_PATH", s"webrtc/devices/$deviceId").stripPrefix("/").stripSuffix("/")
+  private val cameraPublicUrl  = resolveCameraPublicUrl()
 
-  @volatile private var cameraStatus: String = if (cameraEnabled && cameraWebrtcUrl.nonEmpty) "online" else "disabled"
+  @volatile private var cameraStatus: String = if (cameraEnabled && (cameraPublicUrl.nonEmpty || webrtcEnabled)) "online" else "disabled"
   @volatile private var cameraUpdatedAt: Long = 0L
   @volatile private var cameraError: String = ""
 
@@ -67,6 +73,7 @@ object ItsController {
 
     val startupLocation = currentLocation()
     println(s"ITS controller started — device=$deviceId lat=${startupLocation.lat} lng=${startupLocation.lng} source=${startupLocation.source} -> $outputPath")
+    println(s"Camera mode=$cameraMode enabled=$cameraEnabled webrtc=$webrtcEnabled publicUrl=${if (cameraPublicUrl.nonEmpty) cameraPublicUrl else "(firebase-signaling)"}")
     Runtime.getRuntime.addShutdownHook(new Thread(() => publishOfflineDevice()))
     // Saat startup: cek dan hapus node lama yang masih berisi nested snapshot wrapper
     migrateLegacyFirebaseNode()
@@ -165,7 +172,13 @@ object ItsController {
          |  "locationSource": "${escapeJson(location.source)}",
          |  "locationLabel": "${escapeJson(location.label)}",
          |  "locationAccuracyM": ${location.accuracyM},
-         |  "cameraUrl": "${escapeJson(cameraWebrtcUrl)}",
+         |  "cameraEnabled": ${cameraEnabled},
+         |  "cameraMode": "${escapeJson(cameraMode)}",
+         |  "webrtcEnabled": ${cameraEnabled && webrtcEnabled},
+         |  "webrtcPath": "${escapeJson(webrtcSignalPath)}",
+         |  "webrtcUrl": "${escapeJson(if (cameraEnabled) cameraPublicUrl else "")}",
+         |  "cameraReady": ${cameraEnabled && ((cameraMode == "webrtc" && webrtcEnabled) || cameraPublicUrl.nonEmpty)},
+         |  "cameraUrl": "${escapeJson(if (cameraEnabled) cameraPublicUrl else "")}",
          |  "cameraStatus": "${escapeJson(cameraStatus)}",
          |  "cameraUpdatedAt": ${cameraUpdatedAt},
          |  "cameraNote": "${escapeJson(cameraError)}",
@@ -302,18 +315,26 @@ object ItsController {
       return
     }
 
-    if (cameraWebrtcUrl.trim.isEmpty) {
-      cameraStatus = "error"
-      cameraUpdatedAt = 0L
-      cameraError = "ITS_CAMERA_WEBRTC_URL belum di-set"
+    if (cameraPublicUrl.trim.nonEmpty) {
+      cameraStatus = "online"
+      cameraUpdatedAt = System.currentTimeMillis()
+      cameraError = ""
+      println(s"[${java.time.LocalDateTime.now()}] Public camera URL active: $cameraPublicUrl")
+      return
+    }
+
+    if (cameraMode == "webrtc" && webrtcEnabled) {
+      cameraStatus = "online"
+      cameraUpdatedAt = System.currentTimeMillis()
+      cameraError = "Firebase WebRTC signaling active; no private LAN camera URL is published"
       println(s"[${java.time.LocalDateTime.now()}] ${cameraError}")
       return
     }
 
-    cameraStatus = "online"
-    cameraUpdatedAt = System.currentTimeMillis()
-    cameraError = ""
-    println(s"[${java.time.LocalDateTime.now()}] WebRTC camera URL active: $cameraWebrtcUrl")
+    cameraStatus = "error"
+    cameraUpdatedAt = 0L
+    cameraError = "Set ITS_CAMERA_PUBLIC_URL / ITS_CAMERA_WEBRTC_URL, atau aktifkan ITS_CAMERA_MODE=webrtc"
+    println(s"[${java.time.LocalDateTime.now()}] ${cameraError}")
   }
 
   private def publishOfflineDevice(): Unit = {
@@ -333,6 +354,13 @@ object ItsController {
          |  "locationSource": "${escapeJson(location.source)}",
          |  "locationLabel": "${escapeJson(location.label)}",
          |  "locationAccuracyM": ${location.accuracyM},
+         |  "cameraEnabled": ${cameraEnabled},
+         |  "cameraMode": "${escapeJson(cameraMode)}",
+         |  "webrtcEnabled": ${cameraEnabled && webrtcEnabled},
+         |  "webrtcPath": "${escapeJson(webrtcSignalPath)}",
+         |  "webrtcUrl": "${escapeJson(if (cameraEnabled) cameraPublicUrl else "")}",
+         |  "cameraReady": false,
+         |  "cameraUrl": "${escapeJson(if (cameraEnabled) cameraPublicUrl else "")}",
          |  "position": {
          |    "lat": ${location.lat},
          |    "lng": ${location.lng}
@@ -579,25 +607,9 @@ object ItsController {
       .replace("\r", "\\r")
       .replace("\t", "\\t")
 
-  private def resolveCameraWebrtcUrl(): String = {
-    val explicit = env("ITS_CAMERA_WEBRTC_URL", "")
-    if (explicit.nonEmpty) return explicit
-
-    val port = envInt("ITS_CAMERA_WEBRTC_PORT", 8889)
-    val path = env("ITS_CAMERA_WEBRTC_PATH", "cam/").trim.stripPrefix("/")
-    val host = primaryNonLoopbackIpv4().getOrElse("127.0.0.1")
-    s"http://$host:$port/$path"
-  }
-
-  private def primaryNonLoopbackIpv4(): Option[String] = {
-    import java.net.{Inet4Address, NetworkInterface}
-    import scala.jdk.CollectionConverters._
-
-    NetworkInterface.getNetworkInterfaces.asScala
-      .filter(_.isUp)
-      .flatMap(_.getInetAddresses.asScala)
-      .collectFirst {
-        case addr: Inet4Address if !addr.isLoopbackAddress && !addr.isLinkLocalAddress => addr.getHostAddress
-      }
-  }
+  private def resolveCameraPublicUrl(): String =
+    Seq("ITS_CAMERA_PUBLIC_URL", "ITS_CAMERA_WEBRTC_URL", "ITS_CAMERA_URL")
+      .map(name => env(name, ""))
+      .find(_.nonEmpty)
+      .getOrElse("")
 }

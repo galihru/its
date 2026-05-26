@@ -1014,6 +1014,52 @@ body {
   background: rgba(220, 38, 38, 0.9);
 }
 
+.camera-live-badge {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 5px;
+  padding-bottom: 7px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.2), rgba(15, 23, 42, 0.82));
+}
+
+.camera-live-badge [data-webrtc-dot],
+.webrtc-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #94a3b8;
+  box-shadow: 0 0 0 0 rgba(148, 163, 184, 0.35);
+}
+
+.camera-live-badge [data-status="connecting"],
+.webrtc-dot[data-status="connecting"] {
+  background: #f59e0b;
+  animation: webrtcPulse 1.1s ease-out infinite;
+}
+
+.camera-live-badge [data-status="live"],
+.webrtc-dot[data-status="live"] {
+  background: #22c55e;
+  animation: webrtcPulse 1.4s ease-out infinite;
+}
+
+.camera-live-badge [data-status="failed"],
+.webrtc-dot[data-status="failed"] {
+  background: #ef4444;
+}
+
+@keyframes webrtcPulse {
+  0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.35); }
+  100% { box-shadow: 0 0 0 8px rgba(34, 197, 94, 0); }
+}
+
 .camera-tile-label {
   position: relative;
   z-index: 1;
@@ -1047,6 +1093,48 @@ body {
   border-radius: 8px;
   margin-bottom: 8px;
   background: #0f172a;
+}
+
+.webrtc-video-wrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 180px;
+  background: #020617;
+  overflow: hidden;
+}
+
+.webrtc-video {
+  width: 100%;
+  height: 100%;
+  min-height: inherit;
+  display: block;
+  object-fit: cover;
+  background: #020617;
+}
+
+.camera-video-popup {
+  aspect-ratio: 16 / 9;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.webrtc-status-bar {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 9px;
+  border-radius: 7px;
+  color: #fff;
+  background: rgba(15, 23, 42, 0.78);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.25;
+  backdrop-filter: blur(8px);
 }
 
 .camera-placeholder {
@@ -1398,8 +1486,16 @@ body.its-sheet-open #m-bottom-nav {
 }
 
 .m-camera-frame {
+  width: 100%;
+  height: 100%;
   border: 0;
   background: #0f172a;
+}
+
+.m-its-camera-box .webrtc-video-wrap {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
 }
 
 .m-camera-placeholder {
