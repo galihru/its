@@ -41,6 +41,7 @@ jobs:
           gunzip /tmp/scala-cli.gz
           chmod +x /tmp/scala-cli
           sudo mv /tmp/scala-cli /usr/local/bin/scala-cli
+          scala-cli config power true 
 
       - name: Build controller JAR
         working-directory: controller
