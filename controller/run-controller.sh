@@ -2,14 +2,16 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-OUT_DIR="$SCRIPT_DIR/out"
-SOURCE_FILE="$SCRIPT_DIR/Main.scala"
-MAIN_CLASS="ItsController"
+JAR_FILE="$SCRIPT_DIR/ItsController.jar"
+SOURCE_FILE="${ITS_CONTROLLER_SOURCE_FILE:-$SCRIPT_DIR/Main.scala}"
 
-mkdir -p "$OUT_DIR"
-
-if [ ! -f "$OUT_DIR/${MAIN_CLASS}.class" ] || [ "$SOURCE_FILE" -nt "$OUT_DIR/${MAIN_CLASS}.class" ]; then
-  scalac -d "$OUT_DIR" "$SOURCE_FILE"
+if [ ! -f "$JAR_FILE" ] || [ "$SOURCE_FILE" -nt "$JAR_FILE" ]; then
+  if command -v scalac >/dev/null 2>&1; then
+    "$SCRIPT_DIR/build-controller-jar.sh"
+  else
+    echo "ItsController.jar not found and scalac is unavailable." >&2
+    exit 1
+  fi
 fi
 
-exec scala -cp "$OUT_DIR" "$MAIN_CLASS"
+exec java -jar "$JAR_FILE" "$@"

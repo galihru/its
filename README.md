@@ -78,17 +78,25 @@ Kalau kamu bukan pemilik repo utama, pakai fork itu benar. Alur amannya:
 
 ## Raspberry Pi
 
-Program controller di folder `controller/` bukan seperti Arduino firmware. Dia bisa auto-run saat boot kalau dipasang sebagai service systemd.
+Program controller di folder `controller/` jalan sebagai service systemd.
 
-Untuk cek auto-run di Pi:
+Alur publik yang dipakai sekarang:
+
+1. Build `controller/ItsController.jar` dari source Scala.
+2. Copy JAR itu ke `web/public/artifacts/ItsController.jar`.
+3. Build dan deploy web ke Firebase Hosting.
+4. Pi menjalankan [controller/run-controller-public.sh](controller/run-controller-public.sh) supaya mendapat URL publik dynamic dari Cloudflare Tunnel.
+5. Pi menjalankan [controller/update-controller.sh](controller/update-controller.sh) lewat timer systemd untuk download JAR terbaru dan restart service.
+
+Service yang dipakai di Pi:
 
 ```bash
-cd controller
-./run-controller.sh --once
-sudo cp its-controller.service /etc/systemd/system/its-controller.service
+sudo cp controller/its-controller.service /etc/systemd/system/its-controller.service
+sudo cp controller/its-controller-update.service /etc/systemd/system/its-controller-update.service
+sudo cp controller/its-controller-update.timer /etc/systemd/system/its-controller-update.timer
 sudo systemctl daemon-reload
 sudo systemctl enable --now its-controller.service
-sudo systemctl status its-controller.service
+sudo systemctl enable --now its-controller-update.timer
 ```
 
-Kalau service aktif, berarti program memang jalan otomatis setelah boot.
+Kalau service aktif, controller jalan otomatis setelah boot dan akan mengambil JAR terbaru dari hosting Firebase.

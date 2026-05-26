@@ -21,7 +21,6 @@ declare module "leaflet" {
 // ─── Types ──────────────────────────────────────────────────────
 
 type DeviceStatus = "online" | "offline" | "degraded";
-type CameraMode = "webrtc" | "mjpeg";
 
 type DeviceRecord = {
   id: string;
@@ -31,10 +30,6 @@ type DeviceRecord = {
   lastSeenText?: string;
   note?: string;
   cameraUrl?: string;
-  cameraMode?: CameraMode;
-  webrtcEnabled?: boolean;
-  webrtcPath?: string;
-  cameraReady?: boolean;
   roadName?: string;
   roadHint?: string;
   trafficColor?: "red" | "yellow" | "green";
@@ -54,29 +49,6 @@ type Snapshot = {
   devices?: SnapshotDevice[] | Record<string, SnapshotDevice>;
 };
 type AppConfig = { snapshotUrl?: string; refreshMs?: number };
-type WebRtcStatus = "idle" | "connecting" | "live" | "failed";
-type WebRtcRuntime = {
-  pc: RTCPeerConnection | null;
-  deviceId: string;
-  signalPath: string;
-  sessionId: string;
-  stream: MediaStream | null;
-  pollTimer: number;
-  heartbeatTimer: number;
-  candidateSeq: number;
-  seenCameraCandidates: Set<string>;
-  pendingCandidates: RTCIceCandidateInit[];
-  sessionReady: boolean;
-  startedAt: number;
-  status: WebRtcStatus;
-  message: string;
-};
-type WebRtcSessionRecord = {
-  answer?: RTCSessionDescriptionInit;
-  cameraCandidates?: Record<string, RTCIceCandidateInit>;
-  streamerStatus?: string;
-  streamerError?: string;
-};
 type BaseMapMode = "street" | "3d" | "satellite";
 type TrafficColor = "red" | "yellow" | "green";
 type TrafficState = {
@@ -88,7 +60,7 @@ type TrafficState = {
   updatedAt: number;
 };
 
-type PoiKind = "hospital" | "mall" | "campus" | "parking" | "park" | "worship" | "school" | "office" | "restaurant" | "monument" | "other";
+type PoiKind = "hospital" | "mall" | "campus" | "parking" | "park" | "worship" | "school" | "office" | "restaurant" | "monument" | "terminal" | "station" | "shelter" | "cemetery" | "transport" | "other";
 
 type PoiRecord = {
   id: string;
@@ -115,16 +87,6 @@ const DEFAULT_CONFIG: Required<AppConfig> = {
 const DEFAULT_CENTER: L.LatLngExpression = [0, 0]; // Neutral; peta akan auto-pan ke marker pertama
 const DEFAULT_ZOOM = 17;
 const OFFLINE_AFTER_MS = 60_000;
-const FIREBASE_DEVICES_URL =
-  "https://itstelkom-default-rtdb.asia-southeast1.firebasedatabase.app/devices.json";
-const FIREBASE_ROOT_URL = FIREBASE_DEVICES_URL.replace(/\/devices\.json$/, "");
-const WEBRTC_SIGNAL_ROOT = "webrtc/devices";
-const WEBRTC_POLL_MS = 700;
-const WEBRTC_HEARTBEAT_MS = 5_000;
-const WEBRTC_ANSWER_TIMEOUT_MS = 18_000;
-const WEBRTC_ICE_SERVERS: RTCIceServer[] = [
-  { urls: "stun:stun.l.google.com:19302" },
-];
 
 const BEARING_STEP = 90;
 const BEARING_SNAP = 5;
@@ -141,13 +103,7 @@ function requiredElement<T extends Element>(selector: string, name: string): T {
 
 const app = document.querySelector<HTMLDivElement>("#app");
 if (!app) throw new Error("Missing #app element.");
-app.innerHTML = `
-  <div id="map" class="map" aria-label="Raspberry Pi realtime map"></div>
-  <aside id="camera-panel" class="camera-panel" aria-label="Realtime camera preview">
-    <div class="camera-panel-title">Kamera Live</div>
-    <div class="camera-panel-content"></div>
-  </aside>
-`;
+app.innerHTML = `<div id="map" class="map" aria-label="Raspberry Pi realtime map"></div>`;
 const mapRoot = requiredElement<HTMLDivElement>("#map", "map");
 
 // ─── Map init ───────────────────────────────────────────────────
@@ -177,7 +133,6 @@ const state = {
   compassBtn: null as HTMLButtonElement | null,
   cameraPreview: null as HTMLDivElement | null,
   cameraButton: null as HTMLButtonElement | null,
-  cameraPanel: null as HTMLDivElement | null,
   markers: new Map<string, L.Marker>(),
   poiMarkers: new Map<string, L.Marker>(),
   poiData: new Map<string, PoiRecord>(),
@@ -186,27 +141,20 @@ const state = {
   maplibreMap: null as any,
   maplibreContainer: null as HTMLDivElement | null,
   maplibreSyncing: false,
+  // Tablet / routing helpers
+  vehicleMarker: null as L.Marker | null,
+  tabletCategoryIndex: null as number | null,
+  tabletSearchQuery: "",
+  routeLayer: null as L.LayerGroup | null,
+  destinationMarker: null as L.Marker | null,
   activeModalDeviceId: null as string | null,
   activeModalPoiId: null as string | null,
   trafficRefreshTimer: 0,
   offlineReported: new Set<string>(),
   overpassLayer: null as L.LayerGroup | null,
-  webrtc: {
-    pc: null,
-    deviceId: "",
-    signalPath: "",
-    sessionId: "",
-    stream: null,
-    pollTimer: 0,
-    heartbeatTimer: 0,
-    candidateSeq: 0,
-    seenCameraCandidates: new Set<string>(),
-    pendingCandidates: [],
-    sessionReady: false,
-    startedAt: 0,
-    status: "idle",
-    message: "",
-  } as WebRtcRuntime,
+  modeControl: null as L.Control | null,
+  routeRequestSeq: 0,
+  prevPositionById: new Map<string, L.LatLng>(),
 };
 
 // ─── Tile layers ────────────────────────────────────────────────
@@ -305,6 +253,31 @@ const POI_LIBRARY: Record<PoiKind, {
     imageUrl: "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&w=900&q=80",
     description: "Tempat makan, kafe, atau layanan kuliner di area sekitar.",
   },
+  terminal: {
+    rating: "4.0",
+    imageUrl: "https://images.unsplash.com/photo-1501594907352-04cda38ebc29?auto=format&fit=crop&w=900&q=80",
+    description: "Terminal transportasi dengan akses angkutan dan titik naik-turun penumpang.",
+  },
+  station: {
+    rating: "4.1",
+    imageUrl: "https://images.unsplash.com/photo-1474487548417-781cb71495f3?auto=format&fit=crop&w=900&q=80",
+    description: "Stasiun transportasi untuk transit dan perjalanan lanjutan.",
+  },
+  shelter: {
+    rating: "4.0",
+    imageUrl: "https://images.unsplash.com/photo-1528928716400-4a2f2f6df4fc?auto=format&fit=crop&w=900&q=80",
+    description: "Shelter atau halte untuk tunggu kendaraan umum.",
+  },
+  cemetery: {
+    rating: "4.0",
+    imageUrl: "https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&w=900&q=80",
+    description: "Area pemakaman atau kuburan terdekat.",
+  },
+  transport: {
+    rating: "4.0",
+    imageUrl: "https://images.unsplash.com/photo-1519501025264-65ba15a82390?auto=format&fit=crop&w=900&q=80",
+    description: "Titik transportasi umum di sekitar lokasi.",
+  },
   monument: {
     rating: "4.2",
     imageUrl: "https://images.unsplash.com/photo-1508804185872-d7badad00f7d?auto=format&fit=crop&w=900&q=80",
@@ -327,6 +300,11 @@ const POI_VISUALS: Record<PoiKind, { icon: string; color: string }> = {
   school: { icon: "🏫", color: "#2563eb" },
   office: { icon: "🏢", color: "#14b8a6" },
   restaurant: { icon: "🍽️", color: "#fb7185" },
+  terminal: { icon: "🚌", color: "#0f766e" },
+  station: { icon: "🚉", color: "#1d4ed8" },
+  shelter: { icon: "🚏", color: "#0ea5e9" },
+  cemetery: { icon: "⚰️", color: "#64748b" },
+  transport: { icon: "🚍", color: "#0284c7" },
   monument: { icon: "🗿", color: "#a16207" },
   other: { icon: "📍", color: "#475569" },
 };
@@ -340,6 +318,10 @@ function classifyPoiKind(tags: Record<string, string>): PoiKind {
   if (amenity === "university" || amenity === "college" || tourism === "university") return "campus";
   if (amenity === "restaurant" || amenity === "cafe" || amenity === "fast_food") return "restaurant";
   if (amenity === "parking" || tags.parking) return "parking";
+  if (amenity === "bus_station" || amenity === "ferry_terminal" || amenity === "terminal" || tags.public_transport === "station") return "station";
+  if (amenity === "bus_stop" || tags.highway === "bus_stop") return "shelter";
+  if (amenity === "grave_yard" || tags.landuse === "cemetery") return "cemetery";
+  if (amenity === "public_transport" || tags.public_transport) return "transport";
   if (amenity === "office" || tags.office) return "office";
   if (tags.shop) return "mall";
   if (tags.historic === "monument" || tourism === "attraction" || tags.building === "monument") return "monument";
@@ -373,6 +355,10 @@ function renderPoiModal(poi: PoiRecord): string {
     <div class="modal-header poi-modal-header">
       <button class="modal-close" data-action="close">×</button>
       <h2 class="modal-title">${escapeHtml(poi.title)}</h2>
+      <div class="poi-actions">
+        <button class="btn-share" data-action="share">Share</button>
+        <button class="btn-start" data-action="start">Pergi</button>
+      </div>
     </div>
     <div class="modal-content poi-modal-content">
       <div class="poi-hero">
@@ -387,9 +373,11 @@ function renderPoiModal(poi: PoiRecord): string {
         <div>
           <div class="poi-title">${escapeHtml(poi.title)}</div>
           <div class="poi-address">${escapeHtml(poi.address)}</div>
+          <div class="poi-meta"><span data-field="poi-distance">-</span> • <span data-field="poi-eta">-</span></div>
         </div>
       </div>
       <div class="poi-description">${escapeHtml(poi.description)}</div>
+      <div class="poi-route-summary" data-field="poi-route"></div>
       <div class="info-row"><span class="label">Kategori</span><span class="value">${escapeHtml(poi.kind)}</span></div>
       <div class="info-row"><span class="label">Koordinat</span><span class="value">${poi.lat.toFixed(6)}, ${poi.lng.toFixed(6)}</span></div>
     </div>`;
@@ -411,6 +399,574 @@ function openPoiModal(poi: PoiRecord): void {
   if (!sheet) return;
   setupSheetSwipe(sheet, closeModal);
   sheet.querySelector<HTMLButtonElement>(".modal-close")?.addEventListener("click", closeModal);
+
+  // Wire up share and start buttons and populate distance/ETA + image
+  const shareBtn = sheet.querySelector<HTMLButtonElement>(".btn-share");
+  const startBtn = sheet.querySelector<HTMLButtonElement>(".btn-start");
+  shareBtn?.addEventListener("click", async () => {
+    const url = `https://www.openstreetmap.org/?mlat=${poi.lat}&mlon=${poi.lng}#map=${DEFAULT_ZOOM}/${poi.lat}/${poi.lng}`;
+    try {
+      if ((navigator as any).share) {
+        await (navigator as any).share({ title: poi.title, text: poi.description || poi.title, url });
+      } else {
+        await navigator.clipboard.writeText(url);
+        alert("Link lokasi disalin ke clipboard");
+      }
+    } catch (err) { console.warn(err); }
+  });
+  startBtn?.addEventListener("click", async () => {
+    // Start navigation: draw route and if mobile open AR camera view
+    void setDestinationToPoi(poi);
+    if (isMobile()) {
+      openARCameraSheet(poi);
+    }
+  });
+
+  // populate image from Unsplash (fallback) and compute distance/ETA via OSRM
+  const heroImg = sheet.querySelector<HTMLImageElement>(".poi-hero-image");
+  if (heroImg) {
+    heroImg.src = `https://source.unsplash.com/featured/?${encodeURIComponent(poi.title)}`;
+  }
+
+  const distanceEl = sheet.querySelector<HTMLElement>("[data-field=poi-distance]");
+  const etaEl = sheet.querySelector<HTMLElement>("[data-field=poi-eta]");
+  const routeSummaryEl = sheet.querySelector<HTMLElement>("[data-field=poi-route]");
+
+  (async () => {
+    try {
+      const fromLatLng = state.vehicleMarker ? state.vehicleMarker.getLatLng() : map.getCenter();
+      if (!fromLatLng) return;
+      const url = `https://router.project-osrm.org/route/v1/driving/${fromLatLng.lng},${fromLatLng.lat};${poi.lng},${poi.lat}?overview=false&steps=true&geometries=geojson`;
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) throw new Error("route failed");
+      const data = await res.json();
+      const route = data.routes?.[0];
+      const dist = route?.distance ?? haversineDistanceMeters(fromLatLng.lat, fromLatLng.lng, poi.lat, poi.lng);
+      const dur = route?.duration ?? (dist / 1000) / 40 * 3600; // fallback assume 40 km/h
+      if (distanceEl) distanceEl.textContent = formatDistance(dist);
+      if (etaEl) etaEl.textContent = formatEtaSeconds(dur);
+      if (routeSummaryEl && route && route.legs && route.legs.length) {
+        const steps = route.legs[0].steps || [];
+        routeSummaryEl.innerHTML = `<div class="route-steps"><strong>Rute:</strong><ol>${steps.slice(0, 6).map((s: any) => `<li>${escapeHtml(String(s.maneuver?.instruction || s.name || 'Lurus'))} (${formatDistance(s.distance)})</li>`).join('')}</ol></div>`;
+      }
+    } catch (err) {
+      try {
+        // fallback compute straight-line distance
+        const fromLatLng = state.vehicleMarker ? state.vehicleMarker.getLatLng() : map.getCenter();
+        if (fromLatLng && distanceEl && etaEl) {
+          const dist = haversineDistanceMeters(fromLatLng.lat, fromLatLng.lng, poi.lat, poi.lng);
+          distanceEl.textContent = formatDistance(dist);
+          etaEl.textContent = formatEtaSeconds((dist / 1000) / 40 * 3600);
+        }
+      } catch { }
+    }
+  })();
+}
+
+function openARCameraSheet(targetPoi: PoiRecord): void {
+  const overlay = document.createElement('div');
+  overlay.id = 'm-ar-fullscreen';
+  overlay.innerHTML = `
+    <div class="ar-fullscreen-wrapper">
+      <video class="ar-video" autoplay playsinline muted></video>
+      <canvas class="ar-canvas"></canvas>
+      <div class="ar-guidance">
+        <div class="ar-guidance-arrow" data-field="ar-arrow">↑</div>
+        <div class="ar-guidance-text" data-field="ar-direction">Arah tujuan</div>
+      </div>
+      <button class="ar-target-beacon" data-field="ar-target-beacon" type="button">
+        <span class="ar-target-beacon-icon">📍</span>
+        <span class="ar-target-beacon-text">Tujuan</span>
+      </button>
+      <div class="ar-hud-bottom">
+        <div class="ar-hud-status" data-field="ar-status">🎥 AR Mode aktif</div>
+        <div class="ar-hud-info">
+          <span data-field="ar-target">Tujuan: ${escapeHtml(targetPoi.title)}</span>
+          <span data-field="ar-distance">Jarak: -</span>
+          <span data-field="ar-eta">Waktu: -</span>
+        </div>
+      </div>
+      <div class="ar-poi-layer"></div>
+      <div class="ar-object-layer"></div>
+      <div class="ar-controls-bottom">
+        <button class="ar-toggle-3d" aria-label="Toggle 3D">3D</button>
+        <button class="ar-swap-pip" aria-label="Swap PiP">↔️</button>
+        <button class="ar-close">✕</button>
+      </div>
+      <div class="ar-pip-map-container" style="display:none">
+        <div id="ar-pip-map" class="ar-pip-map"></div>
+        <div class="ar-pip-info" data-field="pip-distance">Jarak: -</div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  const video = overlay.querySelector<HTMLVideoElement>('.ar-video');
+  const canvas = overlay.querySelector<HTMLCanvasElement>('.ar-canvas');
+  const poiLayer = overlay.querySelector<HTMLElement>('.ar-poi-layer');
+  const objectLayer = overlay.querySelector<HTMLElement>('.ar-object-layer');
+  const statusEl = overlay.querySelector<HTMLElement>('[data-field="ar-status"]');
+  const distanceEl = overlay.querySelector<HTMLElement>('[data-field="ar-distance"]');
+  const etaEl = overlay.querySelector<HTMLElement>('[data-field="ar-eta"]');
+  const guidanceArrow = overlay.querySelector<HTMLElement>('[data-field="ar-arrow"]');
+  const guidanceText = overlay.querySelector<HTMLElement>('[data-field="ar-direction"]');
+  const targetBeacon = overlay.querySelector<HTMLButtonElement>('[data-field="ar-target-beacon"]');
+  const toggleBtn = overlay.querySelector<HTMLButtonElement>('.ar-toggle-3d');
+  const swapBtn = overlay.querySelector<HTMLButtonElement>('.ar-swap-pip');
+  const closeBtn = overlay.querySelector<HTMLButtonElement>('.ar-close');
+  const pipContainer = overlay.querySelector<HTMLElement>('.ar-pip-map-container');
+  const pipMapEl = overlay.querySelector<HTMLElement>('#ar-pip-map');
+  const pipDistanceEl = overlay.querySelector<HTMLElement>('[data-field="pip-distance"]');
+  if (!video || !canvas || !poiLayer || !objectLayer || !statusEl || !distanceEl || !etaEl || !guidanceArrow || !guidanceText || !targetBeacon || !toggleBtn || !closeBtn || !pipContainer || !pipMapEl || !pipDistanceEl) return;
+
+  const videoEl = video as HTMLVideoElement;
+  const canvasEl = canvas as HTMLCanvasElement;
+  const poiLayerEl = poiLayer as HTMLElement;
+  const objectLayerEl = objectLayer as HTMLElement;
+  const statusElEl = statusEl as HTMLElement;
+  const distanceElEl = distanceEl as HTMLElement;
+  const etaElEl = etaEl as HTMLElement;
+  const guidanceArrowEl = guidanceArrow as HTMLElement;
+  const guidanceTextEl = guidanceText as HTMLElement;
+  const targetBeaconEl = targetBeacon as HTMLButtonElement;
+  const toggleBtnEl = toggleBtn as HTMLButtonElement;
+  const closeBtnEl = closeBtn as HTMLButtonElement;
+  const swapBtnEl = swapBtn as HTMLButtonElement;
+  const pipContainerEl = pipContainer as HTMLElement;
+  const pipMapElDiv = pipMapEl as HTMLElement;
+  const pipDistanceElDiv = pipDistanceEl as HTMLElement;
+
+  let stream: MediaStream | null = null;
+  let running = true;
+  let headingDeg = map.getBearing?.() ?? 0;
+  let currentPos: L.LatLng | null = state.vehicleMarker?.getLatLng() ?? null;
+  let currentTarget = targetPoi;
+  let activePoiLookup = new Map<string, PoiRecord>();
+  let destinationReached = false;
+  let poiCards = new Map<string, HTMLElement>();
+  let objectCards = new Map<string, HTMLElement>();
+  let nearbyFetchToken = 0;
+  let detectBusy = false;
+  let ar3dEnabled = true;
+  let arIsPrimary = true;
+  let pipMapInstance: L.Map | null = null;
+  let cleanedUp = false;
+
+  function setStatus(text: string): void {
+    statusElEl.textContent = text;
+  }
+
+  function bearingDelta(from: number, to: number): number {
+    return ((to - from + 540) % 360) - 180;
+  }
+
+  function turnInstructionFromDelta(delta: number): string {
+    const abs = Math.abs(delta);
+    if (abs < 12) return 'Lurus';
+    if (delta > 0) return abs < 35 ? 'Belok kanan' : 'Ke kanan';
+    return abs < 35 ? 'Belok kiri' : 'Ke kiri';
+  }
+
+  function ensureSkeletonCard(id: string, title: string, kind: string): HTMLElement {
+    const existing = poiCards.get(id);
+    if (existing) return existing;
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'ar-poi-card ar-skeleton-card';
+    card.dataset.poiId = id;
+    card.title = title;
+    card.innerHTML = `
+      <div class="ar-poi-icon">${escapeHtml(poiVisual(kind as PoiKind).icon)}</div>
+      <div class="ar-poi-distance">-</div>
+    `;
+    card.addEventListener('click', () => {
+      const poi = activePoiLookup.get(id);
+      if (!poi) return;
+      openPoiModal(poi);
+    });
+    poiLayerEl.appendChild(card);
+    poiCards.set(id, card);
+    return card;
+  }
+
+  function ensureObjectCard(key: string, label: string): HTMLElement {
+    const existing = objectCards.get(key);
+    if (existing) return existing;
+    const card = document.createElement('div');
+    card.className = 'ar-object-card ar-skeleton-card';
+    card.dataset.objectKey = key;
+    card.innerHTML = `
+      <div class="ar-object-label">${escapeHtml(label)}</div>
+      <div class="ar-skeleton-box"></div>
+    `;
+    objectLayerEl.appendChild(card);
+    objectCards.set(key, card);
+    return card;
+  }
+
+  function cleanupCollections(activePoiIds: Set<string>, activeObjectKeys: Set<string>): void {
+    for (const [id, el] of poiCards.entries()) {
+      if (!activePoiIds.has(id)) {
+        el.remove();
+        poiCards.delete(id);
+      }
+    }
+    for (const [key, el] of objectCards.entries()) {
+      if (!activeObjectKeys.has(key)) {
+        el.remove();
+        objectCards.delete(key);
+      }
+    }
+  }
+
+  function updateTargetStats(): void {
+    if (!currentPos) return;
+    const dist = haversineDistanceMeters(currentPos.lat, currentPos.lng, currentTarget.lat, currentTarget.lng);
+    const eta = (dist / 1000) / 40 * 3600;
+    distanceElEl.textContent = `Jarak: ${formatDistance(dist)}`;
+    etaElEl.textContent = `Waktu: ${formatEtaSeconds(eta)}`;
+    const bearingToTarget = computeBearing(currentPos.lat, currentPos.lng, currentTarget.lat, currentTarget.lng);
+    const deltaToTarget = bearingDelta(headingDeg, bearingToTarget);
+    const halfFov = 36;
+    const beaconX = Math.max(8, Math.min(92, 50 + (deltaToTarget / halfFov) * 42));
+    const beaconY = Math.max(14, Math.min(66, 36 + (dist / 1500) * 12));
+    guidanceArrowEl.style.transform = `rotate(${deltaToTarget}deg)`;
+    guidanceArrowEl.classList.toggle('is-centered', Math.abs(deltaToTarget) < 8);
+    guidanceTextEl.textContent = `${bearingLabel(bearingToTarget)} · ${turnInstructionFromDelta(deltaToTarget)} · ${formatDistance(dist)}`;
+    targetBeaconEl.style.left = `${beaconX}%`;
+    targetBeaconEl.style.top = `${beaconY}%`;
+    targetBeaconEl.title = `${currentTarget.title} · ${bearingLabel(bearingToTarget)} · ${formatDistance(dist)}`;
+    targetBeaconEl.querySelector('.ar-target-beacon-text')!.textContent = `${formatDistance(dist)}`;
+    targetBeaconEl.classList.toggle('is-centered', Math.abs(deltaToTarget) < 8);
+    if (dist < 18 && !destinationReached) {
+      destinationReached = true;
+      setStatus('Anda sudah sampai tujuan');
+      closeModal();
+      const reached = createSwipeableSheetModal('m-arrived-modal', 'm-arrived-sheet', `
+        <div class="m-sheet-handle-bar"></div>
+        <div class="ar-arrived">
+          <div class="ar-arrived-title">Anda sudah sampai tujuan</div>
+          <div class="ar-arrived-subtitle">${escapeHtml(currentTarget.title)}</div>
+        </div>
+      `);
+      setTimeout(() => reached.remove(), 2600);
+    }
+  }
+
+  function placePoiCard(card: HTMLElement, poi: PoiRecord): boolean {
+    if (poi.id === currentTarget.id) return false;
+    if (!currentPos) return false;
+    const dist = haversineDistanceMeters(currentPos.lat, currentPos.lng, poi.lat, poi.lng);
+    const bearingToPoi = computeBearing(currentPos.lat, currentPos.lng, poi.lat, poi.lng);
+    const delta = bearingDelta(headingDeg, bearingToPoi);
+    const fov = 72;
+    const halfFov = fov / 2;
+    const inRange = dist <= 850;
+    const inView = Math.abs(delta) <= halfFov;
+    const visible = inRange && inView;
+    if (!visible) {
+      card.remove();
+      poiCards.delete(poi.id);
+      return false;
+    }
+    const screenX = Math.max(8, Math.min(92, 50 + (delta / halfFov) * 40));
+    const lift = clamp(68 - Math.log10(Math.max(dist, 5)) * 18, 8, 62);
+    const size = clamp(1.02 - dist / 2100, 0.86, 1.02);
+    const dirLabel = bearingLabel(bearingToPoi);
+    const turnLabel = turnInstructionFromDelta(delta);
+    const centered = Math.abs(delta) < 8;
+    card.classList.remove('ar-skeleton-card');
+    card.title = `${poi.title} · ${dirLabel} · ${turnLabel}`;
+    card.innerHTML = `
+      <div class="ar-poi-icon">${escapeHtml(poi.icon || poiVisual(poi.kind).icon)}</div>
+      <div class="ar-poi-distance">${formatDistance(dist)}</div>
+    `;
+    card.classList.toggle('ar-poi-centered', centered);
+    Object.assign(card.style, {
+      left: `${screenX}%`,
+      top: `${lift}%`,
+      transform: `translate(-50%, -50%) scale(${size}) perspective(900px) rotateX(16deg) rotateY(${delta > 0 ? '-8deg' : '8deg'})`,
+      opacity: `${clamp(1.15 - dist / 1300, 0.3, 1)}`,
+    });
+    if (poi.id === currentTarget.id) {
+      card.classList.add('ar-target-card');
+    }
+    card.dataset.bearing = String(Math.round(bearingToPoi));
+    card.dataset.delta = String(Math.round(delta));
+    card.dataset.distance = String(Math.round(dist));
+    return true;
+  }
+  mapRoot.classList.add('hidden');
+  document.getElementById('m-bottom-nav')?.classList.add('hidden');
+
+  async function fetchNearbyPoiCards(): Promise<void> {
+    if (!currentPos) return;
+    const token = ++nearbyFetchToken;
+    setStatus('Memuat POI sekitar...');
+    const bounds = L.latLngBounds(
+      [currentPos.lat - 0.01, currentPos.lng - 0.01],
+      [currentPos.lat + 0.01, currentPos.lng + 0.01],
+    );
+    let pois = await fetchOverpassFeaturesForBounds(bounds).catch(() => [] as PoiRecord[]);
+    if (token !== nearbyFetchToken) return;
+    if (!pois.length) {
+      const c = currentPos;
+      pois = [
+        { id: 'ar-local-terminal', kind: 'terminal', title: 'Terminal Terdekat', description: '', address: '', imageUrl: POI_LIBRARY.terminal.imageUrl, rating: POI_LIBRARY.terminal.rating, icon: poiVisual('terminal').icon, lat: c.lat + 0.0014, lng: c.lng + 0.0011 },
+        { id: 'ar-local-station', kind: 'station', title: 'Stasiun Terdekat', description: '', address: '', imageUrl: POI_LIBRARY.station.imageUrl, rating: POI_LIBRARY.station.rating, icon: poiVisual('station').icon, lat: c.lat - 0.0011, lng: c.lng + 0.0016 },
+        { id: 'ar-local-shelter', kind: 'shelter', title: 'Shelter / Halte', description: '', address: '', imageUrl: POI_LIBRARY.shelter.imageUrl, rating: POI_LIBRARY.shelter.rating, icon: poiVisual('shelter').icon, lat: c.lat + 0.0009, lng: c.lng - 0.0015 },
+        { id: 'ar-local-cemetery', kind: 'cemetery', title: 'Pemakaman', description: '', address: '', imageUrl: POI_LIBRARY.cemetery.imageUrl, rating: POI_LIBRARY.cemetery.rating, icon: poiVisual('cemetery').icon, lat: c.lat - 0.0018, lng: c.lng - 0.0010 },
+      ];
+    }
+    pois = pois.slice(0, 12);
+    activePoiLookup = new Map(pois.map((p) => [p.id, p]));
+    const activePoiIds = new Set<string>();
+    activePoiIds.add(currentTarget.id);
+    pois.forEach((poi) => {
+      const card = ensureSkeletonCard(poi.id, poi.title, poi.kind);
+      if (placePoiCard(card, poi)) activePoiIds.add(poi.id);
+    });
+    cleanupCollections(activePoiIds, new Set(objectCards.keys()));
+    setStatus('POI sekitar aktif');
+  }
+
+  function updateObjectOverlays(predictions: Array<{ bbox: number[]; class?: string; score?: number }>): void {
+    const active = new Set<string>();
+    predictions.filter((p) => (p.score ?? 0) > 0.45).slice(0, 10).forEach((p, index) => {
+      const key = `${p.class || 'object'}-${index}`;
+      active.add(key);
+      const label = p.class || 'object';
+      const card = ensureObjectCard(key, label);
+      const [x, y, w, h] = p.bbox;
+      const bw = Math.max(8, (w / Math.max(videoEl.videoWidth, 1)) * 100);
+      const bh = Math.max(8, (h / Math.max(videoEl.videoHeight, 1)) * 100);
+      const cx = ((x + w / 2) / Math.max(videoEl.videoWidth, 1)) * 100;
+      const cy = ((y + h / 2) / Math.max(videoEl.videoHeight, 1)) * 100;
+      const bg = /person/i.test(label) ? 'linear-gradient(180deg,#2563eb,#93c5fd)' : /car|truck|bus|motorcycle|vehicle/i.test(label) ? 'linear-gradient(180deg,#ef4444,#fb7185)' : /plant|tree/i.test(label) ? 'linear-gradient(180deg,#16a34a,#86efac)' : 'linear-gradient(180deg,#475569,#94a3b8)';
+      card.classList.remove('ar-skeleton-card');
+      card.innerHTML = `
+        <div class="ar-object-label">${escapeHtml(label)}</div>
+        <div class="ar-object-distance">${Math.max(1, Math.round(1200 / Math.max(bw, 8)))}m</div>
+      `;
+      Object.assign(card.style, {
+        left: `${cx}%`,
+        top: `${cy}%`,
+        width: `${bw}%`,
+        height: `${bh}%`,
+        background: bg,
+        transform: ar3dEnabled ? 'perspective(900px) rotateX(18deg)' : '',
+        opacity: '1',
+      });
+    });
+    cleanupCollections(new Set(poiCards.keys()), active);
+  }
+
+  async function loadTfModel(): Promise<any | null> {
+    if (!(window as any).tf) {
+      await new Promise<void>((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.8.0/dist/tf.min.js';
+        s.onload = () => resolve();
+        s.onerror = () => reject(new Error('tfjs load failed'));
+        document.head.appendChild(s);
+      });
+    }
+    if (!(window as any).cocoSsd) {
+      await new Promise<void>((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd';
+        s.onload = () => resolve();
+        s.onerror = () => reject(new Error('coco-ssd load failed'));
+        document.head.appendChild(s);
+      });
+    }
+    return (window as any).cocoSsd.load();
+  }
+
+  async function refreshAr(): Promise<void> {
+    if (!running || !currentPos) return;
+    updateTargetStats();
+    const distToTarget = haversineDistanceMeters(currentPos.lat, currentPos.lng, currentTarget.lat, currentTarget.lng);
+    const etaToTarget = formatEtaSeconds((distToTarget / 1000) / 40 * 3600);
+    distanceElEl.textContent = `Jarak: ${formatDistance(distToTarget)}`;
+    etaElEl.textContent = `Waktu: ${etaToTarget}`;
+    if (pipDistanceElDiv && !arIsPrimary) {
+      pipDistanceElDiv.textContent = `${formatDistance(distToTarget)}`;
+    }
+    headingDeg = map.getBearing?.() ?? headingDeg;
+    await fetchNearbyPoiCards();
+    if (model && !detectBusy && ar3dEnabled) {
+      detectBusy = true;
+      try {
+        const preds = await model.detect(videoEl as any);
+        updateObjectOverlays(preds || []);
+      } catch (err) {
+        console.warn('detect error', err);
+      } finally {
+        detectBusy = false;
+      }
+    }
+    if (running) setTimeout(() => void refreshAr(), 320);
+  }
+
+  let model: any | null = null;
+  let watchId: number | null = null;
+  let orientationCleanup = () => { /* noop */ };
+
+  (async () => {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+      videoEl.srcObject = stream;
+      await videoEl.play();
+      await new Promise<void>((resolve) => {
+        if (videoEl.videoWidth > 0 && videoEl.videoHeight > 0) return resolve();
+        videoEl.onloadedmetadata = () => resolve();
+      });
+      canvasEl.width = videoEl.videoWidth || 1280;
+      canvasEl.height = videoEl.videoHeight || 720;
+      const ctx = canvasEl.getContext('2d');
+      if (!ctx) throw new Error('canvas context unavailable');
+
+      const skeletonPoi = document.createElement('div');
+      skeletonPoi.className = 'ar-skeleton-anchor';
+      poiLayerEl.appendChild(skeletonPoi);
+
+      try {
+        model = await loadTfModel();
+      } catch (err) {
+        console.warn('TF model load failed', err);
+      }
+
+      watchId = navigator.geolocation?.watchPosition?.((pos) => {
+        currentPos = L.latLng(pos.coords.latitude, pos.coords.longitude);
+        if (pipMapInstance && !arIsPrimary) {
+          pipMapInstance.setView([currentPos.lat, currentPos.lng], pipMapInstance.getZoom());
+          if (pipDistanceElDiv) {
+            const distToPoi = haversineDistanceMeters(currentPos.lat, currentPos.lng, currentTarget.lat, currentTarget.lng);
+            pipDistanceElDiv.textContent = `${formatDistance(distToPoi)}`;
+          }
+        }
+      }, () => { /* ignore */ }, { enableHighAccuracy: true, maximumAge: 1500, timeout: 8000 }) ?? null;
+
+      const onOrientation = (ev: DeviceOrientationEvent) => {
+        const webkitHeading = (ev as any).webkitCompassHeading;
+        if (typeof webkitHeading === 'number') headingDeg = webkitHeading;
+      };
+      window.addEventListener('deviceorientationabsolute', onOrientation, true);
+      window.addEventListener('deviceorientation', onOrientation, true);
+      orientationCleanup = () => {
+        window.removeEventListener('deviceorientationabsolute', onOrientation, true);
+        window.removeEventListener('deviceorientation', onOrientation, true);
+      };
+
+      const drawLoop = (): void => {
+        if (!running) return;
+        try {
+          ctx.drawImage(videoEl, 0, 0, canvasEl.width, canvasEl.height);
+          if (ar3dEnabled) {
+            const grd = ctx.createLinearGradient(0, 0, canvasEl.width, canvasEl.height);
+            grd.addColorStop(0, 'rgba(59,130,246,0.08)');
+            grd.addColorStop(0.5, 'rgba(16,185,129,0.04)');
+            grd.addColorStop(1, 'rgba(236,72,153,0.06)');
+            ctx.fillStyle = grd;
+            ctx.fillRect(0, 0, canvasEl.width, canvasEl.height);
+          }
+        } catch {
+          /* ignore */
+        }
+        requestAnimationFrame(drawLoop);
+        overlay.style.pointerEvents = 'auto';
+      };
+      drawLoop();
+
+      toggleBtnEl.addEventListener('click', () => {
+        ar3dEnabled = !ar3dEnabled;
+        toggleBtnEl.textContent = ar3dEnabled ? '3D On' : '3D Off';
+        poiLayerEl.classList.toggle('ar-3d-off', !ar3dEnabled);
+        objectLayerEl.classList.toggle('ar-3d-off', !ar3dEnabled);
+      });
+
+      const applySwapState = (primaryCamera: boolean): void => {
+        arIsPrimary = primaryCamera;
+        overlay.classList.toggle('ar-swapped', !primaryCamera);
+        overlay.style.background = primaryCamera ? '#000' : 'transparent';
+        pipContainerEl.style.display = primaryCamera ? 'block' : 'none';
+        poiLayerEl.style.display = primaryCamera ? 'block' : 'none';
+        objectLayerEl.style.display = primaryCamera ? 'block' : 'none';
+        statusElEl.style.display = primaryCamera ? 'block' : 'none';
+        distanceElEl.style.display = primaryCamera ? 'block' : 'none';
+        etaElEl.style.display = primaryCamera ? 'block' : 'none';
+        toggleBtnEl.style.display = primaryCamera ? 'inline-flex' : 'none';
+        swapBtnEl.style.display = 'inline-flex';
+        closeBtnEl.style.display = 'inline-flex';
+        videoEl.style.position = primaryCamera ? 'absolute' : 'absolute';
+        videoEl.style.top = primaryCamera ? '0' : '16px';
+        videoEl.style.left = primaryCamera ? '0' : 'auto';
+        videoEl.style.right = primaryCamera ? '0' : '16px';
+        videoEl.style.bottom = primaryCamera ? '0' : 'auto';
+        videoEl.style.width = primaryCamera ? '100%' : 'min(42vw, 188px)';
+        videoEl.style.height = primaryCamera ? '100%' : 'min(30vw, 134px)';
+        videoEl.style.objectFit = primaryCamera ? 'cover' : 'cover';
+        videoEl.style.borderRadius = primaryCamera ? '0' : '16px';
+        videoEl.style.zIndex = primaryCamera ? '1' : '15';
+        mapRoot.classList.toggle('hidden', primaryCamera);
+        document.getElementById('m-bottom-nav')?.classList.toggle('hidden', primaryCamera);
+        targetBeaconEl.addEventListener('click', () => openPoiModal(currentTarget));
+        if (!primaryCamera) {
+          if (currentPos) {
+            const distToPoi = haversineDistanceMeters(currentPos.lat, currentPos.lng, currentTarget.lat, currentTarget.lng);
+            pipDistanceElDiv.textContent = `${formatDistance(distToPoi)}`;
+          }
+          if (!pipMapInstance && currentPos) {
+            pipMapInstance = L.map(pipMapElDiv).setView([currentPos.lat, currentPos.lng], 17);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OSM' }).addTo(pipMapInstance);
+            L.marker([currentPos.lat, currentPos.lng], { icon: L.icon({ iconUrl: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSI4IiBmaWxsPSIjZmY0NDQ0Ii8+PC9zdmc+', iconSize: [24, 24] }) }).addTo(pipMapInstance);
+            L.marker([currentTarget.lat, currentTarget.lng], { icon: L.icon({ iconUrl: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48cmVjdCB4PSI0IiB5PSI0IiB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIGZpbGw9IiMxMGI5ODEiIHJ4PSIyIi8+PC9zdmc+', iconSize: [24, 24] }) }).addTo(pipMapInstance);
+          }
+        }
+      };
+
+      swapBtnEl.addEventListener('click', () => applySwapState(!arIsPrimary));
+      pipContainerEl.addEventListener('click', () => {
+        if (arIsPrimary) applySwapState(false);
+      });
+      videoEl.addEventListener('click', () => {
+        if (!arIsPrimary) applySwapState(true);
+      });
+      applySwapState(true);
+
+      const cleanupArSession = (removeOverlay: boolean): void => {
+        if (cleanedUp) return;
+        cleanedUp = true;
+        running = false;
+        orientationCleanup();
+        if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+        if (stream) stream.getTracks().forEach((track) => track.stop());
+        if (pipMapInstance) {
+          pipMapInstance.remove();
+          pipMapInstance = null;
+        }
+        poiCards.forEach((el) => el.remove());
+        objectCards.forEach((el) => el.remove());
+        poiCards.clear();
+        objectCards.clear();
+        mapRoot.classList.remove('hidden');
+        document.getElementById('m-bottom-nav')?.classList.remove('hidden');
+        if (removeOverlay) overlay.remove();
+      };
+
+      closeBtnEl.addEventListener('click', () => cleanupArSession(true));
+      overlay.addEventListener('remove', () => cleanupArSession(false));
+
+      currentPos = currentPos || L.latLng(targetPoi.lat, targetPoi.lng);
+      setStatus('Kamera aktif');
+      await fetchNearbyPoiCards();
+      void refreshAr();
+    } catch (err) {
+      console.warn('camera denied or unavailable', err);
+      poiLayerEl.innerHTML = '<div class="ar-error" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(239, 68, 68, 0.9); color: white; padding: 20px; border-radius: 10px; text-align: center;">Tidak dapat mengakses kamera.</div>';
+    }
+  })();
 }
 
 function syncPoiMarkers(anchor: L.LatLngExpression): void {
@@ -423,11 +979,24 @@ function syncPoiMarkers(anchor: L.LatLngExpression): void {
   const latDelta = radiusMeters / 111320; // ~ meters to degrees
   const lngDelta = Math.abs(radiusMeters / (111320 * Math.cos((lat * Math.PI) / 180)));
   const bounds = L.latLngBounds([lat - latDelta, lng - lngDelta], [lat + latDelta, lng + lngDelta]);
-
   void fetchOverpassFeaturesForBounds(bounds).then((pois) => {
+    let finalPois = pois;
+    // If Overpass returned no POIs for this area, always fall back to local sample POIs
+    // so the UI remains usable offline or when the API times out.
+    if (!pois || pois.length === 0) {
+      // fallback local POIs
+      const c = center;
+      finalPois = [
+        { id: 'local-school-1', kind: 'campus', title: 'SD Negeri 1', description: '', address: '', imageUrl: POI_LIBRARY.campus.imageUrl, rating: POI_LIBRARY.campus.rating, icon: poiVisual('campus').icon, lat: c.lat + 0.0012, lng: c.lng + 0.0012 },
+        { id: 'local-mall-1', kind: 'mall', title: 'Pusat Perbelanjaan', description: '', address: '', imageUrl: POI_LIBRARY.mall.imageUrl, rating: POI_LIBRARY.mall.rating, icon: poiVisual('mall').icon, lat: c.lat - 0.0014, lng: c.lng + 0.0018 },
+        { id: 'local-hospital-1', kind: 'hospital', title: 'Klinik Sehat', description: '', address: '', imageUrl: POI_LIBRARY.hospital.imageUrl, rating: POI_LIBRARY.hospital.rating, icon: poiVisual('hospital').icon, lat: c.lat + 0.0020, lng: c.lng - 0.0010 },
+        { id: 'local-parking-1', kind: 'parking', title: 'Parkir Umum', description: '', address: '', imageUrl: POI_LIBRARY.parking.imageUrl, rating: POI_LIBRARY.parking.rating, icon: poiVisual('parking').icon, lat: c.lat - 0.0018, lng: c.lng - 0.0015 },
+      ];
+    }
+
     const keep = new Set<string>();
     const iconSize = poiMarkerSizeByZoom();
-    pois.forEach((poi) => {
+    finalPois.forEach((poi) => {
       keep.add(poi.id);
       state.poiData.set(poi.id, poi);
       const existing = state.poiMarkers.get(poi.id);
@@ -439,18 +1008,24 @@ function syncPoiMarkers(anchor: L.LatLngExpression): void {
           riseOnHover: true,
           zIndexOffset: 500,
         }).addTo(map);
-        marker.on("click", () => openPoiModal(poi));
+        (marker.options as any).poiId = poi.id;
+        marker.on("click", () => handlePoiClick(poi));
+        const el = marker.getElement() as HTMLElement | null;
+        if (el) el.style.display = '';
         state.poiMarkers.set(poi.id, marker);
         return;
       }
       existing.setLatLng([poi.lat, poi.lng]);
       existing.setIcon(icon);
       existing.off("click");
-      existing.on("click", () => openPoiModal(poi));
+      existing.on("click", () => handlePoiClick(poi));
+      const el2 = existing.getElement() as HTMLElement | null;
+      if (el2) el2.style.display = '';
     });
 
     // Remove stale POI markers
     for (const [id, marker] of state.poiMarkers.entries()) {
+      id;
       if (!keep.has(id)) {
         map.removeLayer(marker);
         state.poiMarkers.delete(id);
@@ -564,28 +1139,50 @@ async function refreshOverpassLayer(): Promise<void> {
   if (lastOverpassFetchBounds && lastOverpassFetchBounds.contains(bounds.getSouthWest()) && lastOverpassFetchBounds.contains(bounds.getNorthEast())) return;
   lastOverpassFetchBounds = bounds.pad(0.2);
   const pois = await fetchOverpassFeaturesForBounds(bounds);
-  
+
+  // If Overpass returned empty and we have no POI data yet, provide a local fallback
+  let finalPois = pois;
+  if (!pois || pois.length === 0) {
+    console.warn("Overpass empty — using local POI fallback for UI testing.");
+    const c = map.getCenter();
+    finalPois = [
+      { id: 'local-school-1', kind: 'campus', title: 'SD Negeri 1', description: '', address: '', imageUrl: POI_LIBRARY.campus.imageUrl, rating: POI_LIBRARY.campus.rating, icon: poiVisual('campus').icon, lat: c.lat + 0.0012, lng: c.lng + 0.0012 },
+      { id: 'local-worship-1', kind: 'worship', title: 'Masjid Al Furqan', description: '', address: '', imageUrl: POI_LIBRARY.worship.imageUrl, rating: POI_LIBRARY.worship.rating, icon: poiVisual('worship').icon, lat: c.lat - 0.0010, lng: c.lng - 0.0016 },
+      { id: 'local-mall-1', kind: 'mall', title: 'Pusat Perbelanjaan', description: '', address: '', imageUrl: POI_LIBRARY.mall.imageUrl, rating: POI_LIBRARY.mall.rating, icon: poiVisual('mall').icon, lat: c.lat - 0.0014, lng: c.lng + 0.0018 },
+      { id: 'local-hospital-1', kind: 'hospital', title: 'Klinik Sehat', description: '', address: '', imageUrl: POI_LIBRARY.hospital.imageUrl, rating: POI_LIBRARY.hospital.rating, icon: poiVisual('hospital').icon, lat: c.lat + 0.0020, lng: c.lng - 0.0010 },
+      { id: 'local-parking-1', kind: 'parking', title: 'Parkir Umum', description: '', address: '', imageUrl: POI_LIBRARY.parking.imageUrl, rating: POI_LIBRARY.parking.rating, icon: poiVisual('parking').icon, lat: c.lat - 0.0018, lng: c.lng - 0.0015 },
+    ];
+  }
+
   // Update MapLibre POI layer (for 3D)
-  updateMapLibrePoiLayer(pois);
+  updateMapLibrePoiLayer(finalPois);
 
   if (!state.overpassLayer) state.overpassLayer = L.layerGroup().addTo(map);
   state.overpassLayer.clearLayers();
-  pois.forEach((poi) => {
+  finalPois.forEach((poi) => {
     const marker = L.marker([poi.lat, poi.lng], {
       icon: makePoiIcon(poi, poiMarkerSizeByZoom()),
       interactive: true,
       riseOnHover: true,
       zIndexOffset: 450,
     }).addTo(state.overpassLayer as L.LayerGroup);
-    marker.on('click', () => openPoiModal(poi));
+    (marker.options as any).poiId = poi.id;
+    marker.on('click', () => handlePoiClick(poi));
+    const el = marker.getElement() as HTMLElement | null;
+    if (el) el.style.display = '';
+    // track poi data/marker so other features can use them
+    state.poiData.set(poi.id, poi);
+    state.poiMarkers.set(poi.id, marker);
   });
+
+  updateTabletCategoryView();
 }
 
 // When user clicks on raster tile, query a small radius for nearby features and open modal
 map.on('click', async (ev: L.LeafletMouseEvent) => {
   const lat = ev.latlng.lat;
   const lng = ev.latlng.lng;
-  
+
   // In 3D mode, check if click is on a MapLibre POI
   if (state.baseMode === '3d' && state.maplibreMap) {
     try {
@@ -597,12 +1194,12 @@ map.on('click', async (ev: L.LeafletMouseEvent) => {
         const dist = Math.sqrt(Math.pow(lat2 - lat, 2) + Math.pow(lng2 - lng, 2));
         return dist < 0.003; // ~300m at this zoom level
       });
-      
+
       if (features.length > 0) {
         const feature = features[0];
         const poi = state.poiData.get(feature.properties?.id);
         if (poi) {
-          openPoiModal(poi);
+          handlePoiClick(poi);
           return;
         }
       }
@@ -647,7 +1244,7 @@ map.on('click', async (ev: L.LeafletMouseEvent) => {
       icon: poiVisual(kind).icon,
       lat: latR, lng: lngR,
     };
-    openPoiModal(poi);
+    handlePoiClick(poi);
   } catch (err) {
     // ignore
   }
@@ -665,9 +1262,6 @@ map.on('moveend', () => {
 
 function isDeviceStatus(v: unknown): v is DeviceStatus {
   return v === "online" || v === "offline" || v === "degraded";
-}
-function isCameraMode(v: unknown): v is CameraMode {
-  return v === "webrtc" || v === "mjpeg";
 }
 function clamp(v: number, min: number, max: number) { return Math.min(max, Math.max(min, v)); }
 function normalizeEpoch(v: number): number {
@@ -690,6 +1284,37 @@ function formatAge(v: number): string {
 function escapeHtml(v: string): string {
   return v.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;").replaceAll("'", "&#039;");
+}
+
+// Helpers: bearing and distance/ETA formatting
+function toRad(deg: number) { return deg * Math.PI / 180; }
+function toDeg(rad: number) { return rad * 180 / Math.PI; }
+function computeBearing(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const dLon = toRad(lon2 - lon1);
+  const y = Math.sin(dLon) * Math.cos(toRad(lat2));
+  const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) - Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLon);
+  return (toDeg(Math.atan2(y, x)) + 360) % 360;
+}
+
+function haversineDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371000;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+function formatDistance(meters: number): string {
+  if (meters < 1000) return `${Math.round(meters)} m`;
+  return `${(meters / 1000).toFixed(1)} km`;
+}
+
+function formatEtaSeconds(sec: number): string {
+  if (!Number.isFinite(sec) || sec <= 0) return "-";
+  if (sec < 60) return `${Math.round(sec)}s`;
+  if (sec < 3600) return `${Math.round(sec / 60)}m`;
+  return `${Math.round(sec / 3600)}h`;
 }
 
 function hashString(input: string): number {
@@ -785,13 +1410,6 @@ function normalizeOneDevice(raw: SnapshotDevice): DeviceRecord | null {
   const lastSeen = normalizeEpoch(typeof raw.lastSeen === "number" ? raw.lastSeen : 0);
   const rawStatus = isDeviceStatus(raw.status) ? raw.status : "offline";
   const status = lastSeen > 0 && Date.now() - lastSeen > OFFLINE_AFTER_MS ? "offline" : rawStatus;
-  const rawRecord = raw as Record<string, unknown>;
-  const rawCameraMode = rawRecord.cameraMode;
-  const cameraMode = isCameraMode(rawCameraMode)
-    ? rawCameraMode
-    : raw.cameraUrl?.trim()
-      ? "mjpeg"
-      : undefined;
   return {
     id: raw.id?.trim() || "raspberry-its",
     label: raw.label?.trim() || "Raspberry Pi 5 Controller",
@@ -799,10 +1417,6 @@ function normalizeOneDevice(raw: SnapshotDevice): DeviceRecord | null {
     lastSeenText: raw.lastSeenText?.trim() || undefined,
     note: raw.note?.trim() || undefined,
     cameraUrl: raw.cameraUrl?.trim() || undefined,
-    cameraMode,
-    webrtcEnabled: typeof rawRecord.webrtcEnabled === "boolean" ? rawRecord.webrtcEnabled : undefined,
-    webrtcPath: typeof rawRecord.webrtcPath === "string" ? rawRecord.webrtcPath.trim() || undefined : undefined,
-    cameraReady: typeof rawRecord.cameraReady === "boolean" ? rawRecord.cameraReady : undefined,
     roadName: raw.roadName?.trim() || undefined,
     roadHint: raw.roadHint?.trim() || undefined,
     trafficColor: isDeviceStatus(raw.status) ? undefined : undefined,
@@ -1016,8 +1630,10 @@ function ensureMarker(device: DeviceRecord): void {
   });
   const existing = state.markers.get(device.id);
 
+  const latlng = L.latLng(device.position.lat, device.position.lng);
+
   if (!existing) {
-    const m = L.marker([device.position.lat, device.position.lng], {
+    const m = L.marker(latlng, {
       icon,
       interactive: true,
       zIndexOffset: 1000,
@@ -1029,11 +1645,33 @@ function ensureMarker(device: DeviceRecord): void {
       openModal(device);
     });
     state.markers.set(device.id, m);
+    state.prevPositionById.set(device.id, latlng);
     return;
   }
 
-  existing.setLatLng([device.position.lat, device.position.lng]);
+  // Update position and icon
+  existing.setLatLng(latlng);
   existing.setIcon(icon);
+
+  // compute heading from previous position (if any) and apply rotation/greyscale
+  const prev = state.prevPositionById.get(device.id) || null;
+  try {
+    const el = existing.getElement?.() as HTMLElement | null;
+    if (el) {
+      if (prev) {
+        const bearing = computeBearing(prev.lat, prev.lng, latlng.lat, latlng.lng);
+        el.style.transform = `rotate(${bearing}deg)`;
+      } else {
+        el.style.transform = "";
+      }
+      el.style.filter = "grayscale(0.35)";
+      el.style.transition = "transform 300ms linear, filter 300ms";
+      el.style.pointerEvents = "auto";
+    }
+  } catch { /* ignore DOM access errors */ }
+
+  state.prevPositionById.set(device.id, latlng);
+
   existing.off("click");
   existing.on("click", () => {
     state.device = device;
@@ -1365,43 +2003,16 @@ function syncMapLibreView(force = false): void {
       pitch: MAPLIBRE_3D_PITCH,
 
     });
-    if (state.baseMode === "3d") {
-      // Matikan overlay Overpass di 3D agar tidak terlihat geser terhadap bidang
-      // perspektif MapLibre. POI akan ditampilkan via MapLibre native layer.
-      if (state.overpassLayer) {
-        state.overpassLayer.getLayers().forEach((layer: any) => {
-          if (layer._path) layer._path.style.display = 'none';
-          if (layer._icon) layer._icon.style.display = 'none';
-        });
-      }
-      // Also hide Leaflet POI markers
-      for (const marker of state.poiMarkers.values()) {
-        (marker.getElement() as HTMLElement).style.display = 'none';
-      }
-    } else {
-      // Mode Street 2D Normal (Leaflet mengambil alih lagi)
-      if (state.overpassLayer) {
-        state.overpassLayer.getLayers().forEach((layer: any) => {
-          if (layer._path) layer._path.style.display = '';
-          if (layer._icon) layer._icon.style.display = '';
-        });
-      }
-      // Show Leaflet POI markers again
-      for (const marker of state.poiMarkers.values()) {
-        (marker.getElement() as HTMLElement).style.display = '';
-      }
-      // Clear MapLibre POI layer in 2D mode
-      const maplibreMap = state.maplibreMap;
-      if (maplibreMap) {
-        try {
-          const source = maplibreMap.getSource("poi-source");
-          if (source && "setData" in source) {
-            (source as any).setData({ type: "FeatureCollection", features: [] });
-          }
-        } catch {
-          /* ignore */
-        }
-      }
+    // Do not hide Leaflet POI markers in 3D — prefer custom Leaflet icons consistently
+    if (state.overpassLayer) {
+      state.overpassLayer.getLayers().forEach((layer: any) => {
+        if (layer._path) layer._path.style.display = '';
+        if (layer._icon) layer._icon.style.display = '';
+      });
+    }
+    for (const marker of state.poiMarkers.values()) {
+      const el = marker.getElement() as HTMLElement | null;
+      if (el) el.style.display = '';
     }
   } finally {
     state.maplibreSyncing = false;
@@ -1457,355 +2068,12 @@ async function setBaseMap(mode: BaseMapMode): Promise<void> {
 
 // ─── Camera tile ────────────────────────────────────────────────
 
-function cameraModeFor(device: DeviceRecord | null): CameraMode | null {
-  if (!device || device.status === "offline") return null;
-  if (device.cameraMode === "webrtc" || device.webrtcEnabled || device.cameraReady) return "webrtc";
-  if (device.cameraUrl?.trim()) return "mjpeg";
-  return null;
-}
-
-function isWebRtcCamera(device: DeviceRecord | null): boolean {
-  return cameraModeFor(device) === "webrtc";
-}
-
-function webRtcSignalPath(device: DeviceRecord): string {
-  return (device.webrtcPath?.trim() || `${WEBRTC_SIGNAL_ROOT}/${device.id}`).replace(/^\/+|\/+$/g, "");
-}
-
-function firebaseDbUrl(path: string): string {
-  const encoded = path
-    .split("/")
-    .filter(Boolean)
-    .map((part) => encodeURIComponent(part))
-    .join("/");
-  return `${FIREBASE_ROOT_URL}/${encoded}.json`;
-}
-
-async function firebaseGetPath<T>(path: string): Promise<T | null> {
-  const res = await fetch(firebaseDbUrl(path), { cache: "no-store" });
-  if (!res.ok) throw new Error(`Firebase GET ${path} failed: HTTP ${res.status}`);
-  const text = await res.text();
-  if (!text || text === "null") return null;
-  return JSON.parse(text) as T;
-}
-
-async function firebaseWritePath(method: "PUT" | "PATCH" | "DELETE", path: string, payload?: unknown): Promise<void> {
-  const res = await fetch(firebaseDbUrl(path), {
-    method,
-    headers: payload === undefined ? undefined : { "Content-Type": "application/json" },
-    body: payload === undefined ? undefined : JSON.stringify(payload),
-  });
-  if (!res.ok) throw new Error(`Firebase ${method} ${path} failed: HTTP ${res.status}`);
-}
-
-function browserViewerId(): string {
-  const storageKey = "its-webrtc-viewer-id";
-  const existing = window.sessionStorage.getItem(storageKey);
-  if (existing) return existing;
-  const random = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  const id = `viewer-${random.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
-  window.sessionStorage.setItem(storageKey, id);
-  return id;
-}
-
-function newWebRtcSessionId(deviceId: string): string {
-  const random = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  const safeDeviceId = deviceId.replace(/[^a-zA-Z0-9_-]/g, "_");
-  return `${safeDeviceId}-${random.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
-}
-
-function webRtcSessionPath(): string {
-  return `${state.webrtc.signalPath}/sessions/${state.webrtc.sessionId}`;
-}
-
-function webRtcStatusText(): string {
-  if (state.webrtc.status === "live") return "Live WebRTC";
-  if (state.webrtc.status === "failed") return state.webrtc.message || "WebRTC gagal tersambung";
-  if (state.webrtc.status === "connecting") return state.webrtc.message || "Menghubungkan WebRTC...";
-  return "Menunggu kamera WebRTC";
-}
-
-function updateWebRtcStatusElements(): void {
-  const text = webRtcStatusText();
-  document.querySelectorAll<HTMLElement>("[data-webrtc-status]").forEach((el) => {
-    el.textContent = text;
-    el.dataset.status = state.webrtc.status;
-  });
-  document.querySelectorAll<HTMLElement>("[data-webrtc-dot]").forEach((el) => {
-    el.dataset.status = state.webrtc.status;
-  });
-  state.cameraButton?.classList.toggle("camera-live", state.webrtc.status === "live");
-  state.cameraButton?.classList.toggle("camera-failed", state.webrtc.status === "failed");
-}
-
-function setWebRtcStatus(status: WebRtcStatus, message = ""): void {
-  state.webrtc.status = status;
-  state.webrtc.message = message;
-  updateWebRtcStatusElements();
-}
-
-function attachWebRtcStream(): void {
-  const stream = state.webrtc.stream;
-  document.querySelectorAll<HTMLVideoElement>("video[data-webrtc-camera]").forEach((video) => {
-    if (video.dataset.webrtcCamera !== state.webrtc.deviceId) return;
-    if (stream && video.srcObject !== stream) video.srcObject = stream;
-    if (stream) void video.play().catch(() => { /* autoplay may wait for user interaction */ });
-  });
-  updateWebRtcStatusElements();
-}
-
-function resetWebRtcRuntime(): void {
-  Object.assign(state.webrtc, {
-    pc: null,
-    deviceId: "",
-    signalPath: "",
-    sessionId: "",
-    stream: null,
-    pollTimer: 0,
-    heartbeatTimer: 0,
-    candidateSeq: 0,
-    seenCameraCandidates: new Set<string>(),
-    pendingCandidates: [],
-    sessionReady: false,
-    startedAt: 0,
-    status: "idle" as WebRtcStatus,
-    message: "",
-  });
-}
-
-function stopWebRtcSession(removeRemote = true): void {
-  const sessionPath = state.webrtc.signalPath && state.webrtc.sessionId ? webRtcSessionPath() : "";
-  window.clearInterval(state.webrtc.pollTimer);
-  window.clearInterval(state.webrtc.heartbeatTimer);
-  if (removeRemote && sessionPath) {
-    void firebaseWritePath("PATCH", sessionPath, {
-      viewerStatus: "closed",
-      updatedAt: Date.now(),
-    })
-      .finally(() => {
-        void firebaseWritePath("DELETE", sessionPath).catch(() => { /* ignore cleanup errors */ });
-      })
-      .catch(() => { /* ignore cleanup errors */ });
-  }
-  state.webrtc.pc?.close();
-  state.webrtc.stream?.getTracks().forEach((track) => track.stop());
-  document.querySelectorAll<HTMLVideoElement>("video[data-webrtc-camera]").forEach((video) => {
-    video.srcObject = null;
-  });
-  resetWebRtcRuntime();
-  updateWebRtcStatusElements();
-}
-
-async function sendViewerCandidate(candidate: RTCIceCandidateInit): Promise<void> {
-  if (!state.webrtc.signalPath || !state.webrtc.sessionId) return;
-  if (!state.webrtc.sessionReady) {
-    state.webrtc.pendingCandidates.push(candidate);
-    return;
-  }
-  state.webrtc.candidateSeq += 1;
-  const key = `${Date.now()}_${state.webrtc.candidateSeq}`;
-  await firebaseWritePath("PUT", `${webRtcSessionPath()}/viewerCandidates/${key}`, candidate);
-}
-
-function flushPendingViewerCandidates(): void {
-  const pending = state.webrtc.pendingCandidates.splice(0);
-  pending.forEach((candidate) => {
-    void sendViewerCandidate(candidate).catch((err) => console.warn("[ITS] WebRTC candidate failed:", err));
-  });
-}
-
-async function pollWebRtcSession(): Promise<void> {
-  const pc = state.webrtc.pc;
-  if (!pc || !state.webrtc.sessionId) return;
-  const session = await firebaseGetPath<WebRtcSessionRecord>(webRtcSessionPath());
-  if (!session) return;
-
-  if (session.streamerStatus === "failed") {
-    throw new Error(session.streamerError || "Streamer Raspberry gagal membuat answer");
-  }
-
-  if (session.answer && !pc.currentRemoteDescription) {
-    await pc.setRemoteDescription(session.answer);
-    setWebRtcStatus("connecting", "Answer diterima, membuka jalur video...");
-  }
-
-  if (session.cameraCandidates && typeof session.cameraCandidates === "object") {
-    for (const [key, candidate] of Object.entries(session.cameraCandidates)) {
-      if (state.webrtc.seenCameraCandidates.has(key)) continue;
-      state.webrtc.seenCameraCandidates.add(key);
-      await pc.addIceCandidate(new RTCIceCandidate(candidate));
-    }
-  }
-
-  if (!pc.currentRemoteDescription && Date.now() - state.webrtc.startedAt > WEBRTC_ANSWER_TIMEOUT_MS) {
-    throw new Error("Timeout menunggu answer WebRTC dari Raspberry Pi");
-  }
-}
-
-async function startWebRtcSession(device: DeviceRecord): Promise<void> {
-  if (!isWebRtcCamera(device)) return;
-  if (!("RTCPeerConnection" in window)) {
-    setWebRtcStatus("failed", "Browser tidak mendukung WebRTC");
-    return;
-  }
-  if (state.webrtc.pc && state.webrtc.deviceId === device.id && state.webrtc.status !== "failed") {
-    attachWebRtcStream();
-    return;
-  }
-
-  stopWebRtcSession(true);
-  const signalPath = webRtcSignalPath(device);
-  const sessionId = newWebRtcSessionId(device.id);
-  const pc = new RTCPeerConnection({ iceServers: WEBRTC_ICE_SERVERS });
-
-  Object.assign(state.webrtc, {
-    pc,
-    deviceId: device.id,
-    signalPath,
-    sessionId,
-    stream: null,
-    pollTimer: 0,
-    heartbeatTimer: 0,
-    candidateSeq: 0,
-    seenCameraCandidates: new Set<string>(),
-    pendingCandidates: [],
-    sessionReady: false,
-    startedAt: Date.now(),
-    status: "connecting" as WebRtcStatus,
-    message: "Mengirim offer ke Raspberry Pi...",
-  });
-  updateWebRtcStatusElements();
-
-  pc.addTransceiver("video", { direction: "recvonly" });
-  pc.ontrack = (event) => {
-    const [remoteStream] = event.streams;
-    state.webrtc.stream = remoteStream || new MediaStream([event.track]);
-    setWebRtcStatus("live");
-    attachWebRtcStream();
-  };
-  pc.onicecandidate = (event) => {
-    if (!event.candidate) return;
-    void sendViewerCandidate(event.candidate.toJSON()).catch((err) => {
-      console.warn("[ITS] WebRTC ICE candidate publish failed:", err);
-    });
-  };
-  pc.onconnectionstatechange = () => {
-    void firebaseWritePath("PATCH", webRtcSessionPath(), {
-      viewerConnectionState: pc.connectionState,
-      viewerSeenAt: Date.now(),
-      updatedAt: Date.now(),
-    }).catch(() => { /* ignore heartbeat errors */ });
-    if (pc.connectionState === "connected") setWebRtcStatus("live");
-    if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
-      setWebRtcStatus("failed", `Koneksi WebRTC ${pc.connectionState}`);
-    }
-  };
-
-  try {
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    if (!pc.localDescription) throw new Error("Local WebRTC offer kosong");
-
-    await firebaseWritePath("PUT", webRtcSessionPath(), {
-      deviceId: device.id,
-      sessionId,
-      viewerId: browserViewerId(),
-      viewerStatus: "offer-sent",
-      viewerSeenAt: Date.now(),
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      offer: {
-        type: pc.localDescription.type,
-        sdp: pc.localDescription.sdp,
-      },
-    });
-
-    state.webrtc.sessionReady = true;
-    flushPendingViewerCandidates();
-    state.webrtc.pollTimer = window.setInterval(() => {
-      void pollWebRtcSession().catch((err) => {
-        console.warn("[ITS] WebRTC poll failed:", err);
-        setWebRtcStatus("failed", err instanceof Error ? err.message : "WebRTC poll gagal");
-      });
-    }, WEBRTC_POLL_MS);
-    state.webrtc.heartbeatTimer = window.setInterval(() => {
-      void firebaseWritePath("PATCH", webRtcSessionPath(), {
-        viewerStatus: "watching",
-        viewerSeenAt: Date.now(),
-        updatedAt: Date.now(),
-      }).catch(() => { /* ignore heartbeat errors */ });
-    }, WEBRTC_HEARTBEAT_MS);
-    await pollWebRtcSession();
-  } catch (err) {
-    console.warn("[ITS] WebRTC start failed:", err);
-    setWebRtcStatus("failed", err instanceof Error ? err.message : "WebRTC gagal dimulai");
-  }
-}
-
-function syncCameraViews(device: DeviceRecord | null = state.device): void {
-  if (!device || !isWebRtcCamera(device)) {
-    if (!device || state.webrtc.deviceId !== device.id) stopWebRtcSession(true);
-    return;
-  }
-  if (state.webrtc.pc && state.webrtc.deviceId === device.id && state.webrtc.status !== "failed") {
-    attachWebRtcStream();
-    return;
-  }
-  void startWebRtcSession(device);
-}
-
-function renderWebRtcSurface(device: DeviceRecord, videoClass: string): string {
-  const status = escapeHtml(webRtcStatusText());
-  return `
-    <div class="webrtc-video-wrap">
-      <video class="${videoClass} webrtc-video" data-webrtc-camera="${escapeHtml(device.id)}" autoplay playsinline muted></video>
-      <div class="webrtc-status-bar">
-        <span class="webrtc-dot" data-webrtc-dot data-status="${state.webrtc.status}"></span>
-        <span data-webrtc-status data-status="${state.webrtc.status}">${status}</span>
-      </div>
-    </div>
-  `;
-}
-
 function renderCameraTile(): void {
   if (!state.cameraPreview) return;
-  const device = state.device;
-  const url = device?.cameraUrl?.trim();
-  state.cameraPreview.innerHTML = isWebRtcCamera(device)
-    ? `<div class="camera-live-badge"><span data-webrtc-dot data-status="${state.webrtc.status}"></span>LIVE</div>`
-    : url
+  const url = state.device?.cameraUrl?.trim();
+  state.cameraPreview.innerHTML = url
     ? `<img class="camera-thumb-img" src="${escapeHtml(url)}" alt="Camera preview">`
     : "";
-  renderCameraPanel();
-  syncCameraViews(device);
-}
-
-function renderCameraPanel(): void {
-  if (!state.cameraPanel) return;
-  const device = state.device;
-  const url = device?.cameraUrl?.trim();
-  state.cameraPanel.innerHTML = device && isWebRtcCamera(device)
-    ? `
-      <div class="camera-panel-item">
-        ${renderWebRtcSurface(device, "camera-panel-video")}
-      </div>
-      <div class="camera-panel-note">Stream WebRTC realtime dari Raspberry Pi via signaling Firebase RTDB.</div>
-    `
-    : url
-    ? `
-      <div class="camera-panel-item">
-        <img class="camera-panel-img" src="${escapeHtml(url)}" alt="Kamera live Raspberry Pi">
-      </div>
-      <div class="camera-panel-note">Stream MJPEG langsung dari Raspberry Pi. Tidak ada file video yang disimpan.</div>
-    `
-    : `
-      <div class="camera-panel-empty">
-        <div class="camera-panel-empty-icon">📷</div>
-        <div class="camera-panel-empty-title">Kamera belum tersedia</div>
-        <div class="camera-panel-empty-copy">Nyalakan service WebRTC di Raspberry Pi dan pastikan device data sudah dipublish ke Firebase.</div>
-      </div>
-    `;
-  attachWebRtcStream();
 }
 
 // ─── Map actions ────────────────────────────────────────────────
@@ -1828,7 +2096,14 @@ function locateUser(): void {
     (pos) => {
       const latlng: L.LatLngExpression = [pos.coords.latitude, pos.coords.longitude];
       map.setView(latlng, Math.max(map.getZoom(), 16), { animate: true });
-      L.circleMarker(latlng, { radius: 8 }).addTo(map).bindPopup("Lokasi Anda").openPopup();
+      if (isTablet()) {
+        // tablet behaviour: show vehicle marker and open category panel
+        showVehicleMarker(latlng as [number, number]);
+        createTabletCategoryPanel();
+      } else {
+        // preserve original behaviour for non-tablet: show simple popup marker
+        L.circleMarker(latlng, { radius: 8 }).addTo(map).bindPopup("Lokasi Anda").openPopup();
+      }
     },
     () => { /* silent */ },
     { enableHighAccuracy: true, timeout: 8000, maximumAge: 30_000 },
@@ -1838,23 +2113,203 @@ function locateUser(): void {
 function openCameraPreview(): void {
   const device = state.device;
   const anchor = map.getCenter();
-  const content = device && isWebRtcCamera(device)
-    ? `<div class="camera-card camera-card-webrtc">
-        ${renderWebRtcSurface(device, "camera-image camera-video-popup")}
-        <div class="camera-caption">${escapeHtml(device.label)} WebRTC camera</div>
-      </div>`
-    : device?.cameraUrl
+  const cameraUrl = device?.cameraUrl?.trim();
+  const isImage = !!cameraUrl && /^data:image|\.(jpg|jpeg|png|webp)(\?|$)/i.test(cameraUrl);
+  const content = cameraUrl
     ? `<div class="camera-card">
-        <img class="camera-image" src="${escapeHtml(device.cameraUrl)}" alt="Camera preview">
-        <div class="camera-caption">${escapeHtml(device.label)} camera</div>
+        ${isImage
+      ? `<img class="camera-image" src="${escapeHtml(cameraUrl)}" alt="Camera preview">`
+      : `<iframe class="camera-frame" src="${escapeHtml(cameraUrl)}" allow="autoplay; camera; microphone; fullscreen" referrerpolicy="no-referrer" loading="lazy"></iframe>`}
+        <div class="camera-caption">${escapeHtml(device?.label || "Raspberry camera")} live</div>
       </div>`
     : `<div class="camera-card">
         <div class="camera-placeholder">Camera preview belum tersedia.</div>
-        <div class="camera-caption">Nyalakan service kamera WebRTC di Raspberry Pi.</div>
+        <div class="camera-caption">Set <code>ITS_CAMERA_WEBRTC_URL</code> di controller.</div>
       </div>`;
   L.popup({ className: "camera-popup", closeButton: true, autoPan: true, maxWidth: 320 })
     .setLatLng(anchor).setContent(content).openOn(map);
-  syncCameraViews(device);
+}
+
+// Tablet & POI interactions
+const TABLET_CATEGORIES = ["all", "hospital", "worship", "mall", "campus", "parking"] as const;
+const TABLET_CATEGORY_LABELS: Record<(typeof TABLET_CATEGORIES)[number], string> = {
+  all: "Semua",
+  hospital: "Rumah Sakit",
+  worship: "Mesjid",
+  mall: "Belanja",
+  campus: "Sekolah/Kampus",
+  parking: "Parkir",
+};
+
+function showVehicleMarker(latlng: [number, number]): void {
+  // remove existing
+  if (state.vehicleMarker) {
+    try { map.removeLayer(state.vehicleMarker); } catch { }
+    state.vehicleMarker = null;
+  }
+  const icon = L.divIcon({
+    className: "vehicle-marker-icon",
+    html: `<div class="vehicle-marker-shell"><div class="vehicle-marker-pulse"></div><div class="vehicle-marker-core"><div class="vehicle-glyph">🚗</div></div></div>`,
+    iconSize: [56, 56],
+    iconAnchor: [28, 28],
+  });
+  const m = L.marker(latlng, { icon, interactive: true, zIndexOffset: 2000 }).addTo(map);
+  m.on("click", () => {
+    if (isTablet()) createTabletCategoryPanel(true);
+  });
+  // Ensure marker DOM accepts pointer events (some CSS may disable them)
+  setTimeout(() => {
+    try {
+      const el = m.getElement() as HTMLElement | null;
+      if (el) {
+        el.style.pointerEvents = 'auto';
+        el.style.cursor = 'pointer';
+        el.setAttribute('title', 'Lokasi Anda');
+      }
+    } catch {
+      /* ignore */
+    }
+  }, 0);
+  state.vehicleMarker = m;
+}
+
+function createTabletCategoryPanel(autoFocus = false): void {
+  // If already open, keep it
+  const existing = document.getElementById("m-tablet-categories");
+  if (existing) {
+    if (autoFocus) {
+      existing.querySelector<HTMLInputElement>(".tablet-search-input")?.focus();
+    }
+    return;
+  }
+  const bodyHtml = `
+    <div class="m-sheet-handle-bar"></div>
+    <div class="tablet-categories">
+      <div class="tablet-header">
+        <div class="tablet-title">Lokasi Anda</div>
+        <div class="tablet-subtitle">Cari POI atau pilih kategori untuk menampilkan tempat terdekat</div>
+      </div>
+      <label class="tablet-search">
+        <span class="tablet-search-icon">⌕</span>
+        <input type="search" class="tablet-search-input" placeholder="Cari masjid, sekolah, SPBU, mall..." autocomplete="off" />
+      </label>
+      <div class="tablet-cats-list">
+        ${TABLET_CATEGORIES.map((c, i) => `<button class="tablet-cat-btn" data-index="${i}">${TABLET_CATEGORY_LABELS[c]}</button>`).join("")}
+      </div>
+      <div class="tablet-hint">Ketuk marker POI di peta untuk memilih tujuan.</div>
+    </div>`;
+  const overlay = createSwipeableSheetModal("m-tablet-categories", "m-tablet-sheet", bodyHtml);
+  overlay.querySelector<HTMLDivElement>('.m-layer-backdrop')?.addEventListener('click', () => { overlay.remove(); });
+  const sheet = overlay.querySelector<HTMLElement>(".m-tablet-sheet");
+  if (!sheet) return;
+  setupSheetSwipe(sheet, () => overlay.remove());
+  const searchInput = sheet.querySelector<HTMLInputElement>(".tablet-search-input");
+  if (searchInput) {
+    searchInput.value = state.tabletSearchQuery || "";
+    searchInput.addEventListener("input", () => {
+      state.tabletSearchQuery = searchInput.value.trim().toLowerCase();
+      updateTabletCategoryView();
+    });
+    if (autoFocus) window.setTimeout(() => searchInput.focus(), 0);
+  }
+  sheet.querySelectorAll<HTMLButtonElement>(".tablet-cat-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const idx = Number(btn.dataset.index || 0);
+      state.tabletCategoryIndex = idx;
+      updateTabletCategoryView();
+      overlay.remove();
+    });
+  });
+}
+
+function updateTabletCategoryView(): void {
+  const idx = state.tabletCategoryIndex ?? 0;
+  const kind = TABLET_CATEGORIES[idx] || "all";
+  const query = (state.tabletSearchQuery || "").trim();
+  for (const [id, marker] of state.poiMarkers.entries()) {
+    const poi = state.poiData.get(id);
+    const el = marker.getElement() as HTMLElement | null;
+    if (!poi) continue;
+    const matchesQuery = !query || `${poi.title} ${poi.kind} ${poi.address || ""}`.toLowerCase().includes(query);
+    const show = (kind === "all" || poi.kind === kind) && matchesQuery;
+    if (el) el.style.display = show ? "" : "none";
+  }
+
+  // If the filter is not all, ensure the POI layer remains visually filtered after map moves.
+  if (state.overpassLayer) {
+    state.overpassLayer.getLayers().forEach((layer: any) => {
+      const poiId = layer?.options?.poiId;
+      if (!poiId) return;
+      const poi = state.poiData.get(poiId);
+      if (!poi) return;
+      const visible = (kind === "all" || poi.kind === kind) && (!query || `${poi.title} ${poi.kind} ${poi.address || ""}`.toLowerCase().includes(query));
+      const layerEl = layer.getElement?.() as HTMLElement | null;
+      if (layerEl) layerEl.style.display = visible ? "" : "none";
+    });
+  }
+}
+
+function clearDestinationRoute(): void {
+  if (state.routeLayer) {
+    try { map.removeLayer(state.routeLayer); } catch { }
+    state.routeLayer = null;
+  }
+  if (state.destinationMarker) {
+    try { map.removeLayer(state.destinationMarker); } catch { }
+    state.destinationMarker = null;
+  }
+}
+
+function setDestinationToPoi(poi: PoiRecord): void {
+  clearDestinationRoute();
+  const from = state.vehicleMarker ? state.vehicleMarker.getLatLng() : map.getCenter();
+  const to = L.latLng(poi.lat, poi.lng);
+  const routeRequestId = ++state.routeRequestSeq;
+
+  const drawRoute = (points: L.LatLngExpression[]): void => {
+    if (routeRequestId !== state.routeRequestSeq) return;
+    const poly = L.polyline(points, { color: "#2563eb", weight: 4, opacity: 0.9 }).addTo(map);
+    const dest = L.marker(to, { title: poi.title }).addTo(map);
+    const group = L.layerGroup([poly, dest]);
+    state.routeLayer = group.addTo(map);
+    state.destinationMarker = dest;
+    map.fitBounds(poly.getBounds().pad(0.2));
+  };
+
+  const drawFallback = (): void => drawRoute([from, to]);
+
+  void (async () => {
+    try {
+      const url = `https://router.project-osrm.org/route/v1/driving/${from.lng},${from.lat};${to.lng},${to.lat}?overview=full&geometries=geojson`;
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) throw new Error(`Route request failed: ${res.status}`);
+      const data = await res.json() as {
+        routes?: Array<{ geometry?: { coordinates?: Array<[number, number]> } }>;
+      };
+      const coords = data.routes?.[0]?.geometry?.coordinates;
+      if (!coords || coords.length < 2) throw new Error("Route geometry missing");
+      drawRoute(coords.map(([lng, lat]) => [lat, lng] as L.LatLngExpression));
+    } catch {
+      drawFallback();
+    }
+  })();
+}
+
+function handlePoiClick(poi: PoiRecord): void {
+  if (isTablet()) {
+    // If tablet category is active, treat POI as destination; otherwise open modal
+    if (state.tabletCategoryIndex !== null) {
+      void setDestinationToPoi(poi);
+      // close tablet sheet if open
+      document.getElementById("m-tablet-categories")?.remove();
+      return;
+    }
+    // fallback: open modal
+    openPoiModal(poi);
+    return;
+  }
+  // desktop: open modal as before
+  openPoiModal(poi);
 }
 
 // ─── Toolbar Control ─────────────────────────────────────────────
@@ -1982,7 +2437,6 @@ const BottomRightControl = L.Control.extend({
     state.compassBtn = container.querySelector<HTMLButtonElement>(".toolbar-compass");
     state.cameraPreview = container.querySelector<HTMLDivElement>(".camera-thumb-wrap");
     state.cameraButton = container.querySelector<HTMLButtonElement>(".toolbar-camera");
-    state.cameraPanel = document.querySelector<HTMLDivElement>("#camera-panel");
 
     container.querySelectorAll<HTMLButtonElement>("button[data-action]").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -2011,6 +2465,46 @@ const BottomRightControl = L.Control.extend({
 
 new BottomRightControl().addTo(map);
 
+// Mode control for switching base maps (street / 3d / satellite)
+const ModeControl = L.Control.extend({
+  options: { position: 'topright' },
+  onAdd(): HTMLElement {
+    const container = L.DomUtil.create('div', 'mode-control');
+    container.innerHTML = `
+      <button class="mode-btn" data-mode="street" title="Street">2D</button>
+      <button class="mode-btn" data-mode="3d" title="3D">3D</button>
+      <button class="mode-btn" data-mode="satellite" title="Satellite">Sat</button>
+    `;
+    L.DomEvent.disableClickPropagation(container);
+    L.DomEvent.disableScrollPropagation(container);
+    container.querySelectorAll<HTMLButtonElement>('.mode-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const m = (btn.dataset.mode as BaseMapMode) || 'street';
+        void setBaseMap(m);
+      });
+    });
+    return container;
+  }
+});
+
+function syncModeControlVisibility(): void {
+  const shouldShowModeControl = !isMobile() && !isTablet();
+  if (shouldShowModeControl) {
+    if (!state.modeControl) {
+      state.modeControl = new ModeControl();
+      state.modeControl.addTo(map);
+    }
+    return;
+  }
+
+  if (state.modeControl) {
+    map.removeControl(state.modeControl);
+    state.modeControl = null;
+  }
+}
+
+syncModeControlVisibility();
+
 map.on("rotate", updateCompass);
 map.on("move zoom", updateCompass);
 map.on("zoomend", rescaleMarkers);
@@ -2018,11 +2512,15 @@ map.on("move zoom rotate", () => syncMapLibreView());
 map.on("resize", () => {
   state.maplibreMap?.resize();
   syncMapLibreView(true);
+  syncModeControlVisibility();
 });
+window.addEventListener("resize", syncModeControlVisibility);
 
 // ─── Fetch & refresh ────────────────────────────────────────────
 
 // Firebase RTDB — dibaca langsung sebagai fallback jika file lokal tidak tersedia
+const FIREBASE_DEVICES_URL =
+  "https://itstelkom-default-rtdb.asia-southeast1.firebasedatabase.app/devices.json";
 
 async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url, { cache: "no-store" });
@@ -2161,7 +2659,6 @@ async function refreshSnapshot(): Promise<void> {
 
 window.addEventListener("beforeunload", () => {
   window.clearTimeout(state.refreshTimer);
-  stopWebRtcSession(true);
   map.remove();
 });
 
@@ -2173,7 +2670,14 @@ window.addEventListener("beforeunload", () => {
 // ─── Mobile Detection ───────────────────────────────────────────────────────
 
 function isMobile(): boolean {
-  return window.innerWidth <= 768 || /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+  // Treat narrow phones as mobile. Tablets (~768px) should NOT be classified as mobile
+  return window.innerWidth <= 600 || /Mobi|Android|iPhone(?!.*iPad)|Android.*Mobile/i.test(navigator.userAgent);
+}
+
+function isTablet(): boolean {
+  // Classify tablet purely by width to avoid UA inconsistencies in responsive emulation
+  const w = window.innerWidth;
+  return w >= 601 && w <= 1200;
 }
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -2506,18 +3010,8 @@ function renderITSSheetContent(): void {
 
   const device = state.device;
   const traffic = device ? trafficStateForDevice(device) : null;
-  const cameraUrl = device?.cameraUrl;
-  const cameraContent = device && isWebRtcCamera(device)
-    ? renderWebRtcSurface(device, "m-camera-img")
-    : cameraUrl
-      ? `<img src="${escapeHtml(cameraUrl)}" class="m-camera-img" alt="Camera">`
-      : `<div class="m-camera-placeholder">
-               <svg viewBox="0 0 48 48" fill="none" width="36" height="36">
-                 <rect x="4" y="12" width="34" height="26" rx="4" stroke="#9ca3af" stroke-width="2"/>
-                 <path d="M38 20l6-4v16l-6-4V20z" stroke="#9ca3af" stroke-width="2" stroke-linejoin="round"/>
-               </svg>
-               <span>Belum ada kamera</span>
-             </div>`;
+  const cameraUrl = device?.cameraUrl?.trim();
+  const isImage = !!cameraUrl && /^data:image|\.(jpg|jpeg|png|webp)(\?|$)/i.test(cameraUrl);
 
   const colorMap: Record<string, string> = {
     red: "#ef4444", yellow: "#facc15", green: "#22c55e",
@@ -2528,7 +3022,18 @@ function renderITSSheetContent(): void {
     <div class="m-its-section" id="m-its-video">
       <div class="m-its-section-title">Video Realtime</div>
       <div class="m-its-camera-box">
-        ${cameraContent}
+        ${cameraUrl
+      ? isImage
+        ? `<img src="${escapeHtml(cameraUrl)}" class="m-camera-img" alt="Camera">`
+        : `<iframe class="m-camera-frame" src="${escapeHtml(cameraUrl)}" allow="autoplay; camera; microphone; fullscreen" referrerpolicy="no-referrer" loading="lazy"></iframe>`
+      : `<div class="m-camera-placeholder">
+               <svg viewBox="0 0 48 48" fill="none" width="36" height="36">
+                 <rect x="4" y="12" width="34" height="26" rx="4" stroke="#9ca3af" stroke-width="2"/>
+                 <path d="M38 20l6-4v16l-6-4V20z" stroke="#9ca3af" stroke-width="2" stroke-linejoin="round"/>
+               </svg>
+               <span>Belum ada kamera</span>
+             </div>`
+    }
         <button class="m-camera-fullscreen" aria-label="Fullscreen">
           <svg viewBox="0 0 16 16" fill="none" width="14" height="14">
             <path d="M1 6V1h5M10 1h5v5M15 10v5h-5M6 15H1v-5"
@@ -2580,8 +3085,6 @@ function renderITSSheetContent(): void {
   `;
 
   requestAnimationFrame(() => drawTrafficChart());
-  syncCameraViews(device);
-  attachWebRtcStream();
 
   scroll.querySelectorAll<HTMLDivElement>(".m-device-row").forEach(row => {
     row.addEventListener("click", () => {
@@ -2793,6 +3296,8 @@ function initMobileUI(): void {
 }
 initMobileUI();
 void refreshSnapshot();
+// Also fetch nearby POIs immediately so tablet filters have data even if devices are empty
+void refreshOverpassLayer();
 
 // ─── PWA: Service Worker registration and install prompt handler ─────
 if ('serviceWorker' in navigator) {

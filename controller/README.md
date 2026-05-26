@@ -10,6 +10,13 @@ chmod +x run-controller.sh
 ./run-controller.sh
 ```
 
+Untuk mode publik, pakai:
+
+```bash
+chmod +x run-controller-public.sh
+./run-controller-public.sh
+```
+
 ## Environment
 
 ```bash
@@ -141,6 +148,8 @@ sudo systemctl start camera-stream.service
 ### Auto run controller
 
 Pakai file [its-controller.service](its-controller.service) lalu aktifkan dengan systemd.
+
+Kalau ingin auto-update JAR dari hosting Firebase, aktifkan juga [its-controller-update.timer](its-controller-update.timer) dan [its-controller-update.service](its-controller-update.service).
 
 Verifikasi setelah reboot:
 

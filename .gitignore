@@ -1,6 +1,8 @@
 *.class
 *.tasty
 *.log
+controller/.scala-build/
+controller/out/
 web/node_modules/
 web/dist/
 .firebase/

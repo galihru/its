@@ -1,0 +1,71 @@
+name: Deploy ITS Maps and Controller Artifact
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "controller/**"
+      - "web/**"
+      - "firebase.json"
+      - "database.rules.json"
+      - ".github/workflows/firebase-deploy.yml"
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install Scala CLI
+        run: |
+          curl -fL https://github.com/VirtusLab/scala-cli/releases/latest/download/scala-cli-x86_64-pc-linux.gz -o /tmp/scala-cli.gz
+          gunzip /tmp/scala-cli.gz
+          chmod +x /tmp/scala-cli
+          sudo mv /tmp/scala-cli /usr/local/bin/scala-cli
+
+      - name: Build controller JAR
+        working-directory: controller
+        run: bash ./build-controller-jar.sh
+
+      - name: Stage controller artifact for hosting
+        run: |
+          mkdir -p web/public/artifacts
+          cp controller/ItsController.jar web/public/artifacts/ItsController.jar
+
+      - name: Install web dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Build web
+        working-directory: web
+        run: npm run build
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_ITSTELKOM }}
+
+      - name: Deploy to Firebase Hosting
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}
+        run: firebase deploy --project itstelkom --only hosting,database --non-interactive

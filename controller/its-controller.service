@@ -6,14 +6,9 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=raspberry5its
-WorkingDirectory=/home/raspberry5its/its/controller
-Environment=ITS_OUTPUT_PATH=/home/raspberry5its/its/web/public/data/its-state.json
-Environment=ITS_FIREBASE_BASE_URL=https://itstelkom-default-rtdb.asia-southeast1.firebasedatabase.app/devices
-Environment=ITS_CAMERA_ENABLED=true
-Environment=ITS_CAMERA_MODE=webrtc
-Environment=ITS_WEBRTC_ENABLED=true
-Environment=ITS_WEBRTC_SIGNAL_PATH=webrtc/devices/raspberry-its
-ExecStart=/home/raspberry5its/its/controller/run-controller.sh
+WorkingDirectory=/home/raspberry5its/its-controller
+Environment=ITS_OUTPUT_PATH=/home/raspberry5its/its-maps/web/public/data/its-state.json
+ExecStart=/usr/bin/bash /home/raspberry5its/its-controller/run-controller-public.sh
 Restart=always
 RestartSec=5
 

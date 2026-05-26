@@ -1,18 +1,21 @@
 {
-  "updatedAt": 1779093076877,
+  "updatedAt": 1778814317887,
   "source": "scala-controller",
   "devices": [
     {
   "id": "raspberry-its",
   "label": "Raspberry Pi 5 Controller",
   "status": "online",
-  "lastSeen": 1779093076877,
-  "lastSeenText": "Senin, 18 Mei 2026 15:31:16",
+  "lastSeen": 1778814317887,
+  "lastSeenText": "Jumat, 15 Mei 2026 10:05:17",
   "note": "controller aktif",
   "roadName": "Jalan Cinta",
   "locationSource": "road-snapped",
   "locationLabel": "Jalan Cinta",
   "locationAccuracyM": 50,
+  "trafficColor": "red",
+  "trafficStartedAt": 1778814316262,
+  "trafficDurationSec": 5,
   "position": {
     "lat": -6.180487,
     "lng": 106.90368
