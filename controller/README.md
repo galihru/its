@@ -264,6 +264,13 @@ journalctl -u its-controller.service -f
 
 Kalau statusnya `active (running)`, controller terus berjalan.
 
+Diagnostik cepat untuk model YOLO, kamera, OpenCV, GPIO, dan log service:
+
+```bash
+cd /home/raspberry5its/its-controller
+./diagnose-controller.sh
+```
+
 ### Fallback jika Pi berada di belakang NAT
 
 Jika website tidak dapat mengakses `http://<pi-ip>:8080/stream.mjpg`, gunakan port forwarding pada router:
