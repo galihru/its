@@ -30,7 +30,33 @@ body {
 }
 
 .map-mode-3d {
-  background: #dfe8f3;
+  background: linear-gradient(180deg, #dff0ff 0%, #eef8f4 48%, #f6f1df 100%);
+}
+
+.map-mode-street .leaflet-tile-pane {
+  filter: saturate(1.08) contrast(1.02) brightness(1.04);
+}
+
+.map-mode-3d.map-street-pov .maplibre-overlay {
+  filter: saturate(1.12) contrast(1.04) brightness(1.03);
+}
+
+.map-mode-3d.map-street-cruise::after {
+  content: "Menelusuri jalan";
+  position: absolute;
+  left: 50%;
+  top: 18px;
+  z-index: 500;
+  transform: translateX(-50%);
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.76);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0;
+  pointer-events: none;
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.18);
 }
 
 .maplibre-overlay {
@@ -367,6 +393,25 @@ body.tablet-dashboard .poi-marker {
 
 .toolbar-btn:active {
   background: #e8edf3;
+}
+
+.toolbar-pov {
+  width: auto;
+  min-width: 54px;
+  gap: 5px;
+  padding-inline: 10px;
+}
+
+.toolbar-pov.active {
+  color: #fff;
+  background: linear-gradient(180deg, #16a34a, #059669);
+  box-shadow: 0 12px 26px rgba(5, 150, 105, 0.28);
+}
+
+.toolbar-pov-label {
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1;
 }
 
 /* Zoom buttons: bersandingan tanpa gap */
@@ -929,20 +974,53 @@ body.tablet-dashboard .poi-marker {
 }
 
 .poi-marker {
-  width: var(--poi-size, 16px);
-  height: var(--poi-size, 16px);
+  min-width: var(--poi-size, 16px);
+  height: calc(var(--poi-size, 16px) + 18px);
   border-radius: 999px;
-  display: grid;
-  place-items: center;
-  background: color-mix(in srgb, var(--poi-accent, #3b82f6) 14%, white);
-  border: 1.5px solid color-mix(in srgb, var(--poi-accent, #3b82f6) 72%, black);
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.22);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px 3px 3px;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid color-mix(in srgb, var(--poi-accent, #3b82f6) 48%, white);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.16);
   filter: none;
+  max-width: 168px;
+  backdrop-filter: blur(8px);
 }
 
 .poi-marker-glyph {
-  font-size: clamp(10px, calc(var(--poi-size, 16px) * 0.72), 16px);
+  width: var(--poi-size, 16px);
+  height: var(--poi-size, 16px);
+  min-width: var(--poi-size, 16px);
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--poi-accent, #3b82f6);
+  color: #fff;
+  font-size: clamp(9px, calc(var(--poi-size, 16px) * 0.54), 13px);
+  font-weight: 900;
   line-height: 1;
+}
+
+.poi-marker-label {
+  display: block;
+  max-width: 122px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #0f172a;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+body:not(.tablet-dashboard) .poi-marker-label {
+  display: none;
+}
+
+.map-mode-3d .poi-marker-icon {
+  display: none !important;
 }
 
 .poi-kind-hospital {
@@ -983,6 +1061,38 @@ body.tablet-dashboard .poi-marker {
 
 .poi-kind-monument {
   --poi-accent: #a16207;
+}
+
+.poi-kind-terminal,
+.poi-kind-station,
+.poi-kind-shelter,
+.poi-kind-transport {
+  --poi-accent: #0284c7;
+}
+
+.poi-kind-fuel {
+  --poi-accent: #f97316;
+}
+
+.poi-kind-bank,
+.poi-kind-atm {
+  --poi-accent: #0f766e;
+}
+
+.poi-kind-pharmacy {
+  --poi-accent: #16a34a;
+}
+
+.poi-kind-market {
+  --poi-accent: #9333ea;
+}
+
+.poi-kind-hotel {
+  --poi-accent: #0891b2;
+}
+
+.poi-kind-police {
+  --poi-accent: #1d4ed8;
 }
 
 .poi-kind-other {

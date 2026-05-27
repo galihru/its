@@ -155,11 +155,12 @@ type ArObjectTrack = {
   lastSeen: number;
 };
 
-type PoiKind = "hospital" | "mall" | "campus" | "parking" | "park" | "worship" | "school" | "office" | "restaurant" | "monument" | "terminal" | "station" | "shelter" | "cemetery" | "transport" | "other";
+type PoiKind = "hospital" | "mall" | "campus" | "parking" | "park" | "worship" | "school" | "office" | "restaurant" | "monument" | "terminal" | "station" | "shelter" | "cemetery" | "transport" | "fuel" | "bank" | "atm" | "pharmacy" | "market" | "hotel" | "police" | "other";
 
 type PoiRecord = {
   id: string;
   kind: PoiKind;
+  visualKey?: string;
   title: string;
   description: string;
   address: string;
@@ -197,6 +198,9 @@ const BEARING_STEP = 90;
 const BEARING_SNAP = 5;
 const MAPLIBRE_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
 const MAPLIBRE_3D_PITCH = 52;
+const MAPLIBRE_STREET_ZOOM = 18.15;
+const MAPLIBRE_STREET_PITCH = 74;
+const MAPLIBRE_STREET_ZOOM_BOOST = 0.28;
 
 // ─── DOM bootstrap ──────────────────────────────────────────────
 
@@ -246,6 +250,10 @@ const state = {
   maplibreMap: null as any,
   maplibreContainer: null as HTMLDivElement | null,
   maplibreSyncing: false,
+  maplibreStreetPovActive: false,
+  streetPovPinned: false,
+  streetCruiseTimer: 0,
+  streetCruiseButton: null as HTMLButtonElement | null,
   // Tablet / routing helpers
   vehicleMarker: null as L.Marker | null,
   userWatchId: null as number | null,
@@ -256,6 +264,7 @@ const state = {
   destinationMarker: null as L.Marker | null,
   activeRouteTargetPoi: null as PoiRecord | null,
   activeRouteSteps: [] as NavigationStep[],
+  activeRouteGeometry: [] as L.LatLng[],
   activeRouteDistance: 0,
   activeRouteDuration: 0,
   activeModalDeviceId: null as string | null,
@@ -286,9 +295,12 @@ const state = {
 
 // ─── Tile layers ────────────────────────────────────────────────
 
-const streetLayer = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+const streetLayer = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png", {
   maxZoom: 20,
-  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  maxNativeZoom: 19,
+  subdomains: "abcd",
+  detectRetina: true,
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; CARTO',
 }).addTo(map);
 
 const satelliteLayer = L.tileLayer(
@@ -410,6 +422,41 @@ const POI_LIBRARY: Record<PoiKind, {
     imageUrl: "https://images.unsplash.com/photo-1508804185872-d7badad00f7d?auto=format&fit=crop&w=900&q=80",
     description: "Landmark, monumen, atau penanda sejarah yang mudah dikenali.",
   },
+  fuel: {
+    rating: "4.1",
+    imageUrl: "https://images.unsplash.com/photo-1542362567-b07e54358753?auto=format&fit=crop&w=900&q=80",
+    description: "SPBU atau titik pengisian bahan bakar di sekitar lokasi.",
+  },
+  bank: {
+    rating: "4.1",
+    imageUrl: "https://images.unsplash.com/photo-1541354329998-f4d9a9f9297f?auto=format&fit=crop&w=900&q=80",
+    description: "Bank dan layanan keuangan.",
+  },
+  atm: {
+    rating: "4.0",
+    imageUrl: "https://images.unsplash.com/photo-1601597111158-2fceff292cdc?auto=format&fit=crop&w=900&q=80",
+    description: "Mesin ATM atau layanan tarik tunai.",
+  },
+  pharmacy: {
+    rating: "4.3",
+    imageUrl: "https://images.unsplash.com/photo-1587854692152-cbe660dbde88?auto=format&fit=crop&w=900&q=80",
+    description: "Apotek dan layanan obat-obatan.",
+  },
+  market: {
+    rating: "4.2",
+    imageUrl: "https://images.unsplash.com/photo-1534723452862-4c874018d66d?auto=format&fit=crop&w=900&q=80",
+    description: "Toko, minimarket, atau pasar terdekat.",
+  },
+  hotel: {
+    rating: "4.2",
+    imageUrl: "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=900&q=80",
+    description: "Hotel, penginapan, atau akomodasi terdekat.",
+  },
+  police: {
+    rating: "4.0",
+    imageUrl: "https://images.unsplash.com/photo-1582213782179-e0d53f98f2ca?auto=format&fit=crop&w=900&q=80",
+    description: "Kantor polisi atau pos keamanan.",
+  },
   other: {
     rating: "4.0",
     imageUrl: "https://images.unsplash.com/photo-1524429656589-6633a470097c?auto=format&fit=crop&w=900&q=80",
@@ -417,7 +464,7 @@ const POI_LIBRARY: Record<PoiKind, {
   },
 };
 
-const POI_VISUALS: Record<PoiKind, { icon: string; color: string }> = {
+const POI_VISUALS: Record<string, { icon: string; color: string }> = {
   hospital: { icon: "🏥", color: "#ef4444" },
   mall: { icon: "🏬", color: "#8b5cf6" },
   campus: { icon: "🎓", color: "#0ea5e9" },
@@ -436,10 +483,46 @@ const POI_VISUALS: Record<PoiKind, { icon: string; color: string }> = {
   other: { icon: "📍", color: "#475569" },
 };
 
+type PoiVisual = { icon: string; color: string; short: string; label: string };
+
+const CUSTOM_POI_VISUALS: Record<string, PoiVisual> = {
+  hospital: { icon: "+", color: "#ef4444", short: "RS", label: "Rumah Sakit" },
+  mall: { icon: "M", color: "#8b5cf6", short: "MALL", label: "Belanja" },
+  campus: { icon: "U", color: "#0ea5e9", short: "KMP", label: "Kampus" },
+  parking: { icon: "P", color: "#64748b", short: "P", label: "Parkir" },
+  park: { icon: "T", color: "#22c55e", short: "PK", label: "Taman" },
+  worship: { icon: "I", color: "#f59e0b", short: "IBD", label: "Tempat Ibadah" },
+  mosque: { icon: "M", color: "#10b981", short: "MJD", label: "Masjid" },
+  church: { icon: "+", color: "#7c3aed", short: "GJ", label: "Gereja" },
+  temple: { icon: "T", color: "#d97706", short: "TPL", label: "Kuil" },
+  school: { icon: "S", color: "#2563eb", short: "SKL", label: "Sekolah" },
+  office: { icon: "B", color: "#14b8a6", short: "KTR", label: "Kantor" },
+  restaurant: { icon: "R", color: "#fb7185", short: "R", label: "Kuliner" },
+  terminal: { icon: "B", color: "#0f766e", short: "BUS", label: "Terminal" },
+  station: { icon: "K", color: "#1d4ed8", short: "ST", label: "Stasiun" },
+  shelter: { icon: "H", color: "#0ea5e9", short: "HLT", label: "Halte" },
+  cemetery: { icon: "C", color: "#64748b", short: "PMK", label: "Pemakaman" },
+  transport: { icon: "A", color: "#0284c7", short: "TR", label: "Transport" },
+  monument: { icon: "L", color: "#a16207", short: "LM", label: "Landmark" },
+  fuel: { icon: "F", color: "#f97316", short: "BBM", label: "SPBU" },
+  bank: { icon: "$", color: "#0f766e", short: "BNK", label: "Bank" },
+  atm: { icon: "$", color: "#2563eb", short: "ATM", label: "ATM" },
+  pharmacy: { icon: "+", color: "#16a34a", short: "AP", label: "Apotek" },
+  market: { icon: "K", color: "#9333ea", short: "TOKO", label: "Toko" },
+  hotel: { icon: "H", color: "#0891b2", short: "HTL", label: "Hotel" },
+  police: { icon: "!", color: "#1d4ed8", short: "POL", label: "Polisi" },
+  other: { icon: "i", color: "#475569", short: "POI", label: "POI" },
+};
+
 function classifyPoiKind(tags: Record<string, string>): PoiKind {
   const amenity = tags.amenity;
   const tourism = tags.tourism;
-  if (amenity === "hospital") return "hospital";
+  if (amenity === "hospital" || amenity === "clinic" || amenity === "doctors") return "hospital";
+  if (amenity === "pharmacy") return "pharmacy";
+  if (amenity === "fuel" || tags.shop === "fuel") return "fuel";
+  if (amenity === "bank") return "bank";
+  if (amenity === "atm") return "atm";
+  if (amenity === "police") return "police";
   if (amenity === "place_of_worship" || tags.religion) return "worship";
   if (amenity === "school" || amenity === "kindergarten" || tags.education === "school") return "school";
   if (amenity === "university" || amenity === "college" || tourism === "university") return "campus";
@@ -450,14 +533,34 @@ function classifyPoiKind(tags: Record<string, string>): PoiKind {
   if (amenity === "grave_yard" || tags.landuse === "cemetery") return "cemetery";
   if (amenity === "public_transport" || tags.public_transport) return "transport";
   if (amenity === "office" || tags.office) return "office";
-  if (tags.shop) return "mall";
+  if (tags.shop === "mall" || tags.shop === "department_store") return "mall";
+  if (tags.shop === "supermarket" || tags.shop === "convenience" || tags.shop === "marketplace" || tags.shop) return "market";
+  if (tourism === "hotel" || tourism === "guest_house" || tourism === "hostel") return "hotel";
   if (tags.historic === "monument" || tourism === "attraction" || tags.building === "monument") return "monument";
   if (tags.leisure === "park") return "park";
   return "other";
 }
 
-function poiVisual(kind: PoiKind): { icon: string; color: string } {
-  return POI_VISUALS[kind] || POI_VISUALS.other;
+function inferPoiVisualKey(tags: Record<string, string>, kind: PoiKind, title = ""): string {
+  const religion = `${tags.religion || ""} ${tags.denomination || ""} ${title}`.toLowerCase();
+  if (kind === "worship") {
+    if (/islam|muslim|masjid|mushol|mosque/.test(religion)) return "mosque";
+    if (/christ|catholic|protestant|gereja|church|chapel/.test(religion)) return "church";
+    if (/buddhist|hindu|temple|vihara|pura|kelenteng|klenteng/.test(religion)) return "temple";
+  }
+  return kind;
+}
+
+function poiVisual(input: PoiKind | PoiRecord | string): PoiVisual {
+  const key = typeof input === "object" ? input.visualKey || input.kind : input;
+  const custom = CUSTOM_POI_VISUALS[key] || CUSTOM_POI_VISUALS.other;
+  const legacy = POI_VISUALS[key] || POI_VISUALS.other || { icon: custom.icon, color: custom.color };
+  return {
+    icon: custom.icon || legacy.icon,
+    color: custom.color || legacy.color,
+    short: custom.short || custom.icon || legacy.icon,
+    label: custom.label || String(key),
+  };
 }
 
 function poiMarkerSizeByZoom(): number {
@@ -465,14 +568,23 @@ function poiMarkerSizeByZoom(): number {
   return clamp(12 + (zoom - 13) * 1.15, 12, 24);
 }
 
+function poiShortTitle(title: string, max = 18): string {
+  const clean = title.replace(/\s+/g, " ").trim();
+  if (clean.length <= max) return clean;
+  return `${clean.slice(0, Math.max(8, max - 1)).trim()}...`;
+}
+
 function makePoiIcon(poi: PoiRecord, size: number): L.DivIcon {
-  const visual = poiVisual(poi.kind);
+  const visual = poiVisual(poi);
+  const label = poiShortTitle(poi.title, isTablet() || map.getZoom() >= 17 ? 22 : 14);
+  const width = clamp(size + label.length * 6.3 + 26, 48, 164);
   return L.divIcon({
     className: "poi-marker-icon",
     html: `<div class="poi-marker poi-kind-${poi.kind}" title="${escapeHtml(poi.title)}" style="--poi-accent:${visual.color}; --poi-size:${size}px;">
-      <span class="poi-marker-glyph">${visual.icon}</span>
+      <span class="poi-marker-glyph">${escapeHtml(visual.icon)}</span>
+      <span class="poi-marker-label">${escapeHtml(label)}</span>
     </div>`,
-    iconSize: [size, size],
+    iconSize: [width, size + 18],
     iconAnchor: [Math.round(size / 2), Math.round(size / 2)],
   });
 }
@@ -1591,6 +1703,8 @@ function syncPoiMarkers(anchor: L.LatLngExpression): void {
         state.poiData.delete(id);
       }
     }
+    updateMapLibrePoiLayerFromState();
+    setLeafletPoiVisibility(state.baseMode !== "3d");
   }).catch(() => { /* ignore */ });
 }
 
@@ -1638,6 +1752,8 @@ async function fetchOverpassFeaturesForBounds(bounds: L.LatLngBounds): Promise<P
       const lat = el.type === 'node' ? el.lat : (el.center && el.center.lat) || el.lat || 0;
       const lng = el.type === 'node' ? el.lon : (el.center && el.center.lon) || el.lon || 0;
       const kind = classifyPoiKind(tags);
+      const visualKey = inferPoiVisualKey(tags, kind, name);
+      const visual = poiVisual(visualKey);
       const imageUrl = tags.image || tags['image:source'] || POI_LIBRARY[kind].imageUrl;
       const description = tags.description || tags['note'] || POI_LIBRARY[kind].description;
       const addressParts = [] as string[];
@@ -1648,12 +1764,13 @@ async function fetchOverpassFeaturesForBounds(bounds: L.LatLngBounds): Promise<P
       return {
         id: `overpass-${el.type}-${el.id}`,
         kind,
+        visualKey,
         title: name || `POI ${el.id}`,
         description: description || '',
         address: address || '',
         imageUrl: imageUrl || POI_LIBRARY[kind].imageUrl,
         rating: POI_LIBRARY[kind].rating,
-        icon: poiVisual(kind).icon,
+        icon: visual.icon,
         lat, lng,
       };
     }).filter((p: PoiRecord) => p.lat && p.lng && !Number.isNaN(p.lat) && !Number.isNaN(p.lng));
@@ -1677,8 +1794,12 @@ function updateMapLibrePoiLayer(pois: PoiRecord[]): void {
       properties: {
         id: poi.id,
         title: poi.title,
+        titleShort: poiShortTitle(poi.title, 18),
         kind: poi.kind,
-        "icon-emoji": poi.icon // Use emoji from POI record
+        visualKey: poi.visualKey || poi.kind,
+        icon: poiVisual(poi).icon,
+        short: poiVisual(poi).short,
+        color: poiVisual(poi).color,
       },
       geometry: { type: "Point", coordinates: [poi.lng, poi.lat] }
     }));
@@ -1690,6 +1811,55 @@ function updateMapLibrePoiLayer(pois: PoiRecord[]): void {
   } catch (err) {
     console.warn("Failed to update POI layer:", err);
   }
+}
+
+function updateMapLibrePoiLayerFromState(): void {
+  updateMapLibrePoiLayer(Array.from(state.poiData.values()));
+}
+
+function updateMapLibreRouteLayer(): void {
+  const maplibreMap = state.maplibreMap;
+  if (!maplibreMap) return;
+  try {
+    const source = maplibreMap.getSource("route-source");
+    if (!source || !("setData" in source)) return;
+    const coordinates = state.activeRouteGeometry.map((point) => [point.lng, point.lat]);
+    const features = coordinates.length >= 2
+      ? [{
+        type: "Feature",
+        properties: {},
+        geometry: { type: "LineString", coordinates },
+      }]
+      : [];
+    (source as any).setData({ type: "FeatureCollection", features });
+  } catch (err) {
+    console.warn("Failed to update route layer:", err);
+  }
+}
+
+function setLeafletPoiVisibility(visible: boolean): void {
+  const display = visible ? "" : "none";
+  if (state.overpassLayer) {
+    state.overpassLayer.getLayers().forEach((layer: any) => {
+      if (layer._path) layer._path.style.display = display;
+      if (layer._icon) layer._icon.style.display = display;
+    });
+  }
+  for (const marker of state.poiMarkers.values()) {
+    const el = marker.getElement() as HTMLElement | null;
+    if (el) el.style.display = display;
+  }
+}
+
+function findNearestPoiAtLatLng(latlng: L.LatLng, maxMeters = 70): PoiRecord | null {
+  let best: { poi: PoiRecord; distance: number } | null = null;
+  for (const poi of state.poiData.values()) {
+    const distance = haversineDistanceMeters(latlng.lat, latlng.lng, poi.lat, poi.lng);
+    if (distance <= maxMeters && (!best || distance < best.distance)) {
+      best = { poi, distance };
+    }
+  }
+  return best?.poi || null;
 }
 
 async function refreshOverpassLayer(): Promise<void> {
@@ -1706,7 +1876,7 @@ async function refreshOverpassLayer(): Promise<void> {
     const c = map.getCenter();
     finalPois = [
       { id: 'local-school-1', kind: 'campus', title: 'SD Negeri 1', description: '', address: '', imageUrl: POI_LIBRARY.campus.imageUrl, rating: POI_LIBRARY.campus.rating, icon: poiVisual('campus').icon, lat: c.lat + 0.0012, lng: c.lng + 0.0012 },
-      { id: 'local-worship-1', kind: 'worship', title: 'Masjid Al Furqan', description: '', address: '', imageUrl: POI_LIBRARY.worship.imageUrl, rating: POI_LIBRARY.worship.rating, icon: poiVisual('worship').icon, lat: c.lat - 0.0010, lng: c.lng - 0.0016 },
+      { id: 'local-worship-1', kind: 'worship', visualKey: 'mosque', title: 'Masjid Al Furqan', description: '', address: '', imageUrl: POI_LIBRARY.worship.imageUrl, rating: POI_LIBRARY.worship.rating, icon: poiVisual('mosque').icon, lat: c.lat - 0.0010, lng: c.lng - 0.0016 },
       { id: 'local-mall-1', kind: 'mall', title: 'Pusat Perbelanjaan', description: '', address: '', imageUrl: POI_LIBRARY.mall.imageUrl, rating: POI_LIBRARY.mall.rating, icon: poiVisual('mall').icon, lat: c.lat - 0.0014, lng: c.lng + 0.0018 },
       { id: 'local-hospital-1', kind: 'hospital', title: 'Klinik Sehat', description: '', address: '', imageUrl: POI_LIBRARY.hospital.imageUrl, rating: POI_LIBRARY.hospital.rating, icon: poiVisual('hospital').icon, lat: c.lat + 0.0020, lng: c.lng - 0.0010 },
       { id: 'local-parking-1', kind: 'parking', title: 'Parkir Umum', description: '', address: '', imageUrl: POI_LIBRARY.parking.imageUrl, rating: POI_LIBRARY.parking.rating, icon: poiVisual('parking').icon, lat: c.lat - 0.0018, lng: c.lng - 0.0015 },
@@ -1734,6 +1904,8 @@ async function refreshOverpassLayer(): Promise<void> {
     state.poiMarkers.set(poi.id, marker);
   });
 
+  updateMapLibrePoiLayerFromState();
+  setLeafletPoiVisibility(state.baseMode !== "3d");
   updateTabletCategoryView();
 }
 
@@ -1744,26 +1916,10 @@ map.on('click', async (ev: L.LeafletMouseEvent) => {
 
   // In 3D mode, check if click is on a MapLibre POI
   if (state.baseMode === '3d' && state.maplibreMap) {
-    try {
-      const features = state.maplibreMap.querySourceFeatures("poi-source", {
-        sourceLayer: undefined
-      }).filter((f: any) => {
-        if (!f.properties || !f.geometry) return false;
-        const [lng2, lat2] = f.geometry.coordinates;
-        const dist = Math.sqrt(Math.pow(lat2 - lat, 2) + Math.pow(lng2 - lng, 2));
-        return dist < 0.003; // ~300m at this zoom level
-      });
-
-      if (features.length > 0) {
-        const feature = features[0];
-        const poi = state.poiData.get(feature.properties?.id);
-        if (poi) {
-          handlePoiClick(poi);
-          return;
-        }
-      }
-    } catch (err) {
-      // ignore MapLibre query errors
+    const poi = findNearestPoiAtLatLng(ev.latlng, map.getZoom() >= MAPLIBRE_STREET_ZOOM ? 42 : 90);
+    if (poi) {
+      handlePoiClick(poi);
+      return;
     }
   }
 
@@ -1792,15 +1948,19 @@ map.on('click', async (ev: L.LeafletMouseEvent) => {
     const latR = el.type === 'node' ? el.lat : (el.center && el.center.lat) || el.lat;
     const lngR = el.type === 'node' ? el.lon : (el.center && el.center.lon) || el.lon;
     const kind = classifyPoiKind(tags);
+    const title = tags.name || tags.amenity || tags.shop || `Feature ${el.id}`;
+    const visualKey = inferPoiVisualKey(tags, kind, title);
+    const visual = poiVisual(visualKey);
     const poi: PoiRecord = {
       id: `overpass-click-${el.type}-${el.id}`,
       kind,
-      title: tags.name || tags.amenity || tags.shop || `Feature ${el.id}`,
+      visualKey,
+      title,
       description: tags.description || tags['note'] || '',
       address: (tags['addr:street'] || '') + (tags['addr:city'] ? ', ' + tags['addr:city'] : ''),
       imageUrl: tags.image || POI_LIBRARY[kind].imageUrl,
       rating: POI_LIBRARY[kind].rating,
-      icon: poiVisual(kind).icon,
+      icon: visual.icon,
       lat: latR, lng: lngR,
     };
     handlePoiClick(poi);
@@ -1810,10 +1970,6 @@ map.on('click', async (ev: L.LeafletMouseEvent) => {
 });
 
 map.on('moveend', () => {
-  if (state.baseMode === '3d') {
-    if (state.overpassLayer) state.overpassLayer.clearLayers();
-    return;
-  }
   void refreshOverpassLayer();
 });
 
@@ -2489,8 +2645,8 @@ function rescaleMarkers(): void {
   const maplibreMap = state.maplibreMap;
   if (maplibreMap && state.baseMode === "3d") {
     try {
-      const scaledSize = 14 + (map.getZoom() - 13) * 1.2;
-      maplibreMap.setLayoutProperty("poi-symbols", "text-size", Math.min(Math.max(scaledSize, 10), 24));
+      maplibreMap.setLayoutProperty("poi-symbols", "text-size", ["interpolate", ["linear"], ["zoom"], 13, 9, 17, 12, 19, 15]);
+      maplibreMap.setPaintProperty("poi-halo", "circle-radius", ["interpolate", ["linear"], ["zoom"], 13, 5, 17, 8, 19, 12]);
     } catch {
       /* ignore */
     }
@@ -2613,24 +2769,100 @@ async function ensureMapLibreMap(): Promise<any | null> {
           });
         }
 
-        // Add POI symbol layer using text labels with emoji icons (simple, no drift)
+        if (!maplibreMap.getSource("route-source")) {
+          maplibreMap.addSource("route-source", {
+            type: "geojson",
+            data: { type: "FeatureCollection", features: [] }
+          });
+        }
+
+        if (!maplibreMap.getLayer("route-glow")) {
+          maplibreMap.addLayer({
+            id: "route-glow",
+            type: "line",
+            source: "route-source",
+            layout: {
+              "line-cap": "round",
+              "line-join": "round"
+            },
+            paint: {
+              "line-color": "#34d399",
+              "line-width": ["interpolate", ["linear"], ["zoom"], 14, 8, 18, 22, 20, 34],
+              "line-blur": 10,
+              "line-opacity": 0.38
+            }
+          });
+        }
+
+        if (!maplibreMap.getLayer("route-line")) {
+          maplibreMap.addLayer({
+            id: "route-line",
+            type: "line",
+            source: "route-source",
+            layout: {
+              "line-cap": "round",
+              "line-join": "round"
+            },
+            paint: {
+              "line-color": "#10b981",
+              "line-width": ["interpolate", ["linear"], ["zoom"], 14, 4, 18, 11, 20, 18],
+              "line-opacity": 0.88
+            }
+          });
+        }
+
+        if (!maplibreMap.getLayer("poi-halo")) {
+          maplibreMap.addLayer({
+            id: "poi-halo",
+            type: "circle",
+            source: "poi-source",
+            paint: {
+              "circle-radius": ["interpolate", ["linear"], ["zoom"], 13, 5, 17, 8, 19, 12],
+              "circle-color": ["coalesce", ["get", "color"], "#2563eb"],
+              "circle-opacity": 0.92,
+              "circle-stroke-color": "#ffffff",
+              "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], 13, 1, 18, 2],
+              "circle-stroke-opacity": 0.96,
+              "circle-pitch-alignment": "map",
+              "circle-pitch-scale": "map"
+            }
+          });
+        }
+
+        // Custom POI symbols live in MapLibre, not in the OSM tile labels, so
+        // they stay anchored correctly when the map is pitched into street POV.
         if (!maplibreMap.getLayer("poi-symbols")) {
           maplibreMap.addLayer({
             id: "poi-symbols",
             type: "symbol",
             source: "poi-source",
             layout: {
-              "text-field": ["get", "icon-emoji"],
+              "text-field": [
+                "format",
+                ["coalesce", ["get", "short"], "POI"],
+                { "font-scale": 0.86 },
+                "\n",
+                {},
+                ["coalesce", ["get", "titleShort"], ""],
+                { "font-scale": 0.68 }
+              ],
               "text-font": ["Open Sans Regular", "Arial Unicode MS Regular"],
-              "text-size": 18,
-              "text-offset": [0, 0],
-              "text-allow-overlap": true,
-              "text-ignore-placement": true
+              "text-size": ["interpolate", ["linear"], ["zoom"], 13, 9, 17, 12, 19, 15],
+              "text-offset": [0, 1.12],
+              "text-anchor": "top",
+              "text-allow-overlap": false,
+              "text-ignore-placement": false,
+              "text-optional": true,
+              "text-pitch-alignment": "viewport",
+              "text-rotation-alignment": "viewport"
             },
             paint: {
-              "text-opacity": 1
+              "text-color": "#0f172a",
+              "text-halo-color": "rgba(255,255,255,0.96)",
+              "text-halo-width": 1.5,
+              "text-opacity": ["interpolate", ["linear"], ["zoom"], 13, 0.2, 15, 0.72, 17, 1]
             }
-          }, "building");
+          });
         }
 
         // Add click handler for POI (allow MapLibre to detect clicks)
@@ -2645,6 +2877,22 @@ async function ensureMapLibreMap(): Promise<any | null> {
         style.layers.forEach((layer: any) => {
           const id = layer.id;
           const sourceLayer = layer['source-layer'];
+
+          if (layer.type === 'background') {
+            try {
+              maplibreMap.setPaintProperty(id, 'background-color', '#edf7f8');
+            } catch {
+              /* ignore layer incompatibility */
+            }
+          }
+
+          if (layer.type === 'symbol' && (sourceLayer === 'poi' || sourceLayer === 'aerodrome_label')) {
+            try {
+              maplibreMap.setLayoutProperty(id, 'visibility', 'none');
+            } catch {
+              /* ignore layer incompatibility */
+            }
+          }
 
           // 1. Mewarnai Tata Guna Lahan (Tanah Dasar)
           if (sourceLayer === 'landuse' && layer.type === 'fill') {
@@ -2732,6 +2980,8 @@ async function ensureMapLibreMap(): Promise<any | null> {
           }
         });
       }
+      updateMapLibrePoiLayerFromState();
+      updateMapLibreRouteLayer();
     });
     state.maplibreMap = maplibreMap;
     return maplibreMap;
@@ -2749,10 +2999,22 @@ async function removeMapLibreMap(): Promise<void> {
     /* ignore */
   }
   state.maplibreMap = null;
+  state.maplibreStreetPovActive = false;
   if (state.maplibreContainer) {
     state.maplibreContainer.remove();
     state.maplibreContainer = null;
   }
+}
+
+function mapLibreCameraProfile(zoom: number): { zoom: number; pitch: number; pov: boolean } {
+  const progress = clamp((zoom - MAPLIBRE_STREET_ZOOM) / 1.1, 0, 1);
+  const pov = state.streetPovPinned || progress > 0.02;
+  const eased = pov ? (state.streetPovPinned ? 1 : progress * progress * (3 - 2 * progress)) : 0;
+  return {
+    zoom: zoom + eased * MAPLIBRE_STREET_ZOOM_BOOST,
+    pitch: MAPLIBRE_3D_PITCH + (MAPLIBRE_STREET_PITCH - MAPLIBRE_3D_PITCH) * eased,
+    pov,
+  };
 }
 
 function syncMapLibreView(force = false): void {
@@ -2763,7 +3025,8 @@ function syncMapLibreView(force = false): void {
   const center = map.getCenter();
   const zoom = map.getZoom();
   const bearing = map.getBearing?.() ?? 0;
-  const pitch = MAPLIBRE_3D_PITCH;
+  const camera = mapLibreCameraProfile(zoom);
+  const pitch = camera.pitch;
 
   const currentCenter = maplibreMap.getCenter();
   const currentZoom = maplibreMap.getZoom();
@@ -2771,33 +3034,37 @@ function syncMapLibreView(force = false): void {
   const currentPitch = maplibreMap.getPitch();
 
   const centerChanged = currentCenter.lat !== center.lat || currentCenter.lng !== center.lng;
-  const zoomChanged = currentZoom !== zoom;
+  const zoomChanged = currentZoom !== camera.zoom;
   const bearingChanged = currentBearing !== bearing;
   const pitchChanged = currentPitch !== pitch;
+  const povChanged = state.maplibreStreetPovActive !== camera.pov;
 
-  if (!force && !centerChanged && !zoomChanged && !bearingChanged && !pitchChanged) return;
+  if (!force && !centerChanged && !zoomChanged && !bearingChanged && !pitchChanged && !povChanged) return;
 
   state.maplibreSyncing = true;
   try {
-    maplibreMap.jumpTo({
-      animate: false,
+    const targetCamera = {
       center,
-      zoom,
+      zoom: camera.zoom,
       bearing,
-      pitch: MAPLIBRE_3D_PITCH,
-
-    });
-    // Do not hide Leaflet POI markers in 3D — prefer custom Leaflet icons consistently
-    if (state.overpassLayer) {
-      state.overpassLayer.getLayers().forEach((layer: any) => {
-        if (layer._path) layer._path.style.display = '';
-        if (layer._icon) layer._icon.style.display = '';
+      pitch,
+    };
+    if (povChanged || state.streetPovPinned) {
+      maplibreMap.easeTo({
+        ...targetCamera,
+        duration: povChanged ? 850 : 420,
+        easing: (t: number) => t * t * (3 - 2 * t),
+      });
+    } else {
+      maplibreMap.jumpTo({
+        animate: false,
+        ...targetCamera,
       });
     }
-    for (const marker of state.poiMarkers.values()) {
-      const el = marker.getElement() as HTMLElement | null;
-      if (el) el.style.display = '';
-    }
+    // In 3D, MapLibre owns POI anchors so labels stay pinned while pitched.
+    state.maplibreStreetPovActive = camera.pov;
+    mapRoot.classList.toggle("map-street-pov", camera.pov);
+    setLeafletPoiVisibility(false);
   } finally {
     state.maplibreSyncing = false;
   }
@@ -2813,12 +3080,16 @@ async function setBaseMap(mode: BaseMapMode): Promise<void> {
   mapEl.style.perspective = "";
   (mapEl.parentElement as HTMLElement | null)?.style.setProperty("perspective", "");
   mapEl.classList.remove("map-mode-3d");
+  mapEl.classList.remove("map-mode-street", "map-mode-satellite", "map-street-pov");
 
   if (mode === "street") {
+    state.streetPovPinned = false;
     // remove any GL or satellite layer
     await removeMapLibreMap();
     if (map.hasLayer(satelliteLayer)) map.removeLayer(satelliteLayer);
     if (!map.hasLayer(streetLayer)) streetLayer.addTo(map);
+    mapEl.classList.add("map-mode-street");
+    setLeafletPoiVisibility(true);
   } else if (mode === "3d") {
     // Prefer true 3D: render MapLibre GL above the Leaflet street map.
     // Keep Leaflet streets underneath as a graceful fallback if WebGL tiles are slow.
@@ -2839,16 +3110,24 @@ async function setBaseMap(mode: BaseMapMode): Promise<void> {
     }
 
     mapEl.classList.add("map-mode-3d");
+    state.baseMode = "3d";
+    updateMapLibrePoiLayerFromState();
+    updateMapLibreRouteLayer();
+    setLeafletPoiVisibility(false);
     syncMapLibreView(true);
     map.invalidateSize();
   } else {
+    state.streetPovPinned = false;
     // satellite
     await removeMapLibreMap();
     if (map.hasLayer(streetLayer)) map.removeLayer(streetLayer);
     if (!map.hasLayer(satelliteLayer)) satelliteLayer.addTo(map);
+    mapEl.classList.add("map-mode-satellite");
+    setLeafletPoiVisibility(true);
   }
 
   state.baseMode = mode;
+  updateStreetCruiseButton();
 }
 
 // ─── Camera tile ────────────────────────────────────────────────
@@ -3261,12 +3540,124 @@ function openCameraPreview(): void {
   attachWebRtcStream();
 }
 
+function updateStreetCruiseButton(): void {
+  const btn = state.streetCruiseButton;
+  if (!btn) return;
+  const cruising = state.streetCruiseTimer !== 0;
+  const active = cruising || state.streetPovPinned || state.maplibreStreetPovActive;
+  btn.classList.toggle("active", active);
+  const label = btn.querySelector<HTMLElement>(".toolbar-pov-label");
+  if (label) label.textContent = cruising ? "Stop" : active ? "POV" : "Jalan";
+  btn.setAttribute("aria-pressed", active ? "true" : "false");
+}
+
+function offsetLatLngByMeters(origin: L.LatLng, bearingDeg: number, meters: number): L.LatLng {
+  const radius = 6371000;
+  const brng = toRad(bearingDeg);
+  const lat1 = toRad(origin.lat);
+  const lon1 = toRad(origin.lng);
+  const angular = meters / radius;
+  const lat2 = Math.asin(
+    Math.sin(lat1) * Math.cos(angular)
+    + Math.cos(lat1) * Math.sin(angular) * Math.cos(brng),
+  );
+  const lon2 = lon1 + Math.atan2(
+    Math.sin(brng) * Math.sin(angular) * Math.cos(lat1),
+    Math.cos(angular) - Math.sin(lat1) * Math.sin(lat2),
+  );
+  return L.latLng(toDeg(lat2), toDeg(lon2));
+}
+
+function streetCruisePoints(): L.LatLng[] {
+  const route = state.activeRouteGeometry.filter(Boolean);
+  const raw = route.length >= 2
+    ? route
+    : (() => {
+      const center = state.vehicleMarker?.getLatLng() || map.getCenter();
+      const bearing = normBearing(map.getBearing?.() ?? 0);
+      return [center, offsetLatLngByMeters(center, bearing, 220)];
+    })();
+  const points = raw.filter((point, index) => {
+    if (index === 0) return true;
+    const prev = raw[index - 1];
+    return haversineDistanceMeters(prev.lat, prev.lng, point.lat, point.lng) > 6;
+  });
+  if (points.length <= 36) return points;
+  const stride = Math.ceil(points.length / 36);
+  const sampled = points.filter((_, index) => index % stride === 0);
+  const last = points[points.length - 1];
+  if (sampled[sampled.length - 1] !== last) sampled.push(last);
+  return sampled;
+}
+
+function stopStreetCruisePreview(keepPov = false): void {
+  if (state.streetCruiseTimer) {
+    window.clearTimeout(state.streetCruiseTimer);
+    state.streetCruiseTimer = 0;
+  }
+  state.streetPovPinned = keepPov;
+  document.body.classList.remove("street-cruise-active");
+  mapRoot.classList.remove("map-street-cruise");
+  updateStreetCruiseButton();
+  syncMapLibreView(true);
+}
+
+async function startStreetCruisePreview(): Promise<void> {
+  if (state.streetCruiseTimer) {
+    stopStreetCruisePreview(false);
+    return;
+  }
+  state.streetPovPinned = true;
+  await setBaseMap("3d");
+  const points = streetCruisePoints();
+  if (points.length < 2) {
+    syncMapLibreView(true);
+    updateStreetCruiseButton();
+    return;
+  }
+  document.body.classList.add("street-cruise-active");
+  mapRoot.classList.add("map-street-cruise");
+  updateStreetCruiseButton();
+  let index = 0;
+  const tick = (): void => {
+    const point = points[index];
+    const next = points[Math.min(index + 1, points.length - 1)];
+    if (!point || !next) {
+      stopStreetCruisePreview(true);
+      return;
+    }
+    const bearing = computeBearing(point.lat, point.lng, next.lat, next.lng);
+    map.setBearing(bearing);
+    map.flyTo([point.lat, point.lng], Math.max(map.getZoom(), MAPLIBRE_STREET_ZOOM + 0.32), {
+      animate: true,
+      duration: 0.85,
+      easeLinearity: 0.22,
+    });
+    syncMapLibreView(true);
+    index += 1;
+    if (index >= points.length) {
+      stopStreetCruisePreview(true);
+      return;
+    }
+    state.streetCruiseTimer = window.setTimeout(tick, 980);
+  };
+  tick();
+}
+
+function toggleStreetCruisePreview(): void {
+  if (state.streetCruiseTimer) {
+    stopStreetCruisePreview(false);
+  } else {
+    void startStreetCruisePreview();
+  }
+}
+
 // Tablet & POI interactions
 const TABLET_CATEGORIES = ["all", "hospital", "worship", "mall", "campus", "parking"] as const;
 const TABLET_CATEGORY_LABELS: Record<(typeof TABLET_CATEGORIES)[number], string> = {
   all: "Semua",
   hospital: "Rumah Sakit",
-  worship: "Mesjid",
+  worship: "Ibadah",
   mall: "Belanja",
   campus: "Sekolah/Kampus",
   parking: "Parkir",
@@ -3381,6 +3772,7 @@ function updateTabletCategoryView(): void {
 }
 
 function clearDestinationRoute(): void {
+  stopStreetCruisePreview(false);
   if (state.routeLayer) {
     try { map.removeLayer(state.routeLayer); } catch { }
     state.routeLayer = null;
@@ -3391,8 +3783,10 @@ function clearDestinationRoute(): void {
   }
   state.activeRouteTargetPoi = null;
   state.activeRouteSteps = [];
+  state.activeRouteGeometry = [];
   state.activeRouteDistance = 0;
   state.activeRouteDuration = 0;
+  updateMapLibreRouteLayer();
 }
 
 function setDestinationToPoi(poi: PoiRecord): void {
@@ -3404,6 +3798,8 @@ function setDestinationToPoi(poi: PoiRecord): void {
 
   const drawRoute = (points: L.LatLngExpression[]): void => {
     if (routeRequestId !== state.routeRequestSeq) return;
+    state.activeRouteGeometry = points.map((point) => L.latLng(point));
+    updateMapLibreRouteLayer();
     const poly = L.polyline(points, {
       color: "#15b77a",
       weight: isTablet() ? 7 : 4,
@@ -3533,6 +3929,14 @@ const BottomRightControl = L.Control.extend({
                 stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
         </svg>
       </button>
+      <button type="button" class="toolbar-btn toolbar-pov" data-action="street-pov" title="Telusuri jalan">
+        <svg viewBox="0 0 20 20" fill="none" width="16" height="16">
+          <path d="M10 2.5v15M10 2.5L5.5 7M10 2.5L14.5 7"
+                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M4 17.5h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+        <span class="toolbar-pov-label">Jalan</span>
+      </button>
       <div class="toolbar-divider"></div>
       <button type="button" class="toolbar-btn toolbar-zoom" data-action="zoom-in"  title="Zoom in">+</button>
       <button type="button" class="toolbar-btn toolbar-zoom" data-action="zoom-out" title="Zoom out">−</button>
@@ -3561,6 +3965,14 @@ const BottomRightControl = L.Control.extend({
                 stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
         </svg>
       </button>
+      <button type="button" class="toolbar-btn toolbar-pov" data-action="street-pov" title="Telusuri jalan">
+        <svg viewBox="0 0 20 20" fill="none" width="16" height="16">
+          <path d="M10 2.5v15M10 2.5L5.5 7M10 2.5L14.5 7"
+                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M4 17.5h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+        <span class="toolbar-pov-label">Jalan</span>
+      </button>
       <div class="toolbar-divider"></div>
       <button type="button" class="toolbar-btn toolbar-zoom" data-action="zoom-in"  title="Zoom in">+</button>
       <button type="button" class="toolbar-btn toolbar-zoom" data-action="zoom-out" title="Zoom out">−</button>
@@ -3576,6 +3988,7 @@ const BottomRightControl = L.Control.extend({
       mode: "Ganti tampilan peta",
       locate: "Lokasi saya",
       home: "Kembali ke posisi device",
+      "street-pov": "Telusuri jalan",
       "zoom-in": "Zoom in",
       "zoom-out": "Zoom out",
       camera: "Camera preview",
@@ -3600,6 +4013,8 @@ const BottomRightControl = L.Control.extend({
     state.compassBtn = container.querySelector<HTMLButtonElement>(".toolbar-compass");
     state.cameraPreview = container.querySelector<HTMLDivElement>(".camera-thumb-wrap");
     state.cameraButton = container.querySelector<HTMLButtonElement>(".toolbar-camera");
+    state.streetCruiseButton = container.querySelector<HTMLButtonElement>(".toolbar-pov");
+    updateStreetCruiseButton();
 
     container.querySelectorAll<HTMLButtonElement>("button[data-action]").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -3607,6 +4022,7 @@ const BottomRightControl = L.Control.extend({
         if (action === "compass") handleCompassClick();
         else if (action === "locate") locateUser();
         else if (action === "home") goHome();
+        else if (action === "street-pov") toggleStreetCruisePreview();
         else if (action === "camera") {
           if (state.activeRouteTargetPoi && (isMobile() || isTablet())) {
             openARCameraSheet(state.activeRouteTargetPoi);
@@ -3673,6 +4089,7 @@ syncModeControlVisibility();
 map.on("rotate", updateCompass);
 map.on("move zoom", updateCompass);
 map.on("zoomend", rescaleMarkers);
+map.on("zoomend moveend", updateStreetCruiseButton);
 map.on("move zoom rotate", () => syncMapLibreView());
 map.on("resize", () => {
   state.maplibreMap?.resize();
@@ -3738,7 +4155,7 @@ function applyDevices(devices: DeviceRecord[]): void {
   });
   if (!state.hasCentered) {
     map.setView([selected.position.lat, selected.position.lng],
-      Math.max(map.getZoom() || DEFAULT_ZOOM, isTablet() ? 17 : DEFAULT_ZOOM), { animate: false });
+      Math.max(map.getZoom() || DEFAULT_ZOOM, isTablet() ? MAPLIBRE_STREET_ZOOM + 0.25 : DEFAULT_ZOOM), { animate: false });
     state.hasCentered = true;
     if (isTablet()) {
       void setBaseMap("3d").then(() => {
@@ -4485,7 +4902,7 @@ function initTabletDashboard(): void {
   if (!isTablet()) return;
   document.body.classList.add("tablet-dashboard");
   void setBaseMap("3d").then(() => {
-    map.setZoom(Math.max(map.getZoom(), 17), { animate: false });
+    map.setZoom(Math.max(map.getZoom(), MAPLIBRE_STREET_ZOOM + 0.25), { animate: false });
     map.setBearing(normBearing(map.getBearing?.() ?? 0));
     state.maplibreMap?.resize();
     syncMapLibreView(true);
