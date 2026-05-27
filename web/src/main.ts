@@ -123,6 +123,37 @@ type TrafficState = {
   recommendation: string;
   updatedAt: number;
 };
+type NavigationStep = {
+  instruction: string;
+  roadName: string;
+  distance: number;
+  location?: [number, number];
+  bearingAfter?: number;
+  modifier?: string;
+  type?: string;
+};
+type ArPrediction = {
+  bbox: number[];
+  class?: string;
+  score?: number;
+};
+type ArDetector = {
+  kind: "mediapipe" | "tfjs";
+  detect(video: HTMLVideoElement): Promise<ArPrediction[]>;
+};
+type ArObjectCategory = "person" | "vehicle" | "plant" | "traffic" | "road" | "other";
+type ArObjectTrack = {
+  key: string;
+  label: string;
+  category: ArObjectCategory;
+  cx: number;
+  cy: number;
+  bw: number;
+  bh: number;
+  distance: number;
+  score: number;
+  lastSeen: number;
+};
 
 type PoiKind = "hospital" | "mall" | "campus" | "parking" | "park" | "worship" | "school" | "office" | "restaurant" | "monument" | "terminal" | "station" | "shelter" | "cemetery" | "transport" | "other";
 
@@ -223,6 +254,10 @@ const state = {
   tabletSearchQuery: "",
   routeLayer: null as L.LayerGroup | null,
   destinationMarker: null as L.Marker | null,
+  activeRouteTargetPoi: null as PoiRecord | null,
+  activeRouteSteps: [] as NavigationStep[],
+  activeRouteDistance: 0,
+  activeRouteDuration: 0,
   activeModalDeviceId: null as string | null,
   activeModalPoiId: null as string | null,
   trafficRefreshTimer: 0,
@@ -454,7 +489,7 @@ function renderPoiModal(poi: PoiRecord): string {
     </div>
     <div class="modal-content poi-modal-content">
       <div class="poi-hero">
-        <img class="poi-hero-image" src="${escapeHtml(poi.imageUrl)}" alt="${escapeHtml(poi.title)}">
+        <img class="poi-hero-image" src="${escapeHtml(poi.imageUrl || POI_LIBRARY[poi.kind].imageUrl)}" alt="${escapeHtml(poi.title)}" loading="lazy" referrerpolicy="no-referrer">
         <div class="poi-hero-overlay">
           <span class="poi-badge">${escapeHtml(poi.kind.toUpperCase())}</span>
           <span class="poi-rating">★ ${escapeHtml(poi.rating)}</span>
@@ -507,17 +542,20 @@ function openPoiModal(poi: PoiRecord): void {
     } catch (err) { console.warn(err); }
   });
   startBtn?.addEventListener("click", async () => {
-    // Start navigation: draw route and if mobile open AR camera view
+    // Start navigation and open AR camera on phone/tablet dashboard.
     void setDestinationToPoi(poi);
-    if (isMobile()) {
+    if (isMobile() || isTablet()) {
       openARCameraSheet(poi);
     }
   });
 
-  // populate image from Unsplash (fallback) and compute distance/ETA via OSRM
+  // keep the curated internet image and fall back to the local category image if it fails
   const heroImg = sheet.querySelector<HTMLImageElement>(".poi-hero-image");
   if (heroImg) {
-    heroImg.src = `https://source.unsplash.com/featured/?${encodeURIComponent(poi.title)}`;
+    heroImg.onerror = () => {
+      heroImg.onerror = null;
+      heroImg.src = POI_LIBRARY[poi.kind].imageUrl || POI_LIBRARY.other.imageUrl;
+    };
   }
 
   const distanceEl = sheet.querySelector<HTMLElement>("[data-field=poi-distance]");
@@ -539,7 +577,7 @@ function openPoiModal(poi: PoiRecord): void {
       if (etaEl) etaEl.textContent = formatEtaSeconds(dur);
       if (routeSummaryEl && route && route.legs && route.legs.length) {
         const steps = route.legs[0].steps || [];
-        routeSummaryEl.innerHTML = `<div class="route-steps"><strong>Rute:</strong><ol>${steps.slice(0, 6).map((s: any) => `<li>${escapeHtml(String(s.maneuver?.instruction || s.name || 'Lurus'))} (${formatDistance(s.distance)})</li>`).join('')}</ol></div>`;
+        routeSummaryEl.innerHTML = `<div class="route-steps"><strong>Rute:</strong><ol>${steps.slice(0, 6).map((s: any) => `<li>${escapeHtml(buildOsrmInstruction(s))} (${formatDistance(Number(s.distance) || 0)})</li>`).join('')}</ol></div>`;
       }
     } catch (err) {
       try {
@@ -562,10 +600,23 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
     <div class="ar-fullscreen-wrapper">
       <video class="ar-video" autoplay playsinline muted></video>
       <canvas class="ar-canvas"></canvas>
+      <div class="ar-turn-panel" data-field="ar-turn-panel">
+        <div class="ar-turn-row">
+          <div class="ar-turn-arrow" data-field="ar-turn-arrow">↑</div>
+          <div class="ar-turn-copy">
+            <div class="ar-turn-distance" data-field="ar-turn-distance">-</div>
+            <div class="ar-turn-road" data-field="ar-turn-road">Menyiapkan rute</div>
+          </div>
+        </div>
+        <div class="ar-lane-strip" data-field="ar-lane-strip">
+          <span>↑</span><span>↑</span><span>↱</span>
+        </div>
+      </div>
+      <button class="ar-restore-panel" data-field="ar-restore-panel" type="button">‹</button>
       <div class="ar-route-corridor" data-field="ar-route-corridor" aria-hidden="true">
         <div class="ar-route-glow"></div>
         <div class="ar-route-lane">
-          <span></span><span></span><span></span>
+          <span></span><span></span><span></span><i data-field="ar-route-bend"></i>
         </div>
       </div>
       <div class="ar-guidance">
@@ -602,6 +653,12 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
 
   const video = overlay.querySelector<HTMLVideoElement>('.ar-video');
   const canvas = overlay.querySelector<HTMLCanvasElement>('.ar-canvas');
+  const turnPanel = overlay.querySelector<HTMLElement>('[data-field="ar-turn-panel"]');
+  const turnArrow = overlay.querySelector<HTMLElement>('[data-field="ar-turn-arrow"]');
+  const turnDistance = overlay.querySelector<HTMLElement>('[data-field="ar-turn-distance"]');
+  const turnRoad = overlay.querySelector<HTMLElement>('[data-field="ar-turn-road"]');
+  const laneStrip = overlay.querySelector<HTMLElement>('[data-field="ar-lane-strip"]');
+  const restorePanel = overlay.querySelector<HTMLButtonElement>('[data-field="ar-restore-panel"]');
   const routeCorridor = overlay.querySelector<HTMLElement>('[data-field="ar-route-corridor"]');
   const poiLayer = overlay.querySelector<HTMLElement>('.ar-poi-layer');
   const objectLayer = overlay.querySelector<HTMLElement>('.ar-object-layer');
@@ -618,10 +675,16 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
   const pipContainer = overlay.querySelector<HTMLElement>('.ar-pip-map-container');
   const pipMapEl = overlay.querySelector<HTMLElement>('#ar-pip-map');
   const pipDistanceEl = overlay.querySelector<HTMLElement>('[data-field="pip-distance"]');
-  if (!video || !canvas || !routeCorridor || !poiLayer || !objectLayer || !poiRail || !statusEl || !distanceEl || !etaEl || !guidanceArrow || !guidanceText || !targetBeacon || !toggleBtn || !closeBtn || !pipContainer || !pipMapEl || !pipDistanceEl) return;
+  if (!video || !canvas || !turnPanel || !turnArrow || !turnDistance || !turnRoad || !laneStrip || !restorePanel || !routeCorridor || !poiLayer || !objectLayer || !poiRail || !statusEl || !distanceEl || !etaEl || !guidanceArrow || !guidanceText || !targetBeacon || !toggleBtn || !closeBtn || !pipContainer || !pipMapEl || !pipDistanceEl) return;
 
   const videoEl = video as HTMLVideoElement;
   const canvasEl = canvas as HTMLCanvasElement;
+  const turnPanelEl = turnPanel as HTMLElement;
+  const turnArrowEl = turnArrow as HTMLElement;
+  const turnDistanceEl = turnDistance as HTMLElement;
+  const turnRoadEl = turnRoad as HTMLElement;
+  const laneStripEl = laneStrip as HTMLElement;
+  const restorePanelEl = restorePanel as HTMLButtonElement;
   const routeCorridorEl = routeCorridor as HTMLElement;
   const poiLayerEl = poiLayer as HTMLElement;
   const objectLayerEl = objectLayer as HTMLElement;
@@ -651,6 +714,8 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
   let destinationReached = false;
   let poiCards = new Map<string, HTMLElement>();
   let objectCards = new Map<string, HTMLElement>();
+  let objectTracks = new Map<string, ArObjectTrack>();
+  let objectTrackSeq = 0;
   let nearbyFetchToken = 0;
   let nearbyFetchBusy = false;
   let lastNearbyFetchAt = 0;
@@ -665,6 +730,7 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
   let cleanedUp = false;
   let routeRefreshAt = 0;
   let routeRefreshPos: L.LatLng | null = null;
+  let panelTouchX = 0;
 
   function setStatus(text: string): void {
     statusElEl.textContent = text;
@@ -700,6 +766,51 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
     routeCorridorEl.style.opacity = dist < 10 ? '0.25' : '1';
     routeCorridorEl.classList.toggle('is-turning-left', delta < -14);
     routeCorridorEl.classList.toggle('is-turning-right', delta > 14);
+  }
+
+  function nextNavigationStep(distToTarget: number, bearingToTarget: number): NavigationStep {
+    if (!currentPos || !state.activeRouteSteps.length) {
+      return {
+        instruction: turnInstructionFromDelta(bearingDelta(headingDeg, bearingToTarget)),
+        roadName: currentTarget.title,
+        distance: distToTarget,
+        bearingAfter: bearingToTarget,
+      };
+    }
+    const upcoming = state.activeRouteSteps
+      .map((step) => {
+        const d = step.location
+          ? haversineDistanceMeters(currentPos!.lat, currentPos!.lng, step.location[1], step.location[0])
+          : step.distance;
+        return { step, d };
+      })
+      .filter(({ step, d }) => step.type === "arrive" || d > 8)
+      .sort((a, b) => a.d - b.d)[0];
+    if (!upcoming) {
+      return {
+        instruction: "Lurus menuju tujuan",
+        roadName: currentTarget.title,
+        distance: distToTarget,
+        bearingAfter: bearingToTarget,
+      };
+    }
+    return { ...upcoming.step, distance: upcoming.d };
+  }
+
+  function updateTurnPanel(step: NavigationStep, fallbackBearing: number): void {
+    const arrow = turnArrowForModifier(step.modifier, step.type);
+    turnArrowEl.textContent = arrow;
+    turnDistanceEl.textContent = formatDistance(Math.max(0, step.distance));
+    turnRoadEl.textContent = step.instruction || step.roadName || currentTarget.title;
+    laneStripEl.innerHTML = [arrow === "↑" ? "↑" : "↑", "↑", arrow].map((a, i) => `<span class="${i === 2 ? 'is-active' : ''}">${a}</span>`).join("");
+    const bearing = typeof step.bearingAfter === "number" ? step.bearingAfter : fallbackBearing;
+    const delta = bearingDelta(headingDeg, bearing);
+    turnPanelEl.classList.toggle("is-turn-left", delta < -18);
+    turnPanelEl.classList.toggle("is-turn-right", delta > 18);
+  }
+
+  function setArPanelCollapsed(collapsed: boolean): void {
+    overlay.classList.toggle("ar-panel-collapsed", collapsed);
   }
 
   function ensurePipMap(): void {
@@ -848,6 +959,7 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
     etaElEl.textContent = `Waktu: ${formatEtaSeconds(eta)}`;
     const bearingToTarget = computeBearing(currentPos.lat, currentPos.lng, currentTarget.lat, currentTarget.lng);
     const deltaToTarget = bearingDelta(headingDeg, bearingToTarget);
+    const navStep = nextNavigationStep(dist, bearingToTarget);
     const halfFov = 36;
     const beaconX = Math.max(8, Math.min(92, 50 + (deltaToTarget / halfFov) * 42));
     const beaconY = Math.max(14, Math.min(66, 36 + (dist / 1500) * 12));
@@ -856,6 +968,7 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
     guidanceTextEl.textContent = `${bearingLabel(bearingToTarget)} · ${turnInstructionFromDelta(deltaToTarget)} · ${formatDistance(dist)}`;
     pipDistanceElDiv.textContent = `${formatDistance(dist)}`;
     updateRouteCorridor(deltaToTarget, dist);
+    updateTurnPanel(navStep, bearingToTarget);
     targetBeaconEl.style.left = `${beaconX}%`;
     targetBeaconEl.style.top = `${beaconY}%`;
     targetBeaconEl.title = `${currentTarget.title} · ${bearingLabel(bearingToTarget)} · ${formatDistance(dist)}`;
@@ -886,20 +999,20 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
     const halfFov = fov / 2;
     const inRange = dist <= 1300;
     const inView = Math.abs(delta) <= halfFov;
-    if (!inRange) {
+    if (!inRange || !inView) {
       card.remove();
       poiCards.delete(poi.id);
       return false;
     }
-    const edgeSide = delta > 0 ? 91 : 9;
-    const screenX = inView ? Math.max(8, Math.min(92, 50 + (delta / halfFov) * 40)) : edgeSide;
-    const lift = inView ? clamp(68 - Math.log10(Math.max(dist, 5)) * 18, 8, 62) : clamp(44 + Math.abs(delta) / 6, 36, 70);
-    const size = inView ? clamp(1.02 - dist / 2100, 0.86, 1.02) : 0.84;
+    const screenX = Math.max(8, Math.min(92, 50 + (delta / halfFov) * 40));
+    const lift = clamp(68 - Math.log10(Math.max(dist, 5)) * 18, 8, 62);
+    const size = clamp(1.02 - dist / 2100, 0.82, 1.04);
     const dirLabel = bearingLabel(bearingToPoi);
     const turnLabel = turnInstructionFromDelta(delta);
     const centered = Math.abs(delta) < 8;
     card.classList.remove('ar-skeleton-card');
-    card.classList.toggle('ar-poi-edge', !inView);
+    card.classList.remove('ar-poi-edge');
+    card.classList.add('ar-poi-visible');
     card.title = `${poi.title} · ${dirLabel} · ${turnLabel}`;
     card.innerHTML = `
       <div class="ar-poi-icon">${escapeHtml(poi.icon || poiVisual(poi.kind).icon)}</div>
@@ -909,8 +1022,8 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
     Object.assign(card.style, {
       left: `${screenX}%`,
       top: `${lift}%`,
-      transform: `translate(-50%, -50%) scale(${size}) perspective(900px) rotateX(${inView ? 16 : 4}deg) rotateY(${delta > 0 ? '-8deg' : '8deg'})`,
-      opacity: `${clamp(1.15 - dist / 1500, inView ? 0.34 : 0.58, 1)}`,
+      transform: `translate(-50%, -50%) scale(${size}) perspective(900px) rotateX(16deg) rotateY(${delta > 0 ? '-8deg' : '8deg'})`,
+      opacity: `${clamp(1.15 - dist / 1500, 0.34, 1)}`,
     });
     if (poi.id === currentTarget.id) {
       card.classList.add('ar-target-card');
@@ -1005,52 +1118,161 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
     setStatus('POI sekitar aktif');
   }
 
-  function arObjectCategory(label: string): 'person' | 'vehicle' | 'plant' | 'traffic' | 'other' {
+  function arObjectCategory(label: string): ArObjectCategory {
     const key = label.toLowerCase();
     if (/person/.test(key)) return 'person';
     if (/car|truck|bus|motorcycle|bicycle|vehicle/.test(key)) return 'vehicle';
-    if (/plant|tree|flower|potted/.test(key)) return 'plant';
+    if (/plant|tree|flower|potted|vase/.test(key)) return 'plant';
     if (/traffic light|stop sign/.test(key)) return 'traffic';
+    if (/road|street|sidewalk|crosswalk/.test(key)) return 'road';
     return 'other';
   }
 
-  function updateObjectOverlays(predictions: Array<{ bbox: number[]; class?: string; score?: number }>): void {
+  function estimateObjectDistanceMeters(label: string, bbox: number[]): number {
+    const [, , w, h] = bbox;
+    const vw = Math.max(videoEl.videoWidth, 1);
+    const vh = Math.max(videoEl.videoHeight, 1);
+    const key = label.toLowerCase();
+    const heightRatio = clamp(h / vh, 0.02, 1.4);
+    const widthRatio = clamp(w / vw, 0.02, 1.4);
+    const realHeight = /person/.test(key) ? 1.65
+      : /car|truck|bus|motorcycle|bicycle/.test(key) ? 1.45
+        : /plant|tree|potted|vase/.test(key) ? 0.9
+          : /traffic light|stop sign/.test(key) ? 0.7
+            : 1.0;
+    const focalRatio = /person/.test(key) ? 0.72 : 0.62;
+    const depthFromHeight = (realHeight * focalRatio) / heightRatio;
+    const depthFromWidth = (/car|truck|bus|motorcycle|bicycle/.test(key) ? 1.8 : realHeight * 0.55) * 0.65 / widthRatio;
+    const raw = Math.min(depthFromHeight, depthFromWidth * 1.15);
+    return clamp(raw, 0.45, 80);
+  }
+
+  function trackedObjectPredictions(predictions: ArPrediction[]): ArObjectTrack[] {
+    const now = Date.now();
+    const used = new Set<string>();
+    const nextTracks: ArObjectTrack[] = [];
+    predictions
+      .filter((p) => (p.score ?? 0) > 0.25)
+      .slice(0, 12)
+      .forEach((p) => {
+        const label = p.class || 'object';
+        const category = arObjectCategory(label);
+        const [x, y, w, h] = p.bbox;
+        const bw = Math.max(7, (w / Math.max(videoEl.videoWidth, 1)) * 100);
+        const bh = Math.max(7, (h / Math.max(videoEl.videoHeight, 1)) * 100);
+        const cx = ((x + w / 2) / Math.max(videoEl.videoWidth, 1)) * 100;
+        const cy = ((y + h / 2) / Math.max(videoEl.videoHeight, 1)) * 100;
+        const distance = estimateObjectDistanceMeters(label, p.bbox);
+        let best: ArObjectTrack | null = null;
+        let bestScore = Infinity;
+        for (const track of objectTracks.values()) {
+          if (used.has(track.key) || track.category !== category) continue;
+          const d = Math.hypot(track.cx - cx, track.cy - cy);
+          if (d < bestScore && d < 18) {
+            best = track;
+            bestScore = d;
+          }
+        }
+        const key = best?.key || `ar-track-${++objectTrackSeq}`;
+        const prev = best || { cx, cy, bw, bh, distance, score: p.score ?? 0 };
+        const alpha = best ? 0.42 : 1;
+        const next: ArObjectTrack = {
+          key,
+          label,
+          category,
+          cx: prev.cx + (cx - prev.cx) * alpha,
+          cy: prev.cy + (cy - prev.cy) * alpha,
+          bw: prev.bw + (bw - prev.bw) * alpha,
+          bh: prev.bh + (bh - prev.bh) * alpha,
+          distance: prev.distance + (distance - prev.distance) * alpha,
+          score: p.score ?? 0,
+          lastSeen: now,
+        };
+        objectTracks.set(key, next);
+        used.add(key);
+        nextTracks.push(next);
+      });
+    for (const [key, track] of objectTracks.entries()) {
+      if (now - track.lastSeen > 900) objectTracks.delete(key);
+    }
+    return nextTracks;
+  }
+
+  function updateObjectOverlays(predictions: ArPrediction[]): void {
     const active = new Set<string>();
-    predictions.filter((p) => (p.score ?? 0) > 0.32).slice(0, 10).forEach((p, index) => {
-      const key = `${p.class || 'object'}-${index}`;
-      active.add(key);
-      const label = p.class || 'object';
-      const readableLabel = detectionLabel(label);
-      const category = arObjectCategory(label);
-      const card = ensureObjectCard(key, label);
-      const [x, y, w, h] = p.bbox;
-      const bw = Math.max(8, (w / Math.max(videoEl.videoWidth, 1)) * 100);
-      const bh = Math.max(8, (h / Math.max(videoEl.videoHeight, 1)) * 100);
-      const cx = ((x + w / 2) / Math.max(videoEl.videoWidth, 1)) * 100;
-      const cy = ((y + h / 2) / Math.max(videoEl.videoHeight, 1)) * 100;
-      const distanceHint = Math.max(1, Math.round(1200 / Math.max(bw, 8)));
-      const scorePct = Math.round((p.score ?? 0) * 100);
-      card.className = `ar-object-card ar-object-${category}`;
+    trackedObjectPredictions(predictions).forEach((track) => {
+      active.add(track.key);
+      const readableLabel = detectionLabel(track.label);
+      const card = ensureObjectCard(track.key, track.label);
+      const scorePct = Math.round(track.score * 100);
+      card.className = `ar-object-card ar-object-${track.category}`;
       card.innerHTML = `
-        <div class="ar-object-shape"></div>
+        <div class="ar-object-avatar" aria-hidden="true">
+          <span class="avatar-head"></span>
+          <span class="avatar-body"></span>
+          <span class="avatar-left"></span>
+          <span class="avatar-right"></span>
+          <span class="avatar-base"></span>
+        </div>
         <div class="ar-object-tag">
           <span class="ar-object-label">${escapeHtml(readableLabel)}</span>
-          <span class="ar-object-distance">${distanceHint}m · ${scorePct}%</span>
+          <span class="ar-object-distance">${track.distance < 10 ? track.distance.toFixed(1) : Math.round(track.distance)}m · ${scorePct}%</span>
         </div>
       `;
       Object.assign(card.style, {
-        left: `${cx}%`,
-        top: `${cy}%`,
-        width: `${bw}%`,
-        height: `${bh}%`,
-        transform: ar3dEnabled ? 'perspective(900px) rotateX(18deg)' : '',
+        left: `${track.cx}%`,
+        top: `${track.cy}%`,
+        width: `${clamp(track.bw, 12, 44)}%`,
+        height: `${clamp(track.bh, 12, 52)}%`,
+        transform: ar3dEnabled ? `translate(-50%, -50%) perspective(900px) rotateX(${clamp(22 - track.distance, 4, 18)}deg)` : 'translate(-50%, -50%)',
         opacity: '1',
       });
     });
     cleanupCollections(new Set(poiCards.keys()), active);
   }
 
-  async function loadTfModel(): Promise<any | null> {
+  async function loadMediaPipeDetector(): Promise<ArDetector | null> {
+    try {
+      const dynamicImport = new Function('url', 'return import(url)') as (url: string) => Promise<any>;
+      const vision = await dynamicImport('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/vision_bundle.mjs');
+      const fileset = await vision.FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm');
+      const detector = await vision.ObjectDetector.createFromOptions(fileset, {
+        baseOptions: {
+          modelAssetPath: 'https://storage.googleapis.com/mediapipe-tasks/object_detector/efficientdet_lite0_uint8.tflite',
+          delegate: 'GPU',
+        },
+        scoreThreshold: 0.25,
+        maxResults: 12,
+        runningMode: 'VIDEO',
+      });
+      return {
+        kind: 'mediapipe',
+        detect(videoInput: HTMLVideoElement): Promise<ArPrediction[]> {
+          const result = detector.detectForVideo(videoInput, performance.now());
+          const detections = Array.isArray(result?.detections) ? result.detections : [];
+          return Promise.resolve(detections.map((d: any) => {
+            const box = d.boundingBox || {};
+            const cat = Array.isArray(d.categories) ? d.categories[0] : null;
+            return {
+              bbox: [
+                Number(box.originX) || 0,
+                Number(box.originY) || 0,
+                Number(box.width) || 0,
+                Number(box.height) || 0,
+              ],
+              class: String(cat?.categoryName || 'object'),
+              score: Number(cat?.score) || 0,
+            };
+          }));
+        },
+      };
+    } catch (err) {
+      console.warn('MediaPipe detector load failed', err);
+      return null;
+    }
+  }
+
+  async function loadTfDetector(): Promise<ArDetector | null> {
     if (!(window as any).tf) {
       await new Promise<void>((resolve, reject) => {
         const s = document.createElement('script');
@@ -1069,7 +1291,22 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
         document.head.appendChild(s);
       });
     }
-    return (window as any).cocoSsd.load();
+    const tfModel = await (window as any).cocoSsd.load();
+    return {
+      kind: 'tfjs',
+      detect(videoInput: HTMLVideoElement): Promise<ArPrediction[]> {
+        return tfModel.detect(videoInput as any) as Promise<ArPrediction[]>;
+      },
+    };
+  }
+
+  async function loadArDetector(): Promise<ArDetector | null> {
+    const mediaPipe = await loadMediaPipeDetector();
+    if (mediaPipe) return mediaPipe;
+    return loadTfDetector().catch((err) => {
+      console.warn('TF detector load failed', err);
+      return null;
+    });
   }
 
   async function refreshAr(): Promise<void> {
@@ -1086,10 +1323,10 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
       setLiveHeading(map.getBearing?.() ?? headingDeg, false);
     }
     await fetchNearbyPoiCards();
-    if (model && !detectBusy && ar3dEnabled) {
+    if (detector && !detectBusy && ar3dEnabled) {
       detectBusy = true;
       try {
-        const preds = await model.detect(videoEl as any);
+        const preds = await detector.detect(videoEl);
         updateObjectOverlays(preds || []);
       } catch (err) {
         console.warn('detect error', err);
@@ -1100,7 +1337,7 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
     if (running) setTimeout(() => void refreshAr(), 320);
   }
 
-  let model: any | null = null;
+  let detector: ArDetector | null = null;
   let watchId: number | null = null;
   let orientationCleanup = () => { /* noop */ };
 
@@ -1123,9 +1360,9 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
       poiLayerEl.appendChild(skeletonPoi);
 
       try {
-        model = await loadTfModel();
+        detector = await loadArDetector();
       } catch (err) {
-        console.warn('TF model load failed', err);
+        console.warn('AR detector load failed', err);
       }
 
       const onGeoPosition = (pos: GeolocationPosition): void => {
@@ -1193,6 +1430,14 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
         poiLayerEl.classList.toggle('ar-3d-off', !ar3dEnabled);
         objectLayerEl.classList.toggle('ar-3d-off', !ar3dEnabled);
       });
+      turnPanelEl.addEventListener('touchstart', (ev) => {
+        panelTouchX = ev.touches[0]?.clientX ?? 0;
+      }, { passive: true });
+      turnPanelEl.addEventListener('touchend', (ev) => {
+        const endX = ev.changedTouches[0]?.clientX ?? panelTouchX;
+        if (panelTouchX - endX > 48) setArPanelCollapsed(true);
+      }, { passive: true });
+      restorePanelEl.addEventListener('click', () => setArPanelCollapsed(false));
 
       const applySwapState = (primaryCamera: boolean): void => {
         arIsPrimary = primaryCamera;
@@ -1204,6 +1449,8 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
         objectLayerEl.style.display = primaryCamera ? 'block' : 'none';
         poiRailEl.style.display = primaryCamera ? 'flex' : 'none';
         routeCorridorEl.style.display = primaryCamera ? 'block' : 'none';
+        turnPanelEl.style.display = primaryCamera ? 'block' : 'none';
+        restorePanelEl.style.display = primaryCamera ? '' : 'none';
         statusElEl.style.display = primaryCamera ? 'block' : 'none';
         distanceElEl.style.display = primaryCamera ? 'block' : 'none';
         etaElEl.style.display = primaryCamera ? 'block' : 'none';
@@ -1257,17 +1504,21 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
         objectCards.forEach((el) => el.remove());
         poiCards.clear();
         objectCards.clear();
+        objectTracks.clear();
         mapRoot.classList.remove('hidden');
         document.getElementById('m-bottom-nav')?.classList.remove('hidden');
         if (removeOverlay) overlay.remove();
       };
 
-      closeBtnEl.addEventListener('click', () => cleanupArSession(true));
+      closeBtnEl.addEventListener('click', () => {
+        clearDestinationRoute();
+        cleanupArSession(true);
+      });
       overlay.addEventListener('remove', () => cleanupArSession(false));
 
       currentPos = currentPos || map.getCenter();
       updatePipMap();
-      setStatus(model ? 'Kamera dan deteksi objek aktif' : 'Kamera aktif, model AI belum termuat');
+      setStatus(detector ? `Kamera dan deteksi objek aktif (${detector.kind})` : 'Kamera aktif, model AI belum termuat');
       await fetchNearbyPoiCards(true);
       void refreshAr();
     } catch (err) {
@@ -1674,6 +1925,52 @@ function formatEtaSeconds(sec: number): string {
   if (sec < 60) return `${Math.round(sec)}s`;
   if (sec < 3600) return `${Math.round(sec / 60)}m`;
   return `${Math.round(sec / 3600)}h`;
+}
+
+function turnArrowForModifier(modifier?: string, type?: string): string {
+  const raw = `${type || ""} ${modifier || ""}`.toLowerCase();
+  if (/uturn/.test(raw)) return "↺";
+  if (/sharp right|slight right|right/.test(raw)) return "↱";
+  if (/sharp left|slight left|left/.test(raw)) return "↰";
+  if (/roundabout|rotary/.test(raw)) return "⟳";
+  if (/arrive/.test(raw)) return "●";
+  return "↑";
+}
+
+function buildOsrmInstruction(step: any): string {
+  const maneuver = step?.maneuver || {};
+  const type = String(maneuver.type || "");
+  const modifier = String(maneuver.modifier || "");
+  const road = String(step?.name || "").trim();
+  const roadText = road ? ` ke ${road}` : "";
+  if (type === "depart") return road ? `Mulai di ${road}` : "Mulai";
+  if (type === "arrive") return "Tiba di tujuan";
+  if (/right/i.test(modifier)) return `Belok kanan${roadText}`;
+  if (/left/i.test(modifier)) return `Belok kiri${roadText}`;
+  if (/uturn/i.test(modifier)) return `Putar balik${roadText}`;
+  if (/roundabout|rotary/i.test(type)) return `Masuk bundaran${roadText}`;
+  return road ? `Lurus di ${road}` : "Lurus";
+}
+
+function normalizeRouteSteps(route: any): NavigationStep[] {
+  const legs = Array.isArray(route?.legs) ? route.legs : [];
+  return legs.flatMap((leg: any) => Array.isArray(leg?.steps) ? leg.steps : [])
+    .map((step: any) => {
+      const maneuver = step?.maneuver || {};
+      const location = Array.isArray(maneuver.location) && maneuver.location.length >= 2
+        ? [Number(maneuver.location[0]), Number(maneuver.location[1])] as [number, number]
+        : undefined;
+      return {
+        instruction: buildOsrmInstruction(step),
+        roadName: String(step?.name || "").trim() || "Jalan berikutnya",
+        distance: Math.max(0, Number(step?.distance) || 0),
+        location,
+        bearingAfter: Number.isFinite(Number(maneuver.bearing_after)) ? Number(maneuver.bearing_after) : undefined,
+        modifier: typeof maneuver.modifier === "string" ? maneuver.modifier : undefined,
+        type: typeof maneuver.type === "string" ? maneuver.type : undefined,
+      };
+    })
+    .filter((step: NavigationStep) => step.distance > 1 || step.type === "arrive");
 }
 
 function hashString(input: string): number {
@@ -2523,9 +2820,10 @@ async function setBaseMap(mode: BaseMapMode): Promise<void> {
     if (map.hasLayer(satelliteLayer)) map.removeLayer(satelliteLayer);
     if (!map.hasLayer(streetLayer)) streetLayer.addTo(map);
   } else if (mode === "3d") {
-    // Prefer true 3D: render MapLibre GL above the Leaflet map.
+    // Prefer true 3D: render MapLibre GL above the Leaflet street map.
+    // Keep Leaflet streets underneath as a graceful fallback if WebGL tiles are slow.
     if (map.hasLayer(satelliteLayer)) map.removeLayer(satelliteLayer);
-    if (map.hasLayer(streetLayer)) map.removeLayer(streetLayer);
+    if (!map.hasLayer(streetLayer)) streetLayer.addTo(map);
 
     const gl = await ensureMapLibreMap();
     if (!gl) {
@@ -3091,35 +3389,66 @@ function clearDestinationRoute(): void {
     try { map.removeLayer(state.destinationMarker); } catch { }
     state.destinationMarker = null;
   }
+  state.activeRouteTargetPoi = null;
+  state.activeRouteSteps = [];
+  state.activeRouteDistance = 0;
+  state.activeRouteDuration = 0;
 }
 
 function setDestinationToPoi(poi: PoiRecord): void {
   clearDestinationRoute();
+  state.activeRouteTargetPoi = poi;
   const from = state.vehicleMarker ? state.vehicleMarker.getLatLng() : map.getCenter();
   const to = L.latLng(poi.lat, poi.lng);
   const routeRequestId = ++state.routeRequestSeq;
 
   const drawRoute = (points: L.LatLngExpression[]): void => {
     if (routeRequestId !== state.routeRequestSeq) return;
-    const poly = L.polyline(points, { color: "#2563eb", weight: 4, opacity: 0.9 }).addTo(map);
+    const poly = L.polyline(points, {
+      color: "#15b77a",
+      weight: isTablet() ? 7 : 4,
+      opacity: 0.9,
+      lineCap: "round",
+      lineJoin: "round",
+    }).addTo(map);
     const dest = L.marker(to, { title: poi.title }).addTo(map);
     const group = L.layerGroup([poly, dest]);
     state.routeLayer = group.addTo(map);
     state.destinationMarker = dest;
-    map.fitBounds(poly.getBounds().pad(0.2));
+    if (!document.getElementById("m-ar-fullscreen")) {
+      map.fitBounds(poly.getBounds().pad(0.2));
+    }
   };
 
-  const drawFallback = (): void => drawRoute([from, to]);
+  const drawFallback = (): void => {
+    const dist = haversineDistanceMeters(from.lat, from.lng, to.lat, to.lng);
+    const bearing = computeBearing(from.lat, from.lng, to.lat, to.lng);
+    state.activeRouteDistance = dist;
+    state.activeRouteDuration = (dist / 1000) / 35 * 3600;
+    state.activeRouteSteps = [{
+      instruction: "Lurus menuju tujuan",
+      roadName: poi.title,
+      distance: dist,
+      location: [to.lng, to.lat],
+      bearingAfter: bearing,
+      type: "continue",
+    }];
+    drawRoute([from, to]);
+  };
 
   void (async () => {
     try {
-      const url = `https://router.project-osrm.org/route/v1/driving/${from.lng},${from.lat};${to.lng},${to.lat}?overview=full&geometries=geojson`;
+      const url = `https://router.project-osrm.org/route/v1/driving/${from.lng},${from.lat};${to.lng},${to.lat}?overview=full&steps=true&geometries=geojson`;
       const res = await fetch(url, { cache: "no-store" });
       if (!res.ok) throw new Error(`Route request failed: ${res.status}`);
       const data = await res.json() as {
-        routes?: Array<{ geometry?: { coordinates?: Array<[number, number]> } }>;
+        routes?: Array<{ distance?: number; duration?: number; legs?: any[]; geometry?: { coordinates?: Array<[number, number]> } }>;
       };
-      const coords = data.routes?.[0]?.geometry?.coordinates;
+      const route = data.routes?.[0];
+      state.activeRouteDistance = Math.max(0, Number(route?.distance) || 0);
+      state.activeRouteDuration = Math.max(0, Number(route?.duration) || 0);
+      state.activeRouteSteps = normalizeRouteSteps(route);
+      const coords = route?.geometry?.coordinates;
       if (!coords || coords.length < 2) throw new Error("Route geometry missing");
       drawRoute(coords.map(([lng, lat]) => [lat, lng] as L.LatLngExpression));
     } catch {
@@ -3135,6 +3464,7 @@ function handlePoiClick(poi: PoiRecord): void {
       void setDestinationToPoi(poi);
       // close tablet sheet if open
       document.getElementById("m-tablet-categories")?.remove();
+      openARCameraSheet(poi);
       return;
     }
     // fallback: open modal
@@ -3278,7 +3608,9 @@ const BottomRightControl = L.Control.extend({
         else if (action === "locate") locateUser();
         else if (action === "home") goHome();
         else if (action === "camera") {
-          if (isMobile()) {
+          if (state.activeRouteTargetPoi && (isMobile() || isTablet())) {
+            openARCameraSheet(state.activeRouteTargetPoi);
+          } else if (isMobile()) {
             switchMobileTab("its");
             focusITSVideoSection();
           } else {
@@ -3406,8 +3738,14 @@ function applyDevices(devices: DeviceRecord[]): void {
   });
   if (!state.hasCentered) {
     map.setView([selected.position.lat, selected.position.lng],
-      map.getZoom() || DEFAULT_ZOOM, { animate: false });
+      Math.max(map.getZoom() || DEFAULT_ZOOM, isTablet() ? 17 : DEFAULT_ZOOM), { animate: false });
     state.hasCentered = true;
+    if (isTablet()) {
+      void setBaseMap("3d").then(() => {
+        state.maplibreMap?.resize();
+        syncMapLibreView(true);
+      });
+    }
   }
 
   syncPoiMarkers([selected.position.lat, selected.position.lng]);
@@ -4142,7 +4480,20 @@ function initMobileUI(): void {
 
   map.invalidateSize();
 }
+
+function initTabletDashboard(): void {
+  if (!isTablet()) return;
+  document.body.classList.add("tablet-dashboard");
+  void setBaseMap("3d").then(() => {
+    map.setZoom(Math.max(map.getZoom(), 17), { animate: false });
+    map.setBearing(normBearing(map.getBearing?.() ?? 0));
+    state.maplibreMap?.resize();
+    syncMapLibreView(true);
+  });
+}
+
 initMobileUI();
+initTabletDashboard();
 void refreshSnapshot();
 // Also fetch nearby POIs immediately so tablet filters have data even if devices are empty
 void refreshOverpassLayer();
