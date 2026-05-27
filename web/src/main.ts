@@ -217,6 +217,8 @@ const state = {
   maplibreSyncing: false,
   // Tablet / routing helpers
   vehicleMarker: null as L.Marker | null,
+  userWatchId: null as number | null,
+  lastUserPoiSyncAt: 0,
   tabletCategoryIndex: null as number | null,
   tabletSearchQuery: "",
   routeLayer: null as L.LayerGroup | null,
@@ -560,6 +562,12 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
     <div class="ar-fullscreen-wrapper">
       <video class="ar-video" autoplay playsinline muted></video>
       <canvas class="ar-canvas"></canvas>
+      <div class="ar-route-corridor" data-field="ar-route-corridor" aria-hidden="true">
+        <div class="ar-route-glow"></div>
+        <div class="ar-route-lane">
+          <span></span><span></span><span></span>
+        </div>
+      </div>
       <div class="ar-guidance">
         <div class="ar-guidance-arrow" data-field="ar-arrow">↑</div>
         <div class="ar-guidance-text" data-field="ar-direction">Arah tujuan</div>
@@ -578,6 +586,7 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
       </div>
       <div class="ar-poi-layer"></div>
       <div class="ar-object-layer"></div>
+      <div class="ar-poi-rail" data-field="ar-poi-rail"></div>
       <div class="ar-controls-bottom">
         <button class="ar-toggle-3d" aria-label="Toggle 3D">3D</button>
         <button class="ar-swap-pip" aria-label="Swap PiP">↔️</button>
@@ -593,8 +602,10 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
 
   const video = overlay.querySelector<HTMLVideoElement>('.ar-video');
   const canvas = overlay.querySelector<HTMLCanvasElement>('.ar-canvas');
+  const routeCorridor = overlay.querySelector<HTMLElement>('[data-field="ar-route-corridor"]');
   const poiLayer = overlay.querySelector<HTMLElement>('.ar-poi-layer');
   const objectLayer = overlay.querySelector<HTMLElement>('.ar-object-layer');
+  const poiRail = overlay.querySelector<HTMLElement>('[data-field="ar-poi-rail"]');
   const statusEl = overlay.querySelector<HTMLElement>('[data-field="ar-status"]');
   const distanceEl = overlay.querySelector<HTMLElement>('[data-field="ar-distance"]');
   const etaEl = overlay.querySelector<HTMLElement>('[data-field="ar-eta"]');
@@ -607,12 +618,14 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
   const pipContainer = overlay.querySelector<HTMLElement>('.ar-pip-map-container');
   const pipMapEl = overlay.querySelector<HTMLElement>('#ar-pip-map');
   const pipDistanceEl = overlay.querySelector<HTMLElement>('[data-field="pip-distance"]');
-  if (!video || !canvas || !poiLayer || !objectLayer || !statusEl || !distanceEl || !etaEl || !guidanceArrow || !guidanceText || !targetBeacon || !toggleBtn || !closeBtn || !pipContainer || !pipMapEl || !pipDistanceEl) return;
+  if (!video || !canvas || !routeCorridor || !poiLayer || !objectLayer || !poiRail || !statusEl || !distanceEl || !etaEl || !guidanceArrow || !guidanceText || !targetBeacon || !toggleBtn || !closeBtn || !pipContainer || !pipMapEl || !pipDistanceEl) return;
 
   const videoEl = video as HTMLVideoElement;
   const canvasEl = canvas as HTMLCanvasElement;
+  const routeCorridorEl = routeCorridor as HTMLElement;
   const poiLayerEl = poiLayer as HTMLElement;
   const objectLayerEl = objectLayer as HTMLElement;
+  const poiRailEl = poiRail as HTMLElement;
   const statusElEl = statusEl as HTMLElement;
   const distanceElEl = distanceEl as HTMLElement;
   const etaElEl = etaEl as HTMLElement;
@@ -628,19 +641,30 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
 
   let stream: MediaStream | null = null;
   let running = true;
-  let headingDeg = map.getBearing?.() ?? 0;
-  let currentPos: L.LatLng | null = state.vehicleMarker?.getLatLng() ?? null;
+  let headingDeg = normBearing(map.getBearing?.() ?? 0);
+  let hasLiveHeading = false;
+  let lastHeadingAt = 0;
+  let currentPos: L.LatLng | null = state.vehicleMarker?.getLatLng() ?? map.getCenter();
   let currentTarget = targetPoi;
   let activePoiLookup = new Map<string, PoiRecord>();
+  let nearbyPois: PoiRecord[] = [];
   let destinationReached = false;
   let poiCards = new Map<string, HTMLElement>();
   let objectCards = new Map<string, HTMLElement>();
   let nearbyFetchToken = 0;
+  let nearbyFetchBusy = false;
+  let lastNearbyFetchAt = 0;
+  let lastNearbyFetchPos: L.LatLng | null = null;
   let detectBusy = false;
   let ar3dEnabled = true;
   let arIsPrimary = true;
   let pipMapInstance: L.Map | null = null;
+  let pipUserMarker: L.CircleMarker | null = null;
+  let pipTargetMarker: L.CircleMarker | null = null;
+  let pipRouteLine: L.Polyline | null = null;
   let cleanedUp = false;
+  let routeRefreshAt = 0;
+  let routeRefreshPos: L.LatLng | null = null;
 
   function setStatus(text: string): void {
     statusElEl.textContent = text;
@@ -655,6 +679,113 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
     if (abs < 12) return 'Lurus';
     if (delta > 0) return abs < 35 ? 'Belok kanan' : 'Ke kanan';
     return abs < 35 ? 'Belok kiri' : 'Ke kiri';
+  }
+
+  function setLiveHeading(rawHeading: number, live = true): void {
+    if (!Number.isFinite(rawHeading)) return;
+    const next = normBearing(rawHeading);
+    const diff = bearingDelta(headingDeg, next);
+    headingDeg = normBearing(headingDeg + diff * 0.35);
+    if (live) {
+      hasLiveHeading = true;
+      lastHeadingAt = Date.now();
+    }
+  }
+
+  function updateRouteCorridor(delta: number, dist: number): void {
+    const turnOffset = clamp(delta / 48, -1, 1) * 34;
+    const rotate = clamp(delta, -42, 42) * 0.45;
+    const scale = clamp(1.1 - dist / 2400, 0.86, 1.12);
+    routeCorridorEl.style.transform = `translateX(calc(-50% + ${turnOffset}px)) rotate(${rotate}deg) scale(${scale})`;
+    routeCorridorEl.style.opacity = dist < 10 ? '0.25' : '1';
+    routeCorridorEl.classList.toggle('is-turning-left', delta < -14);
+    routeCorridorEl.classList.toggle('is-turning-right', delta > 14);
+  }
+
+  function ensurePipMap(): void {
+    if (!currentPos) return;
+    if (!pipMapInstance) {
+      pipMapInstance = L.map(pipMapElDiv, {
+        zoomControl: false,
+        attributionControl: false,
+        dragging: false,
+        scrollWheelZoom: false,
+        doubleClickZoom: false,
+        boxZoom: false,
+        keyboard: false,
+        touchZoom: false,
+      }).setView([currentPos.lat, currentPos.lng], 17);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '',
+      }).addTo(pipMapInstance);
+      pipRouteLine = L.polyline([], { color: '#2563eb', weight: 4, opacity: 0.9 }).addTo(pipMapInstance);
+      pipUserMarker = L.circleMarker([currentPos.lat, currentPos.lng], {
+        radius: 6,
+        color: '#ffffff',
+        weight: 2,
+        fillColor: '#2563eb',
+        fillOpacity: 1,
+      }).addTo(pipMapInstance);
+      pipTargetMarker = L.circleMarker([currentTarget.lat, currentTarget.lng], {
+        radius: 6,
+        color: '#ffffff',
+        weight: 2,
+        fillColor: '#ef4444',
+        fillOpacity: 1,
+      }).addTo(pipMapInstance);
+    }
+  }
+
+  function updatePipMap(): void {
+    if (!currentPos) return;
+    ensurePipMap();
+    if (!pipMapInstance) return;
+    const target = L.latLng(currentTarget.lat, currentTarget.lng);
+    pipUserMarker?.setLatLng(currentPos);
+    pipTargetMarker?.setLatLng(target);
+    pipRouteLine?.setLatLngs([currentPos, target]);
+    const bounds = L.latLngBounds([currentPos, target]);
+    pipMapInstance.fitBounds(bounds.pad(0.35), { animate: false, padding: [16, 16] });
+    pipMapInstance.invalidateSize(false);
+    setTimeout(() => pipMapInstance?.invalidateSize(false), 60);
+  }
+
+  function refreshRouteIfNeeded(force = false): void {
+    if (!currentPos || arIsPrimary) return;
+    const now = Date.now();
+    const moved = routeRefreshPos
+      ? haversineDistanceMeters(routeRefreshPos.lat, routeRefreshPos.lng, currentPos.lat, currentPos.lng)
+      : Infinity;
+    if (!force && now - routeRefreshAt < 15_000 && moved < 25) return;
+    routeRefreshAt = now;
+    routeRefreshPos = currentPos;
+    setDestinationToPoi(currentTarget);
+  }
+
+  function updateCurrentPosition(latlng: L.LatLng, coords?: GeolocationCoordinates): void {
+    const previous = currentPos;
+    currentPos = latlng;
+    if (coords && Number.isFinite(coords.heading ?? NaN) && (coords.speed ?? 0) > 0.4) {
+      setLiveHeading(coords.heading as number, true);
+    }
+    if (state.vehicleMarker) {
+      state.vehicleMarker.setLatLng(latlng);
+    } else {
+      showVehicleMarker([latlng.lat, latlng.lng]);
+    }
+    if (!arIsPrimary) {
+      map.setView([latlng.lat, latlng.lng], Math.max(map.getZoom(), 17), { animate: true });
+      if (hasLiveHeading) map.setBearing(headingDeg);
+    }
+    const moved = previous
+      ? haversineDistanceMeters(previous.lat, previous.lng, latlng.lat, latlng.lng)
+      : Infinity;
+    updatePipMap();
+    updateTargetStats();
+    if (moved > 12) {
+      renderNearbyPoiCards(nearbyPois);
+      refreshRouteIfNeeded(false);
+    }
   }
 
   function ensureSkeletonCard(id: string, title: string, kind: string): HTMLElement {
@@ -723,6 +854,8 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
     guidanceArrowEl.style.transform = `rotate(${deltaToTarget}deg)`;
     guidanceArrowEl.classList.toggle('is-centered', Math.abs(deltaToTarget) < 8);
     guidanceTextEl.textContent = `${bearingLabel(bearingToTarget)} · ${turnInstructionFromDelta(deltaToTarget)} · ${formatDistance(dist)}`;
+    pipDistanceElDiv.textContent = `${formatDistance(dist)}`;
+    updateRouteCorridor(deltaToTarget, dist);
     targetBeaconEl.style.left = `${beaconX}%`;
     targetBeaconEl.style.top = `${beaconY}%`;
     targetBeaconEl.title = `${currentTarget.title} · ${bearingLabel(bearingToTarget)} · ${formatDistance(dist)}`;
@@ -751,21 +884,22 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
     const delta = bearingDelta(headingDeg, bearingToPoi);
     const fov = 72;
     const halfFov = fov / 2;
-    const inRange = dist <= 850;
+    const inRange = dist <= 1300;
     const inView = Math.abs(delta) <= halfFov;
-    const visible = inRange && inView;
-    if (!visible) {
+    if (!inRange) {
       card.remove();
       poiCards.delete(poi.id);
       return false;
     }
-    const screenX = Math.max(8, Math.min(92, 50 + (delta / halfFov) * 40));
-    const lift = clamp(68 - Math.log10(Math.max(dist, 5)) * 18, 8, 62);
-    const size = clamp(1.02 - dist / 2100, 0.86, 1.02);
+    const edgeSide = delta > 0 ? 91 : 9;
+    const screenX = inView ? Math.max(8, Math.min(92, 50 + (delta / halfFov) * 40)) : edgeSide;
+    const lift = inView ? clamp(68 - Math.log10(Math.max(dist, 5)) * 18, 8, 62) : clamp(44 + Math.abs(delta) / 6, 36, 70);
+    const size = inView ? clamp(1.02 - dist / 2100, 0.86, 1.02) : 0.84;
     const dirLabel = bearingLabel(bearingToPoi);
     const turnLabel = turnInstructionFromDelta(delta);
     const centered = Math.abs(delta) < 8;
     card.classList.remove('ar-skeleton-card');
+    card.classList.toggle('ar-poi-edge', !inView);
     card.title = `${poi.title} · ${dirLabel} · ${turnLabel}`;
     card.innerHTML = `
       <div class="ar-poi-icon">${escapeHtml(poi.icon || poiVisual(poi.kind).icon)}</div>
@@ -775,8 +909,8 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
     Object.assign(card.style, {
       left: `${screenX}%`,
       top: `${lift}%`,
-      transform: `translate(-50%, -50%) scale(${size}) perspective(900px) rotateX(16deg) rotateY(${delta > 0 ? '-8deg' : '8deg'})`,
-      opacity: `${clamp(1.15 - dist / 1300, 0.3, 1)}`,
+      transform: `translate(-50%, -50%) scale(${size}) perspective(900px) rotateX(${inView ? 16 : 4}deg) rotateY(${delta > 0 ? '-8deg' : '8deg'})`,
+      opacity: `${clamp(1.15 - dist / 1500, inView ? 0.34 : 0.58, 1)}`,
     });
     if (poi.id === currentTarget.id) {
       card.classList.add('ar-target-card');
@@ -789,16 +923,71 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
   mapRoot.classList.add('hidden');
   document.getElementById('m-bottom-nav')?.classList.add('hidden');
 
-  async function fetchNearbyPoiCards(): Promise<void> {
+  function renderPoiRail(pois: PoiRecord[]): void {
     if (!currentPos) return;
+    poiRailEl.innerHTML = '';
+    const nearest = pois
+      .filter((poi) => poi.id !== currentTarget.id)
+      .map((poi) => ({
+        poi,
+        dist: haversineDistanceMeters(currentPos!.lat, currentPos!.lng, poi.lat, poi.lng),
+      }))
+      .sort((a, b) => a.dist - b.dist)
+      .slice(0, 6);
+    poiRailEl.classList.toggle('is-empty', nearest.length === 0);
+    nearest.forEach(({ poi, dist }) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'ar-poi-chip';
+      button.dataset.poiId = poi.id;
+      button.innerHTML = `
+        <span class="ar-poi-chip-icon">${escapeHtml(poi.icon || poiVisual(poi.kind).icon)}</span>
+        <span class="ar-poi-chip-main">${escapeHtml(poi.title)}</span>
+        <span class="ar-poi-chip-distance">${formatDistance(dist)}</span>
+      `;
+      button.addEventListener('click', () => openPoiModal(poi));
+      poiRailEl.appendChild(button);
+    });
+  }
+
+  function renderNearbyPoiCards(pois: PoiRecord[]): void {
+    activePoiLookup = new Map([[currentTarget.id, currentTarget], ...pois.map((p) => [p.id, p] as [string, PoiRecord])]);
+    const activePoiIds = new Set<string>();
+    activePoiIds.add(currentTarget.id);
+    pois.forEach((poi) => {
+      const card = ensureSkeletonCard(poi.id, poi.title, poi.kind);
+      if (placePoiCard(card, poi)) activePoiIds.add(poi.id);
+    });
+    cleanupCollections(activePoiIds, new Set(objectCards.keys()));
+    renderPoiRail(pois);
+  }
+
+  async function fetchNearbyPoiCards(force = false): Promise<void> {
+    if (!currentPos) return;
+    const now = Date.now();
+    const moved = lastNearbyFetchPos
+      ? haversineDistanceMeters(lastNearbyFetchPos.lat, lastNearbyFetchPos.lng, currentPos.lat, currentPos.lng)
+      : Infinity;
+    if (!force && nearbyPois.length && now - lastNearbyFetchAt < 10_000 && moved < 35) {
+      renderNearbyPoiCards(nearbyPois);
+      return;
+    }
+    if (nearbyFetchBusy) {
+      renderNearbyPoiCards(nearbyPois);
+      return;
+    }
+    nearbyFetchBusy = true;
     const token = ++nearbyFetchToken;
     setStatus('Memuat POI sekitar...');
     const bounds = L.latLngBounds(
-      [currentPos.lat - 0.01, currentPos.lng - 0.01],
-      [currentPos.lat + 0.01, currentPos.lng + 0.01],
+      [currentPos.lat - 0.012, currentPos.lng - 0.012],
+      [currentPos.lat + 0.012, currentPos.lng + 0.012],
     );
     let pois = await fetchOverpassFeaturesForBounds(bounds).catch(() => [] as PoiRecord[]);
-    if (token !== nearbyFetchToken) return;
+    if (token !== nearbyFetchToken) {
+      nearbyFetchBusy = false;
+      return;
+    }
     if (!pois.length) {
       const c = currentPos;
       pois = [
@@ -808,42 +997,52 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
         { id: 'ar-local-cemetery', kind: 'cemetery', title: 'Pemakaman', description: '', address: '', imageUrl: POI_LIBRARY.cemetery.imageUrl, rating: POI_LIBRARY.cemetery.rating, icon: poiVisual('cemetery').icon, lat: c.lat - 0.0018, lng: c.lng - 0.0010 },
       ];
     }
-    pois = pois.slice(0, 12);
-    activePoiLookup = new Map(pois.map((p) => [p.id, p]));
-    const activePoiIds = new Set<string>();
-    activePoiIds.add(currentTarget.id);
-    pois.forEach((poi) => {
-      const card = ensureSkeletonCard(poi.id, poi.title, poi.kind);
-      if (placePoiCard(card, poi)) activePoiIds.add(poi.id);
-    });
-    cleanupCollections(activePoiIds, new Set(objectCards.keys()));
+    nearbyPois = pois.slice(0, 14);
+    lastNearbyFetchAt = now;
+    lastNearbyFetchPos = currentPos;
+    nearbyFetchBusy = false;
+    renderNearbyPoiCards(nearbyPois);
     setStatus('POI sekitar aktif');
+  }
+
+  function arObjectCategory(label: string): 'person' | 'vehicle' | 'plant' | 'traffic' | 'other' {
+    const key = label.toLowerCase();
+    if (/person/.test(key)) return 'person';
+    if (/car|truck|bus|motorcycle|bicycle|vehicle/.test(key)) return 'vehicle';
+    if (/plant|tree|flower|potted/.test(key)) return 'plant';
+    if (/traffic light|stop sign/.test(key)) return 'traffic';
+    return 'other';
   }
 
   function updateObjectOverlays(predictions: Array<{ bbox: number[]; class?: string; score?: number }>): void {
     const active = new Set<string>();
-    predictions.filter((p) => (p.score ?? 0) > 0.45).slice(0, 10).forEach((p, index) => {
+    predictions.filter((p) => (p.score ?? 0) > 0.32).slice(0, 10).forEach((p, index) => {
       const key = `${p.class || 'object'}-${index}`;
       active.add(key);
       const label = p.class || 'object';
+      const readableLabel = detectionLabel(label);
+      const category = arObjectCategory(label);
       const card = ensureObjectCard(key, label);
       const [x, y, w, h] = p.bbox;
       const bw = Math.max(8, (w / Math.max(videoEl.videoWidth, 1)) * 100);
       const bh = Math.max(8, (h / Math.max(videoEl.videoHeight, 1)) * 100);
       const cx = ((x + w / 2) / Math.max(videoEl.videoWidth, 1)) * 100;
       const cy = ((y + h / 2) / Math.max(videoEl.videoHeight, 1)) * 100;
-      const bg = /person/i.test(label) ? 'linear-gradient(180deg,#2563eb,#93c5fd)' : /car|truck|bus|motorcycle|vehicle/i.test(label) ? 'linear-gradient(180deg,#ef4444,#fb7185)' : /plant|tree/i.test(label) ? 'linear-gradient(180deg,#16a34a,#86efac)' : 'linear-gradient(180deg,#475569,#94a3b8)';
-      card.classList.remove('ar-skeleton-card');
+      const distanceHint = Math.max(1, Math.round(1200 / Math.max(bw, 8)));
+      const scorePct = Math.round((p.score ?? 0) * 100);
+      card.className = `ar-object-card ar-object-${category}`;
       card.innerHTML = `
-        <div class="ar-object-label">${escapeHtml(label)}</div>
-        <div class="ar-object-distance">${Math.max(1, Math.round(1200 / Math.max(bw, 8)))}m</div>
+        <div class="ar-object-shape"></div>
+        <div class="ar-object-tag">
+          <span class="ar-object-label">${escapeHtml(readableLabel)}</span>
+          <span class="ar-object-distance">${distanceHint}m · ${scorePct}%</span>
+        </div>
       `;
       Object.assign(card.style, {
         left: `${cx}%`,
         top: `${cy}%`,
         width: `${bw}%`,
         height: `${bh}%`,
-        background: bg,
         transform: ar3dEnabled ? 'perspective(900px) rotateX(18deg)' : '',
         opacity: '1',
       });
@@ -880,10 +1079,12 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
     const etaToTarget = formatEtaSeconds((distToTarget / 1000) / 40 * 3600);
     distanceElEl.textContent = `Jarak: ${formatDistance(distToTarget)}`;
     etaElEl.textContent = `Waktu: ${etaToTarget}`;
-    if (pipDistanceElDiv && !arIsPrimary) {
+    if (pipDistanceElDiv) {
       pipDistanceElDiv.textContent = `${formatDistance(distToTarget)}`;
     }
-    headingDeg = map.getBearing?.() ?? headingDeg;
+    if (!hasLiveHeading || Date.now() - lastHeadingAt > 6000) {
+      setLiveHeading(map.getBearing?.() ?? headingDeg, false);
+    }
     await fetchNearbyPoiCards();
     if (model && !detectBusy && ar3dEnabled) {
       detectBusy = true;
@@ -927,20 +1128,37 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
         console.warn('TF model load failed', err);
       }
 
-      watchId = navigator.geolocation?.watchPosition?.((pos) => {
-        currentPos = L.latLng(pos.coords.latitude, pos.coords.longitude);
-        if (pipMapInstance && !arIsPrimary) {
-          pipMapInstance.setView([currentPos.lat, currentPos.lng], pipMapInstance.getZoom());
-          if (pipDistanceElDiv) {
-            const distToPoi = haversineDistanceMeters(currentPos.lat, currentPos.lng, currentTarget.lat, currentTarget.lng);
-            pipDistanceElDiv.textContent = `${formatDistance(distToPoi)}`;
-          }
-        }
-      }, () => { /* ignore */ }, { enableHighAccuracy: true, maximumAge: 1500, timeout: 8000 }) ?? null;
+      const onGeoPosition = (pos: GeolocationPosition): void => {
+        updateCurrentPosition(L.latLng(pos.coords.latitude, pos.coords.longitude), pos.coords);
+      };
+      navigator.geolocation?.getCurrentPosition?.(
+        onGeoPosition,
+        () => setStatus('GPS belum tersedia, memakai posisi peta'),
+        { enableHighAccuracy: true, maximumAge: 500, timeout: 8000 },
+      );
+      watchId = navigator.geolocation?.watchPosition?.(
+        onGeoPosition,
+        () => setStatus('Menunggu update GPS realtime...'),
+        { enableHighAccuracy: true, maximumAge: 500, timeout: 12_000 },
+      ) ?? null;
 
+      try {
+        const OrientationEvent = window.DeviceOrientationEvent as any;
+        if (OrientationEvent && typeof OrientationEvent.requestPermission === 'function') {
+          await OrientationEvent.requestPermission();
+        }
+      } catch {
+        /* continue without explicit compass permission */
+      }
       const onOrientation = (ev: DeviceOrientationEvent) => {
         const webkitHeading = (ev as any).webkitCompassHeading;
-        if (typeof webkitHeading === 'number') headingDeg = webkitHeading;
+        if (typeof webkitHeading === 'number') {
+          setLiveHeading(webkitHeading, true);
+          return;
+        }
+        if (typeof ev.alpha === 'number') {
+          setLiveHeading(360 - ev.alpha, true);
+        }
       };
       window.addEventListener('deviceorientationabsolute', onOrientation, true);
       window.addEventListener('deviceorientation', onOrientation, true);
@@ -965,7 +1183,7 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
           /* ignore */
         }
         requestAnimationFrame(drawLoop);
-        overlay.style.pointerEvents = 'auto';
+        overlay.style.pointerEvents = arIsPrimary ? 'auto' : 'none';
       };
       drawLoop();
 
@@ -979,10 +1197,13 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
       const applySwapState = (primaryCamera: boolean): void => {
         arIsPrimary = primaryCamera;
         overlay.classList.toggle('ar-swapped', !primaryCamera);
+        overlay.style.pointerEvents = primaryCamera ? 'auto' : 'none';
         overlay.style.background = primaryCamera ? '#000' : 'transparent';
         pipContainerEl.style.display = primaryCamera ? 'block' : 'none';
         poiLayerEl.style.display = primaryCamera ? 'block' : 'none';
         objectLayerEl.style.display = primaryCamera ? 'block' : 'none';
+        poiRailEl.style.display = primaryCamera ? 'flex' : 'none';
+        routeCorridorEl.style.display = primaryCamera ? 'block' : 'none';
         statusElEl.style.display = primaryCamera ? 'block' : 'none';
         distanceElEl.style.display = primaryCamera ? 'block' : 'none';
         etaElEl.style.display = primaryCamera ? 'block' : 'none';
@@ -1001,21 +1222,14 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
         videoEl.style.zIndex = primaryCamera ? '1' : '15';
         mapRoot.classList.toggle('hidden', primaryCamera);
         document.getElementById('m-bottom-nav')?.classList.toggle('hidden', primaryCamera);
-        targetBeaconEl.addEventListener('click', () => openPoiModal(currentTarget));
+        updatePipMap();
         if (!primaryCamera) {
-          if (currentPos) {
-            const distToPoi = haversineDistanceMeters(currentPos.lat, currentPos.lng, currentTarget.lat, currentTarget.lng);
-            pipDistanceElDiv.textContent = `${formatDistance(distToPoi)}`;
-          }
-          if (!pipMapInstance && currentPos) {
-            pipMapInstance = L.map(pipMapElDiv).setView([currentPos.lat, currentPos.lng], 17);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OSM' }).addTo(pipMapInstance);
-            L.marker([currentPos.lat, currentPos.lng], { icon: L.icon({ iconUrl: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSI4IiBmaWxsPSIjZmY0NDQ0Ii8+PC9zdmc+', iconSize: [24, 24] }) }).addTo(pipMapInstance);
-            L.marker([currentTarget.lat, currentTarget.lng], { icon: L.icon({ iconUrl: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48cmVjdCB4PSI0IiB5PSI0IiB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIGZpbGw9IiMxMGI5ODEiIHJ4PSIyIi8+PC9zdmc+', iconSize: [24, 24] }) }).addTo(pipMapInstance);
-          }
+          setTimeout(() => map.invalidateSize(), 80);
+          refreshRouteIfNeeded(true);
         }
       };
 
+      targetBeaconEl.addEventListener('click', () => openPoiModal(currentTarget));
       swapBtnEl.addEventListener('click', () => applySwapState(!arIsPrimary));
       pipContainerEl.addEventListener('click', () => {
         if (arIsPrimary) applySwapState(false);
@@ -1035,6 +1249,9 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
         if (pipMapInstance) {
           pipMapInstance.remove();
           pipMapInstance = null;
+          pipUserMarker = null;
+          pipTargetMarker = null;
+          pipRouteLine = null;
         }
         poiCards.forEach((el) => el.remove());
         objectCards.forEach((el) => el.remove());
@@ -1048,9 +1265,10 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
       closeBtnEl.addEventListener('click', () => cleanupArSession(true));
       overlay.addEventListener('remove', () => cleanupArSession(false));
 
-      currentPos = currentPos || L.latLng(targetPoi.lat, targetPoi.lng);
-      setStatus('Kamera aktif');
-      await fetchNearbyPoiCards();
+      currentPos = currentPos || map.getCenter();
+      updatePipMap();
+      setStatus(model ? 'Kamera dan deteksi objek aktif' : 'Kamera aktif, model AI belum termuat');
+      await fetchNearbyPoiCards(true);
       void refreshAr();
     } catch (err) {
       console.warn('camera denied or unavailable', err);
@@ -2694,21 +2912,35 @@ function goHome(): void {
 
 function locateUser(): void {
   if (!navigator.geolocation) return;
-  navigator.geolocation.getCurrentPosition(
-    (pos) => {
-      const latlng: L.LatLngExpression = [pos.coords.latitude, pos.coords.longitude];
+  const applyPosition = (pos: GeolocationPosition, focusMap: boolean): void => {
+    const latlng: [number, number] = [pos.coords.latitude, pos.coords.longitude];
+    if (focusMap) {
       map.setView(latlng, Math.max(map.getZoom(), 16), { animate: true });
-      if (isTablet()) {
-        // tablet behaviour: show vehicle marker and open category panel
-        showVehicleMarker(latlng as [number, number]);
-        createTabletCategoryPanel();
-      } else {
-        // preserve original behaviour for non-tablet: show simple popup marker
-        L.circleMarker(latlng, { radius: 8 }).addTo(map).bindPopup("Lokasi Anda").openPopup();
-      }
-    },
+    }
+    if (state.vehicleMarker) {
+      state.vehicleMarker.setLatLng(latlng);
+    } else {
+      showVehicleMarker(latlng);
+    }
+    const now = Date.now();
+    if (now - state.lastUserPoiSyncAt > 10_000) {
+      state.lastUserPoiSyncAt = now;
+      syncPoiMarkers(latlng);
+    }
+    if (isTablet() && focusMap) createTabletCategoryPanel();
+  };
+  navigator.geolocation.getCurrentPosition(
+    (pos) => applyPosition(pos, true),
     () => { /* silent */ },
-    { enableHighAccuracy: true, timeout: 8000, maximumAge: 30_000 },
+    { enableHighAccuracy: true, timeout: 8000, maximumAge: 1000 },
+  );
+  if (state.userWatchId !== null) {
+    navigator.geolocation.clearWatch(state.userWatchId);
+  }
+  state.userWatchId = navigator.geolocation.watchPosition(
+    (pos) => applyPosition(pos, false),
+    () => { /* silent */ },
+    { enableHighAccuracy: true, timeout: 12_000, maximumAge: 1000 },
   );
 }
 
