@@ -55,6 +55,7 @@ $SUDO systemctl daemon-reload
 $SUDO systemctl enable "$SERVICE_NAME"
 $SUDO systemctl enable "$UPDATE_TIMER_NAME"
 $SUDO systemctl enable webrtc-camera.service
+$SUDO systemctl restart webrtc-camera.service
 $SUDO systemctl restart "$SERVICE_NAME"
 $SUDO systemctl restart "$UPDATE_TIMER_NAME"
 

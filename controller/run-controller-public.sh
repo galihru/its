@@ -115,12 +115,14 @@ start_cloudflare_quick_tunnel() {
   done
 }
 
+camera_mode="${ITS_CAMERA_MODE:-webrtc}"
+tunnel_enabled="${ITS_CAMERA_TUNNEL_ENABLED:-false}"
 public_camera_url="${ITS_CAMERA_WEBRTC_URL:-}"
 if [ -z "$public_camera_url" ]; then
   public_camera_url="${ITS_CAMERA_PUBLIC_URL:-}"
 fi
 
-if [ -z "$public_camera_url" ]; then
+if [ -z "$public_camera_url" ] && { [ "$camera_mode" != "webrtc" ] || [ "$tunnel_enabled" = "true" ]; }; then
   if start_ngrok_tunnel; then
     echo "Public camera tunnel: ngrok"
   else
@@ -132,15 +134,21 @@ if [ -z "$public_camera_url" ]; then
 fi
 
 export ITS_CAMERA_ENABLED="${ITS_CAMERA_ENABLED:-true}"
-export ITS_CAMERA_MODE="${ITS_CAMERA_MODE:-webrtc}"
+export ITS_CAMERA_MODE="$camera_mode"
 export ITS_WEBRTC_ENABLED="${ITS_WEBRTC_ENABLED:-true}"
 export ITS_YOLO_CAMERA_SOURCE="${ITS_YOLO_CAMERA_SOURCE:-${ITS_CAMERA_SOURCE:-${ITS_CAMERA_DEVICE:-/dev/video0}}}"
-export ITS_CAMERA_PUBLIC_URL="$public_camera_url"
-export ITS_CAMERA_WEBRTC_URL="$public_camera_url"
+if [ -n "$public_camera_url" ]; then
+  export ITS_CAMERA_PUBLIC_URL="$public_camera_url"
+  export ITS_CAMERA_WEBRTC_URL="$public_camera_url"
+else
+  unset ITS_CAMERA_PUBLIC_URL
+  unset ITS_CAMERA_WEBRTC_URL
+fi
 
-echo "Public camera URL: $ITS_CAMERA_WEBRTC_URL"
+echo "Camera mode: $ITS_CAMERA_MODE"
+echo "Public camera URL: ${public_camera_url:-'(firebase-webrtc-signaling)'}"
 echo "YOLO camera source: $ITS_YOLO_CAMERA_SOURCE"
-if command -v curl >/dev/null 2>&1; then
+if [ -n "$public_camera_url" ] && command -v curl >/dev/null 2>&1; then
   if ! curl -fsS --max-time 8 "$ITS_CAMERA_WEBRTC_URL" >/dev/null; then
     echo "Warning: public camera URL is not serving yet. Check MediaMTX/IP-camera service on 127.0.0.1:$LOCAL_PORT." >&2
   fi

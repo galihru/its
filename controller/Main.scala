@@ -47,6 +47,7 @@ object ItsController {
   )
   private val firebaseAuth    = env("ITS_FIREBASE_AUTH", "")
   private var firebaseEnabled = env("ITS_FIREBASE_ENABLED", "true").toLowerCase(Locale.ROOT) != "false"
+  private val publishOfflineOnShutdown = env("ITS_PUBLISH_OFFLINE_ON_SHUTDOWN", "false").toLowerCase(Locale.ROOT) == "true"
   private var cachedLocation: Option[(Long, GeoLocation)] = None
 
   private val cameraEnabled    = env("ITS_CAMERA_ENABLED", "true").toLowerCase(Locale.ROOT) != "false"
@@ -84,7 +85,7 @@ object ItsController {
     Runtime.getRuntime.addShutdownHook(new Thread(() => {
       trafficSignal.stop()
       yoloDetector.close()
-      publishOfflineDevice()
+      if (publishOfflineOnShutdown) publishOfflineDevice()
     }))
     // Saat startup: cek dan hapus node lama yang masih berisi nested snapshot wrapper
     migrateLegacyFirebaseNode()
