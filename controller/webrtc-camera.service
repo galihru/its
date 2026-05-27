@@ -7,7 +7,7 @@ Wants=network-online.target
 Type=simple
 User=raspberry5its
 SupplementaryGroups=video
-WorkingDirectory=/home/raspberry5its/its/controller
+WorkingDirectory=/home/raspberry5its/its-controller
 Environment=ITS_DEVICE_ID=raspberry-its
 Environment=ITS_DEVICE_LABEL=Raspberry Pi 5 Controller
 Environment=ITS_FIREBASE_BASE_URL=https://itstelkom-default-rtdb.asia-southeast1.firebasedatabase.app/devices
@@ -15,7 +15,7 @@ Environment=ITS_WEBRTC_CAMERA_DEVICE=/dev/video0
 Environment=ITS_WEBRTC_WIDTH=640
 Environment=ITS_WEBRTC_HEIGHT=480
 Environment=ITS_WEBRTC_FPS=15
-ExecStart=/home/raspberry5its/its/controller/webrtc-camera.sh
+ExecStart=/home/raspberry5its/its-controller/webrtc-camera.sh
 Restart=always
 RestartSec=5
 

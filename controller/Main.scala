@@ -34,7 +34,7 @@ object ItsController {
   private val explicitLongitude  = envDoubleOpt("ITS_LONGITUDE")
   private val locationMode       = env("ITS_LOCATION_MODE", "ip").toLowerCase(Locale.ROOT)
 
-  private val intervalSeconds     = math.max(5, envInt("ITS_INTERVAL_SECONDS", 15))
+  private val intervalSeconds     = math.max(1, envInt("ITS_INTERVAL_SECONDS", 15))
   private val geoRefreshMs        = math.max(5_000L, envInt("ITS_GEO_REFRESH_SECONDS", intervalSeconds).toLong * 1000L)
   private val outputPath          = env("ITS_OUTPUT_PATH", "../web/public/data/its-state.json")
   private val ipGeolocationUrls   = env(
@@ -47,6 +47,7 @@ object ItsController {
   )
   private val firebaseAuth    = env("ITS_FIREBASE_AUTH", "")
   private var firebaseEnabled = env("ITS_FIREBASE_ENABLED", "true").toLowerCase(Locale.ROOT) != "false"
+  private val publishOfflineOnShutdown = env("ITS_PUBLISH_OFFLINE_ON_SHUTDOWN", "false").toLowerCase(Locale.ROOT) == "true"
   private var cachedLocation: Option[(Long, GeoLocation)] = None
 
   private val cameraEnabled    = env("ITS_CAMERA_ENABLED", "true").toLowerCase(Locale.ROOT) != "false"
@@ -84,7 +85,7 @@ object ItsController {
     Runtime.getRuntime.addShutdownHook(new Thread(() => {
       trafficSignal.stop()
       yoloDetector.close()
-      publishOfflineDevice()
+      if (publishOfflineOnShutdown) publishOfflineDevice()
     }))
     // Saat startup: cek dan hapus node lama yang masih berisi nested snapshot wrapper
     migrateLegacyFirebaseNode()
@@ -202,6 +203,12 @@ object ItsController {
          |  "detectorNote": "${escapeJson(detector.note)}",
          |  "detectorUpdatedAt": ${detector.updatedAt},
          |  "detectorFps": ${formatDouble(detector.fps)},
+         |  "detectorFrameWidth": ${detector.frameWidth},
+         |  "detectorFrameHeight": ${detector.frameHeight},
+         |  "objectCount": ${detector.objectCount},
+         |  "detectorCameraSource": "${escapeJson(yoloConfig.cameraSource)}",
+         |  "detectorConfidence": ${formatDouble(yoloConfig.confidenceThreshold)},
+         |  "detectorOutputShape": "${escapeJson(detector.outputShape)}",
          |  "vehicleCount": ${detector.vehicleCount},
          |  "vehicleBreakdown": ${vehicleBreakdownJson(detector.vehicleBreakdown)},
          |  "detections": ${detectionsJson(detector.detections)},
@@ -211,6 +218,7 @@ object ItsController {
          |  "trafficSource": "${escapeJson(signal.source)}",
          |  "gpioBackend": "${escapeJson(signal.gpioBackend)}",
          |  "gpioReady": ${signal.gpioReady},
+         |  "gpioNote": "${escapeJson(signal.gpioNote)}",
          |  "position": {
          |    "lat": ${location.lat},
          |    "lng": ${location.lng}
@@ -396,6 +404,12 @@ object ItsController {
          |  "detectorNote": "controller offline",
          |  "detectorUpdatedAt": ${detector.updatedAt},
          |  "detectorFps": 0,
+         |  "detectorFrameWidth": ${detector.frameWidth},
+         |  "detectorFrameHeight": ${detector.frameHeight},
+         |  "objectCount": 0,
+         |  "detectorCameraSource": "${escapeJson(yoloConfig.cameraSource)}",
+         |  "detectorConfidence": ${formatDouble(yoloConfig.confidenceThreshold)},
+         |  "detectorOutputShape": "${escapeJson(detector.outputShape)}",
          |  "vehicleCount": ${detector.vehicleCount},
          |  "vehicleBreakdown": ${vehicleBreakdownJson(detector.vehicleBreakdown)},
          |  "detections": [],
@@ -405,6 +419,7 @@ object ItsController {
          |  "trafficSource": "${escapeJson(signal.source)}",
          |  "gpioBackend": "${escapeJson(signal.gpioBackend)}",
          |  "gpioReady": ${signal.gpioReady},
+         |  "gpioNote": "${escapeJson(signal.gpioNote)}",
          |  "position": {
          |    "lat": ${location.lat},
          |    "lng": ${location.lng}
@@ -656,7 +671,8 @@ object ItsController {
 
   private def detectionsJson(values: Seq[YoloDetection]): String =
     values.map { detection =>
-      s"""{"label":"${escapeJson(detection.label)}","confidence":${formatDouble(detection.confidence)},"x":${formatDouble(detection.x)},"y":${formatDouble(detection.y)},"width":${formatDouble(detection.width)},"height":${formatDouble(detection.height)}}"""
+      val isVehicle = yoloConfig.vehicleClassNames.contains(detection.label.toLowerCase(Locale.ROOT))
+      s"""{"label":"${escapeJson(detection.label)}","confidence":${formatDouble(detection.confidence)},"vehicle":${isVehicle},"x":${formatDouble(detection.x)},"y":${formatDouble(detection.y)},"width":${formatDouble(detection.width)},"height":${formatDouble(detection.height)}}"""
     }.mkString("[", ",", "]")
 
   private def formatDouble(value: Double): String =
@@ -673,7 +689,6 @@ object ItsController {
     Seq(
       env("ITS_YOLO_CAMERA_SOURCE", ""),
       env("ITS_CAMERA_SOURCE", ""),
-      env("ITS_CAMERA_DEVICE", ""),
-      cameraPublicUrl
+      env("ITS_CAMERA_DEVICE", "")
     ).find(_.nonEmpty).getOrElse("/dev/video0")
 }

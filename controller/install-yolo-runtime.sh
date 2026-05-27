@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 MODEL_DIR="${ITS_YOLO_MODEL_DIR:-/home/raspberry5its/models}"
 MODEL_NAME="${ITS_YOLO_MODEL_NAME:-yolo26n}"
 MODEL_PATH="$MODEL_DIR/$MODEL_NAME.onnx"
+MODEL_URL="${ITS_YOLO_MODEL_URL:-https://itstelkom.web.app/artifacts/yolo26n.onnx}"
 VENV_DIR="${ITS_YOLO_VENV_DIR:-$SCRIPT_DIR/.venv-yolo}"
 
 if [ "$(id -u)" -eq 0 ]; then
@@ -18,11 +19,43 @@ if command -v apt-get >/dev/null 2>&1; then
 fi
 
 mkdir -p "$MODEL_DIR"
+download_model() {
+  local tmp="$MODEL_PATH.tmp"
+  rm -f "$tmp"
+  echo "Downloading YOLO ONNX model: $MODEL_URL"
+  if command -v curl >/dev/null 2>&1; then
+    curl -fL "$MODEL_URL" -o "$tmp"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -O "$tmp" "$MODEL_URL"
+  else
+    python3 - "$MODEL_URL" "$tmp" <<'PY'
+import sys
+import urllib.request
+
+urllib.request.urlretrieve(sys.argv[1], sys.argv[2])
+PY
+  fi
+  if [ -s "$tmp" ]; then
+    mv "$tmp" "$MODEL_PATH"
+    return 0
+  fi
+  rm -f "$tmp"
+  return 1
+}
+
+if [ ! -f "$MODEL_PATH" ]; then
+  if download_model; then
+    echo "Downloaded YOLO ONNX model: $MODEL_PATH"
+  else
+    echo "Direct ONNX download failed, exporting from Ultralytics weights..."
+  fi
+fi
+
+if [ ! -f "$MODEL_PATH" ]; then
 python3 -m venv "$VENV_DIR"
 "$VENV_DIR/bin/python" -m pip install --upgrade pip wheel setuptools
 "$VENV_DIR/bin/python" -m pip install --upgrade ultralytics onnx onnxslim
 
-if [ ! -f "$MODEL_PATH" ]; then
   "$VENV_DIR/bin/python" - "$MODEL_DIR" "$MODEL_NAME" <<'PY'
 import pathlib
 import sys
