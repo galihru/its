@@ -43,7 +43,7 @@ body {
 
 .global-notice {
   display: grid;
-  grid-template-columns: 12px 1fr;
+  grid-template-columns: 12px 1fr auto;
   align-items: center;
   gap: 12px;
   padding: 13px 15px;
@@ -55,6 +55,7 @@ body {
   opacity: 0;
   transition: opacity 180ms ease, transform 180ms ease;
   backdrop-filter: blur(14px);
+  pointer-events: auto;
 }
 
 .global-notice.show {
@@ -112,6 +113,23 @@ body {
   z-index: 240;
   overflow: hidden;
   pointer-events: none;
+}
+
+.global-notice-action {
+  pointer-events: auto;
+  border: 0;
+  border-radius: 999px;
+  padding: 8px 11px;
+  background: #ffffff;
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.global-notice-action:active {
+  transform: translateY(1px);
 }
 
 .mode-control {

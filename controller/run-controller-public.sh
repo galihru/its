@@ -126,9 +126,14 @@ wait_for_local_camera_port() {
   local seconds="${ITS_CAMERA_LOCAL_WAIT_SECONDS:-30}"
   local path
   path="$(camera_path)"
-  echo "Waiting for local camera stream on http://127.0.0.1:${LOCAL_PORT}/${path}"
+  local local_url="http://127.0.0.1:${LOCAL_PORT}/${path}"
+  echo "Waiting for local camera stream on ${local_url}"
   for _ in $(seq 1 "$seconds"); do
-    if (echo >"/dev/tcp/127.0.0.1/${LOCAL_PORT}") >/dev/null 2>&1; then
+    if command -v curl >/dev/null 2>&1; then
+      if curl -fsS --max-time 4 --range 0-256 "$local_url" >/dev/null 2>&1; then
+        return 0
+      fi
+    elif (echo >"/dev/tcp/127.0.0.1/${LOCAL_PORT}") >/dev/null 2>&1; then
       return 0
     fi
     sleep 1

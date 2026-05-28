@@ -122,6 +122,7 @@ type WebRtcSessionRecord = {
 };
 type BaseMapMode = "street" | "3d" | "satellite";
 type TrafficColor = "red" | "yellow" | "green";
+type NoticeKind = "info" | "success" | "warning" | "error";
 type TrafficState = {
   color: TrafficColor;
   duration: number;
@@ -238,6 +239,7 @@ const state = {
   routeRequestSeq: 0,
   prevPositionById: new Map<string, L.LatLng>(),
   lastUpdateNoticeKey: "",
+  notificationPromptShown: false,
   webrtc: {
     pc: null,
     deviceId: "",
@@ -3232,7 +3234,54 @@ function updateNoticeTitle(update: ControllerUpdateInfo): string {
   return "Status update controller";
 }
 
-function showGlobalNotice(kind: "info" | "success" | "warning" | "error", title: string, message: string): void {
+function maybeShowBrowserNotification(title: string, message: string): void {
+  if (!("Notification" in window)) return;
+  if (Notification.permission !== "granted") return;
+  try {
+    const notification = new Notification(title, {
+      body: message,
+      tag: "its-controller-update",
+      silent: false,
+    });
+    window.setTimeout(() => notification.close(), 7000);
+  } catch {
+    // Browser may block system notifications despite a granted permission.
+  }
+}
+
+function requestBrowserNotificationPermission(): void {
+  if (!("Notification" in window)) {
+    showGlobalNotice("warning", "Notifikasi browser tidak didukung", "Browser ini belum mendukung notifikasi sistem");
+    return;
+  }
+  void Notification.requestPermission().then((permission) => {
+    if (permission === "granted") {
+      showGlobalNotice("success", "Notifikasi aktif", "Update Raspberry Pi akan muncul sebagai notifikasi browser");
+      maybeShowBrowserNotification("Notifikasi ITS aktif", "Dashboard akan memberi kabar saat update controller berjalan");
+    } else {
+      showGlobalNotice("warning", "Notifikasi belum aktif", "Izin notifikasi browser belum diberikan");
+    }
+  });
+}
+
+function maybePromptNotificationPermission(): void {
+  if (state.notificationPromptShown) return;
+  if (!("Notification" in window) || Notification.permission !== "default") return;
+  state.notificationPromptShown = true;
+  showGlobalNotice(
+    "info",
+    "Aktifkan notifikasi update",
+    "Tekan Aktifkan agar status download, restart, dan update Raspberry muncul di browser",
+    { actionLabel: "Aktifkan", onAction: requestBrowserNotificationPermission },
+  );
+}
+
+function showGlobalNotice(
+  kind: NoticeKind,
+  title: string,
+  message: string,
+  action?: { actionLabel: string; onAction: () => void },
+): void {
   let host = document.querySelector<HTMLDivElement>(".global-notice-host");
   if (!host) {
     host = document.createElement("div");
@@ -3248,13 +3297,19 @@ function showGlobalNotice(kind: "info" | "success" | "warning" | "error", title:
       <strong>${escapeHtml(title)}</strong>
       <span>${escapeHtml(message)}</span>
     </div>
+    ${action ? `<button class="global-notice-action" type="button">${escapeHtml(action.actionLabel)}</button>` : ""}
   `;
+  notice.querySelector<HTMLButtonElement>(".global-notice-action")?.addEventListener("click", () => {
+    action?.onAction();
+    notice.classList.remove("show");
+    window.setTimeout(() => notice.remove(), 220);
+  });
   host.appendChild(notice);
   window.setTimeout(() => notice.classList.add("show"), 20);
   window.setTimeout(() => {
     notice.classList.remove("show");
     window.setTimeout(() => notice.remove(), 220);
-  }, kind === "error" ? 9000 : 6500);
+  }, action ? 12000 : kind === "error" ? 9000 : 6500);
 }
 
 function showUpdateNoticeForDevice(device: DeviceRecord | null): void {
@@ -3275,7 +3330,10 @@ function showUpdateNoticeForDevice(device: DeviceRecord | null): void {
       : update.stage === "rebooting"
         ? "warning"
         : "info";
-  showGlobalNotice(kind, updateNoticeTitle(update), update.message || "Status update controller berubah");
+  const title = updateNoticeTitle(update);
+  const message = update.message || "Status update controller berubah";
+  showGlobalNotice(kind, title, message);
+  maybeShowBrowserNotification(title, message);
 }
 
 function reportOfflineDevices(devices: DeviceRecord[]): void {
@@ -3337,6 +3395,7 @@ async function refreshSnapshot(): Promise<void> {
     if (!devices.length) throw new Error("No valid devices found (local & Firebase)");
 
     applyDevices(devices);
+    maybePromptNotificationPermission();
     reportOfflineDevices(devices);
   } catch (err) {
     console.warn("[ITS] Snapshot error:", err);
