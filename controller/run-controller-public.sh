@@ -7,6 +7,7 @@ JAR_FILE="${ITS_CONTROLLER_JAR:-$SCRIPT_DIR/ItsController.jar}"
 LOCAL_PORT="${ITS_CAMERA_WEBRTC_PORT:-8889}"
 CAMERA_PATH="${ITS_CAMERA_WEBRTC_PATH:-cam/}"
 RETRY_DELAY_SECONDS="${ITS_TUNNEL_RETRY_DELAY_SECONDS:-60}"
+TUNNEL_MAX_ATTEMPTS="${ITS_TUNNEL_MAX_ATTEMPTS:-3}"
 TUNNEL_LOG="$(mktemp)"
 TUNNEL_PID=""
 PUBLIC_BASE_URL=""
@@ -96,7 +97,8 @@ start_ngrok_tunnel() {
 start_cloudflare_quick_tunnel() {
   command -v cloudflared >/dev/null 2>&1 || return 1
 
-  while true; do
+  local attempt=1
+  while [ "$attempt" -le "$TUNNEL_MAX_ATTEMPTS" ]; do
     : > "$TUNNEL_LOG"
     cloudflared tunnel --url "http://127.0.0.1:$LOCAL_PORT" --no-autoupdate >"$TUNNEL_LOG" 2>&1 &
     TUNNEL_PID=$!
@@ -106,13 +108,32 @@ start_cloudflare_quick_tunnel() {
     fi
 
     wait "$TUNNEL_PID" 2>/dev/null || true
-    echo "cloudflared quick tunnel unavailable, retrying in ${RETRY_DELAY_SECONDS}s..." >&2
+    echo "cloudflared quick tunnel unavailable, attempt ${attempt}/${TUNNEL_MAX_ATTEMPTS}." >&2
     cat "$TUNNEL_LOG" >&2
     kill "$TUNNEL_PID" 2>/dev/null || true
     wait "$TUNNEL_PID" 2>/dev/null || true
     TUNNEL_PID=""
-    sleep "$RETRY_DELAY_SECONDS"
+    attempt=$((attempt + 1))
+    if [ "$attempt" -le "$TUNNEL_MAX_ATTEMPTS" ]; then
+      echo "Retrying Cloudflare quick tunnel in ${RETRY_DELAY_SECONDS}s..." >&2
+      sleep "$RETRY_DELAY_SECONDS"
+    fi
   done
+  return 1
+}
+
+wait_for_local_camera_port() {
+  local seconds="${ITS_CAMERA_LOCAL_WAIT_SECONDS:-30}"
+  local path
+  path="$(camera_path)"
+  echo "Waiting for local camera stream on http://127.0.0.1:${LOCAL_PORT}/${path}"
+  for _ in $(seq 1 "$seconds"); do
+    if (echo >"/dev/tcp/127.0.0.1/${LOCAL_PORT}") >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
 }
 
 camera_mode="${ITS_CAMERA_MODE:-webrtc}"
@@ -124,19 +145,31 @@ if [ -z "$public_camera_url" ]; then
 fi
 
 if [ -z "$public_camera_url" ] && { [ "$camera_mode" != "webrtc" ] || [ "$tunnel_enabled" = "true" ]; }; then
-  if [ "$tunnel_provider" = "cloudflare" ]; then
-    start_cloudflare_quick_tunnel
-    echo "Public camera tunnel: cloudflare-quick"
-  else
-    if start_ngrok_tunnel; then
-      echo "Public camera tunnel: ngrok"
+  if wait_for_local_camera_port; then
+    if [ "$tunnel_provider" = "cloudflare" ]; then
+      if start_cloudflare_quick_tunnel; then
+        echo "Public camera tunnel: cloudflare-quick"
+      else
+        echo "Cloudflare quick tunnel failed; controller will run without public camera URL." >&2
+      fi
     else
-      echo "ngrok static/dev domain unavailable; falling back to Cloudflare quick tunnel (URL can change)." >&2
-      start_cloudflare_quick_tunnel
-      echo "Public camera tunnel: cloudflare-quick"
+      if start_ngrok_tunnel; then
+        echo "Public camera tunnel: ngrok"
+      else
+        echo "ngrok unavailable; trying Cloudflare quick tunnel." >&2
+        if start_cloudflare_quick_tunnel; then
+          echo "Public camera tunnel: cloudflare-quick"
+        else
+          echo "Cloudflare quick tunnel failed; controller will run without public camera URL." >&2
+        fi
+      fi
     fi
+    if [ -n "$PUBLIC_BASE_URL" ]; then
+      public_camera_url="$(join_url "$PUBLIC_BASE_URL")"
+    fi
+  else
+    echo "Local camera stream is not reachable on port ${LOCAL_PORT}; skipping public tunnel for now." >&2
   fi
-  public_camera_url="$(join_url "$PUBLIC_BASE_URL")"
 fi
 
 export ITS_CAMERA_ENABLED="${ITS_CAMERA_ENABLED:-true}"
