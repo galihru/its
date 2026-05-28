@@ -6,6 +6,7 @@ JAR_FILE="${ITS_CONTROLLER_JAR:-$SCRIPT_DIR/ItsController.jar}"
 . "$SCRIPT_DIR/controller-classpath.sh"
 LOCAL_PORT="${ITS_CAMERA_WEBRTC_PORT:-8889}"
 CAMERA_PATH="${ITS_CAMERA_WEBRTC_PATH:-cam/}"
+CAMERA_HEALTH_PATH="${ITS_CAMERA_STREAM_HEALTH_PATH:-$CAMERA_PATH}"
 RETRY_DELAY_SECONDS="${ITS_TUNNEL_RETRY_DELAY_SECONDS:-60}"
 TUNNEL_MAX_ATTEMPTS="${ITS_TUNNEL_MAX_ATTEMPTS:-3}"
 TUNNEL_LOG="$(mktemp)"
@@ -125,7 +126,7 @@ start_cloudflare_quick_tunnel() {
 wait_for_local_camera_port() {
   local seconds="${ITS_CAMERA_LOCAL_WAIT_SECONDS:-30}"
   local path
-  path="$(camera_path)"
+  path="${CAMERA_HEALTH_PATH#/}"
   local local_url="http://127.0.0.1:${LOCAL_PORT}/${path}"
   echo "Waiting for local camera stream on ${local_url}"
   for _ in $(seq 1 "$seconds"); do

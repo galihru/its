@@ -60,6 +60,7 @@ copy_controller_file "diagnose-controller.sh" 0755
 copy_controller_file "requirements-webrtc.txt" 0644
 copy_controller_file "webrtc-camera.py" 0755
 copy_controller_file "webrtc-camera.sh" 0755
+copy_controller_file "camera-gateway.py" 0755
 copy_controller_file "camera-stream.sh" 0755
 
 $SUDO chown -R raspberry5its:raspberry5its "$TARGET_DIR" || true

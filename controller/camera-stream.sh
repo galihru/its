@@ -3,19 +3,41 @@ set -euo pipefail
 
 DEVICE="${ITS_CAMERA_DEVICE:-${1:-auto}}"
 PORT="${2:-8080}"
+STREAM_PORT="${ITS_CAMERA_INTERNAL_STREAM_PORT:-18080}"
 WIDTH="${3:-640}"
 HEIGHT="${4:-480}"
 FPS="${5:-10}"
 QUALITY="${6:-5}"
-OUTPUT_URL="http://0.0.0.0:${PORT}/stream.mjpg?listen=1"
+OUTPUT_URL="http://127.0.0.1:${STREAM_PORT}/stream.mjpg?listen=1"
+GATEWAY_PID=""
+
+cleanup() {
+  if [ -n "$GATEWAY_PID" ]; then
+    kill "$GATEWAY_PID" 2>/dev/null || true
+    wait "$GATEWAY_PID" 2>/dev/null || true
+  fi
+}
+
+trap cleanup EXIT
 
 if ! command -v ffmpeg >/dev/null 2>&1; then
   echo "ffmpeg tidak ditemukan. Install ffmpeg di Raspberry Pi dahulu."
   exit 1
 fi
 
-echo "Menjalankan kamera dari $DEVICE pada http://0.0.0.0:$PORT/stream.mjpg"
-echo "Controller akan men-tunnel URL lokal ini via Cloudflare dan mengirim URL publik ke Firebase."
+echo "Menjalankan kamera dari $DEVICE pada http://0.0.0.0:$PORT/cam/"
+echo "Stream internal tersedia di http://127.0.0.1:$STREAM_PORT/stream.mjpg"
+echo "Controller akan men-tunnel URL /cam/ via Cloudflare dan mengirim URL publik ke Firebase."
+
+start_gateway() {
+  local gateway="$PWD/camera-gateway.py"
+  if [ ! -f "$gateway" ]; then
+    gateway="$(cd "$(dirname "$0")" && pwd)/camera-gateway.py"
+  fi
+  python3 "$gateway" "$PORT" "http://127.0.0.1:${STREAM_PORT}/stream.mjpg" &
+  GATEWAY_PID=$!
+  sleep 1
+}
 
 has_usable_v4l2_format() {
   local device="$1"
@@ -63,6 +85,7 @@ run_rpicam() {
 
 if [ "$DEVICE" = "auto" ]; then
   print_camera_info
+  start_gateway
   if run_rpicam; then
     exit 0
   fi
@@ -83,6 +106,9 @@ if [ ! -e "$DEVICE" ]; then
 fi
 
 print_camera_info
+if [ -z "$GATEWAY_PID" ]; then
+  start_gateway
+fi
 
 run_ffmpeg() {
   local label="$1"
