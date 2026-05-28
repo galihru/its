@@ -37,6 +37,7 @@ object ItsController {
   private val intervalSeconds     = math.max(1, envInt("ITS_INTERVAL_SECONDS", 15))
   private val geoRefreshMs        = math.max(5_000L, envInt("ITS_GEO_REFRESH_SECONDS", intervalSeconds).toLong * 1000L)
   private val outputPath          = env("ITS_OUTPUT_PATH", "../web/public/data/its-state.json")
+  private val updateStatusPath    = env("ITS_UPDATE_STATUS_PATH", "update-status.json")
   private val ipGeolocationUrls   = env(
     "ITS_IP_GEOLOCATION_URLS",
     "https://ipapi.co/json/,https://ipwho.is/"
@@ -175,6 +176,7 @@ object ItsController {
     val location = currentLocation()
     val detector = yoloDetector.snapshot()
     val signal = trafficSignal.snapshot()
+    val updateStatus = updateStatusJson()
 
     // Device JSON — struktur flat yang sesuai dengan SnapshotDevice di frontend
     val deviceJson =
@@ -219,6 +221,7 @@ object ItsController {
          |  "gpioBackend": "${escapeJson(signal.gpioBackend)}",
          |  "gpioReady": ${signal.gpioReady},
          |  "gpioNote": "${escapeJson(signal.gpioNote)}",
+         |  "update": $updateStatus,
          |  "position": {
          |    "lat": ${location.lat},
          |    "lng": ${location.lng}
@@ -236,6 +239,17 @@ object ItsController {
          |}""".stripMargin
 
     (snapshotJson, deviceJson)
+  }
+
+  private def updateStatusJson(): String = {
+    try {
+      val path = Paths.get(updateStatusPath)
+      if (!Files.exists(path)) return "{}"
+      val body = Files.readString(path, StandardCharsets.UTF_8).trim
+      if (body.startsWith("{") && body.endsWith("}")) body else "{}"
+    } catch {
+      case _: Exception => "{}"
+    }
   }
 
   // ─── Firebase: publish device node ────────────────────────────

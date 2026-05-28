@@ -39,6 +39,13 @@ type YoloDetection = {
   width: number;
   height: number;
 };
+type ControllerUpdateInfo = {
+  status?: "running" | "complete" | "error";
+  stage?: string;
+  message?: string;
+  updatedAt?: number;
+  source?: string;
+};
 
 type DeviceRecord = {
   id: string;
@@ -75,6 +82,7 @@ type DeviceRecord = {
   gpioBackend?: string;
   gpioReady?: boolean;
   gpioNote?: string;
+  update?: ControllerUpdateInfo;
   position: { lat: number; lng: number };
 };
 
@@ -229,6 +237,7 @@ const state = {
   modeControl: null as L.Control | null,
   routeRequestSeq: 0,
   prevPositionById: new Map<string, L.LatLng>(),
+  lastUpdateNoticeKey: "",
   webrtc: {
     pc: null,
     deviceId: "",
@@ -1363,6 +1372,33 @@ function clamp(v: number, min: number, max: number) { return Math.min(max, Math.
 function finiteNumber(v: unknown): number | undefined {
   return typeof v === "number" && Number.isFinite(v) ? v : undefined;
 }
+function normalizeUpdateInfo(rawRecord: Record<string, unknown>): ControllerUpdateInfo | undefined {
+  const nested = rawRecord.update && typeof rawRecord.update === "object"
+    ? rawRecord.update as Record<string, unknown>
+    : {};
+  const status = typeof nested.status === "string" ? nested.status
+    : typeof rawRecord.updateStatus === "string" ? rawRecord.updateStatus
+      : undefined;
+  const stage = typeof nested.stage === "string" ? nested.stage
+    : typeof rawRecord.updateStage === "string" ? rawRecord.updateStage
+      : undefined;
+  const message = typeof nested.message === "string" ? nested.message
+    : typeof rawRecord.updateMessage === "string" ? rawRecord.updateMessage
+      : undefined;
+  const updatedAt = finiteNumber(nested.updatedAt) ?? finiteNumber(rawRecord.updateUpdatedAt);
+  const source = typeof nested.source === "string" ? nested.source
+    : typeof rawRecord.updateSource === "string" ? rawRecord.updateSource
+      : undefined;
+
+  if (!status && !stage && !message && !updatedAt) return undefined;
+  return {
+    status: status === "running" || status === "complete" || status === "error" ? status : undefined,
+    stage: stage?.trim() || undefined,
+    message: message?.trim() || undefined,
+    updatedAt,
+    source: source?.trim() || undefined,
+  };
+}
 function normalizeVehicleBreakdown(v: unknown): VehicleBreakdown | undefined {
   if (!v || typeof v !== "object") return undefined;
   const raw = v as Record<string, unknown>;
@@ -1669,6 +1705,7 @@ function normalizeOneDevice(raw: SnapshotDevice): DeviceRecord | null {
     gpioBackend: typeof rawRecord.gpioBackend === "string" ? rawRecord.gpioBackend.trim() || undefined : undefined,
     gpioReady: typeof rawRecord.gpioReady === "boolean" ? rawRecord.gpioReady : undefined,
     gpioNote: typeof rawRecord.gpioNote === "string" ? rawRecord.gpioNote.trim() || undefined : undefined,
+    update: normalizeUpdateInfo(rawRecord),
     position: { lat: clamp(lat, -90, 90), lng: clamp(lng, -180, 180) },
   };
 }
@@ -3152,6 +3189,7 @@ function applyDevices(devices: DeviceRecord[]): void {
     ? devices.find((d) => d.id === state.device!.id) ?? devices[0]
     : devices[0];
   state.device = selected;
+  showUpdateNoticeForDevice(selected);
   renderCameraTile();
   devices.forEach((device) => {
     void resolveRoadName(device).then(() => {
@@ -3180,6 +3218,64 @@ function applyDevices(devices: DeviceRecord[]): void {
 
   syncPoiMarkers([selected.position.lat, selected.position.lng]);
   rescaleMarkers();
+}
+
+function updateNoticeTitle(update: ControllerUpdateInfo): string {
+  if (update.status === "error") return "Update controller gagal";
+  if (update.stage === "downloading") return "Mengunduh update controller";
+  if (update.stage === "downloaded") return "Update controller berhasil diunduh";
+  if (update.stage === "installing") return "Menerapkan update controller";
+  if (update.stage === "rebooting") return "Raspberry Pi akan restart";
+  if (update.stage === "restarted") return "Controller berhasil direstart";
+  if (update.stage === "up-to-date") return "Controller sudah versi terbaru";
+  if (update.status === "complete") return "Update controller selesai";
+  return "Status update controller";
+}
+
+function showGlobalNotice(kind: "info" | "success" | "warning" | "error", title: string, message: string): void {
+  let host = document.querySelector<HTMLDivElement>(".global-notice-host");
+  if (!host) {
+    host = document.createElement("div");
+    host.className = "global-notice-host";
+    document.body.appendChild(host);
+  }
+
+  const notice = document.createElement("div");
+  notice.className = `global-notice global-notice-${kind}`;
+  notice.innerHTML = `
+    <div class="global-notice-dot"></div>
+    <div class="global-notice-copy">
+      <strong>${escapeHtml(title)}</strong>
+      <span>${escapeHtml(message)}</span>
+    </div>
+  `;
+  host.appendChild(notice);
+  window.setTimeout(() => notice.classList.add("show"), 20);
+  window.setTimeout(() => {
+    notice.classList.remove("show");
+    window.setTimeout(() => notice.remove(), 220);
+  }, kind === "error" ? 9000 : 6500);
+}
+
+function showUpdateNoticeForDevice(device: DeviceRecord | null): void {
+  const update = device?.update;
+  if (!device || !update) return;
+  const updatedAt = normalizeEpoch(update.updatedAt ?? 0);
+  if (!updatedAt) return;
+  const ageMs = Date.now() - updatedAt;
+  if (ageMs > 20 * 60_000 && update.status !== "running") return;
+  const key = `${device.id}:${update.status || ""}:${update.stage || ""}:${updatedAt}`;
+  if (state.lastUpdateNoticeKey === key) return;
+  state.lastUpdateNoticeKey = key;
+
+  const kind = update.status === "error"
+    ? "error"
+    : update.status === "complete"
+      ? "success"
+      : update.stage === "rebooting"
+        ? "warning"
+        : "info";
+  showGlobalNotice(kind, updateNoticeTitle(update), update.message || "Status update controller berubah");
 }
 
 function reportOfflineDevices(devices: DeviceRecord[]): void {
