@@ -7,8 +7,8 @@ SERVICE_DIR="${ITS_SYSTEMD_DIR:-/etc/systemd/system}"
 SERVICE_NAME="${ITS_CONTROLLER_SERVICE_NAME:-its-controller.service}"
 UPDATE_SERVICE_NAME="${ITS_CONTROLLER_UPDATE_SERVICE_NAME:-its-controller-update.service}"
 UPDATE_TIMER_NAME="${ITS_CONTROLLER_UPDATE_TIMER_NAME:-its-controller-update.timer}"
-ENABLE_WEBRTC_SERVICE="${ITS_ENABLE_WEBRTC_SERVICE:-false}"
-ENABLE_CAMERA_STREAM_SERVICE="${ITS_ENABLE_CAMERA_STREAM_SERVICE:-true}"
+ENABLE_WEBRTC_SERVICE="${ITS_ENABLE_WEBRTC_SERVICE:-true}"
+ENABLE_CAMERA_STREAM_SERVICE="${ITS_ENABLE_CAMERA_STREAM_SERVICE:-false}"
 
 if [ "$(id -u)" -eq 0 ]; then
   SUDO=""
@@ -77,6 +77,9 @@ $SUDO systemctl enable "$UPDATE_TIMER_NAME"
 if [ "${ENABLE_CAMERA_STREAM_SERVICE,,}" = "true" ] || [ "$ENABLE_CAMERA_STREAM_SERVICE" = "1" ]; then
   $SUDO systemctl enable camera-stream.service
   $SUDO systemctl restart camera-stream.service
+else
+  $SUDO systemctl disable camera-stream.service >/dev/null 2>&1 || true
+  $SUDO systemctl stop camera-stream.service >/dev/null 2>&1 || true
 fi
 
 if [ "${ENABLE_WEBRTC_SERVICE,,}" = "true" ] || [ "$ENABLE_WEBRTC_SERVICE" = "1" ]; then
@@ -92,5 +95,6 @@ $SUDO systemctl restart "$UPDATE_TIMER_NAME"
 
 echo "Installed controller files to $TARGET_DIR"
 echo "Controller: sudo systemctl status $SERVICE_NAME"
-echo "Camera:     sudo systemctl status camera-stream.service"
+echo "WebRTC:     sudo systemctl status webrtc-camera.service"
+echo "MJPEG:      sudo systemctl status camera-stream.service"
 echo "Updates:    sudo systemctl status $UPDATE_TIMER_NAME"
