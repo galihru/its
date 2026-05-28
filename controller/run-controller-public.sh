@@ -117,18 +117,24 @@ start_cloudflare_quick_tunnel() {
 
 camera_mode="${ITS_CAMERA_MODE:-webrtc}"
 tunnel_enabled="${ITS_CAMERA_TUNNEL_ENABLED:-false}"
+tunnel_provider="${ITS_CAMERA_TUNNEL_PROVIDER:-cloudflare}"
 public_camera_url="${ITS_CAMERA_WEBRTC_URL:-}"
 if [ -z "$public_camera_url" ]; then
   public_camera_url="${ITS_CAMERA_PUBLIC_URL:-}"
 fi
 
 if [ -z "$public_camera_url" ] && { [ "$camera_mode" != "webrtc" ] || [ "$tunnel_enabled" = "true" ]; }; then
-  if start_ngrok_tunnel; then
-    echo "Public camera tunnel: ngrok"
-  else
-    echo "ngrok static/dev domain unavailable; falling back to Cloudflare quick tunnel (URL can change)." >&2
+  if [ "$tunnel_provider" = "cloudflare" ]; then
     start_cloudflare_quick_tunnel
     echo "Public camera tunnel: cloudflare-quick"
+  else
+    if start_ngrok_tunnel; then
+      echo "Public camera tunnel: ngrok"
+    else
+      echo "ngrok static/dev domain unavailable; falling back to Cloudflare quick tunnel (URL can change)." >&2
+      start_cloudflare_quick_tunnel
+      echo "Public camera tunnel: cloudflare-quick"
+    fi
   fi
   public_camera_url="$(join_url "$PUBLIC_BASE_URL")"
 fi

@@ -1,7 +1,7 @@
 [Unit]
 Description=ITS Raspberry Controller
-After=network-online.target
-Wants=network-online.target
+After=network-online.target camera-stream.service
+Wants=network-online.target camera-stream.service
 
 [Service]
 Type=simple
@@ -20,10 +20,13 @@ Environment=ITS_GPIO_SELF_TEST=true
 Environment=ITS_GPIO_SELF_TEST_SECONDS=2
 Environment=ITS_YOLO_ENABLED=true
 Environment=ITS_YOLO_MODEL_PATH=/home/raspberry5its/models/yolo26n.onnx
-Environment=ITS_YOLO_CAMERA_SOURCE=/dev/video0
+Environment=ITS_YOLO_CAMERA_SOURCE=http://127.0.0.1:8080/stream.mjpg
 Environment=ITS_YOLO_CONFIDENCE=0.15
-Environment=ITS_CAMERA_MODE=webrtc
-Environment=ITS_CAMERA_TUNNEL_ENABLED=false
+Environment=ITS_CAMERA_MODE=mjpeg
+Environment=ITS_CAMERA_TUNNEL_ENABLED=true
+Environment=ITS_CAMERA_TUNNEL_PROVIDER=cloudflare
+Environment=ITS_CAMERA_WEBRTC_PORT=8080
+Environment=ITS_CAMERA_WEBRTC_PATH=stream.mjpg
 ExecStart=/usr/bin/bash /home/raspberry5its/its-controller/run-controller-public.sh
 Restart=always
 RestartSec=5

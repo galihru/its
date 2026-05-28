@@ -15,8 +15,7 @@ if ! command -v ffmpeg >/dev/null 2>&1; then
 fi
 
 echo "Menjalankan kamera dari $DEVICE pada http://0.0.0.0:$PORT/stream.mjpg"
-
-echo "Gunakan browser atau aplikasi web untuk membuka http://<raspi-ip>:$PORT/stream.mjpg"
+echo "Controller akan men-tunnel URL lokal ini via Cloudflare dan mengirim URL publik ke Firebase."
 
 exec ffmpeg -f v4l2 -framerate "$FPS" -video_size "${WIDTH}x${HEIGHT}" -i "$DEVICE" \
   -c:v mjpeg -q:v "$QUALITY" -f mjpeg "http://0.0.0.0:${PORT}/stream.mjpg?listen=1"
