@@ -1,0 +1,54 @@
+Usage: [1mC:\Users\User\scoop\apps\scala-cli\current\scala-cli.exe[0m <COMMAND>
+Scala CLI is a command-line tool to interact with the Scala language. It lets you compile, run and test your Scala code.
+
+Main commands:
+  [1mclean[0m                  Clean the workspace.
+  [1mcompile[0m                Compile Scala code.
+  [1mdoc[0m                    Generate Scaladoc documentation.
+  [1mfmt[0m, [1mformat[0m, [1mscalafmt[0m  Formats Scala code.
+  [1mrepl[0m, [1mconsole[0m          Fire-up a Scala REPL.
+  [1mrun[0m                    Compile and run Scala code.
+  [1mtest[0m                   Compile and test Scala code.
+
+Miscellaneous commands:
+  [1mversion[0m  Prints the version of the Scala CLI and the default version of Scala.
+
+Other commands:
+  [1mconfig[0m                                        Configure global settings for Scala CLI.
+  [1mhelp[0m                                          Print help message
+  [1minstall completions[0m, [1minstall-completions[0m      Installs Scala CLI completions into your shell
+  [1msetup-ide[0m                                     Generates a BSP file that you can import into your IDE.
+  [1mshebang[0m                                       Like `run`, but handier for shebang scripts.
+  [1muninstall[0m                                     Uninstalls Scala CLI.
+  [1muninstall completions[0m, [1muninstall-completions[0m  Uninstalls Scala CLI completions from your shell.
+  [1mupdate[0m                                        Updates Scala CLI.
+
+See 'scala-cli <command> --help' to read about a specific subcommand. To see full help run 'scala-cli <command> --help-full'.
+
+To use launcher options, specify them before any other argument.
+For example, to run another Scala CLI version, specify it with the '--cli-version' launcher option:
+  [1mscala-cli --cli-version <version> args[0m
+
+Launcher options:
+  [33m--cli-version[39m nightly|version  Set the Scala CLI version
+  [33m--power[39m                        Allows to use restricted & experimental features
+
+Scala options:
+  [33m--scalac-help[39m, [33m--help-scalac[39m        Show help for scalac. This is an alias for --scalac-option -help
+  [33m--scalac-verbose[39m, [33m--verbose-scalac[39m  Turn verbosity on for scalac. This is an alias for --scalac-option -verbose
+
+Help options:
+  [33m--help-env[39m, [33m--help-envs[39m      Show environment variable help
+  [33m--help-js[39m                    Show options for ScalaJS
+  [33m--help-native[39m                Show options for ScalaNative
+  [33m--help-doc[39m, [33m--help-scaladoc[39m  Show options for Scaladoc
+  [33m--help-repl[39m, [33m--repl-help[39m     Show options for Scala REPL
+  [33m--help-fmt[39m, [33m--help-scalafmt[39m  Show options for Scalafmt
+
+When no subcommand is passed explicitly, an implicit subcommand is used based on context:
+  - if the '--version' option is passed, it prints the 'version' subcommand output, unmodified by any other options
+  - if any inputs were passed, it defaults to the 'run' subcommand
+  - additionally, when no inputs were passed, it defaults to the 'run' subcommand in the following scenarios:
+    - if a snippet was passed with any of the '--execute*' options
+    - if a main class was passed with the '--main-class' option alongside an extra '--classpath'
+  - otherwise, if no inputs were passed, it defaults to the 'repl' subcommand
