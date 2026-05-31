@@ -1,0 +1,28 @@
+{
+  "appId": "id.ac.telkomuniversity.its",
+  "appName": "ITS",
+  "ownerName": "Hanifa Septhi Larasati",
+  "institution": "Telkom University",
+  "versionCode": 1,
+  "versionName": "1.0.0",
+  "apkUrl": "https://itstelkom.web.app/apk/its-latest.apk",
+  "downloadUrl": "https://itstelkom.web.app/apk/its-latest.apk",
+  "latestUrl": "https://itstelkom.web.app/apk/its-latest.apk",
+  "fileName": "its-latest.apk",
+  "sizeBytes": 0,
+  "sha256": "",
+  "updatedAt": "2026-05-29T00:00:00+07:00",
+  "force": false,
+  "autoDownload": false,
+  "minSupportedVersionCode": 1,
+  "logoUrl": "/favicon.svg",
+  "deepLinks": {
+    "open": "its://open",
+    "map": "its://map",
+    "chart": "its://chart"
+  },
+  "releaseNotes": [
+    "APK ITS terintegrasi dengan website, maps, grafik, dan Raspberry Pi realtime.",
+    "Metadata update akan otomatis diperbarui di database /apk setelah GitHub Actions selesai."
+  ]
+}

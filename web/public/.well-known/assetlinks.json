@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "id.ac.telkomuniversity.its",
+      "sha256_cert_fingerprints": [
+        "81:06:7E:4B:65:17:C8:D5:96:4F:ED:BD:A8:CB:2E:F0:E4:DE:9B:F9:1A:8C:86:EB:A3:28:C4:C8:6F:FC:E5:75"
+      ]
+    }
+  }
+]
