@@ -53,26 +53,17 @@ jobs:
             echo "apk_found=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Create release (if apk present)
+      - name: Publish release with APK
         if: steps.find_apk.outputs.apk_found == 'true'
-        id: create_release
-        uses: actions/create-release@v1
+        uses: softprops/action-gh-release@v2
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}
           tag_name: apk-${{ github.run_id }}
-          release_name: APK build ${{ github.run_id }}
+          name: APK build ${{ github.run_id }}
           draft: false
           prerelease: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload release asset
-        if: steps.find_apk.outputs.apk_found == 'true'
-        uses: actions/upload-release-asset@v1
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ${{ steps.find_apk.outputs.apk_path }}
-          asset_name: app-debug.apk
-          asset_content_type: application/vnd.android.package-archive
+          files: |
+            ${{ steps.find_apk.outputs.apk_path }}
 
       - name: Write app-update manifest
         if: steps.find_apk.outputs.apk_found == 'true'
