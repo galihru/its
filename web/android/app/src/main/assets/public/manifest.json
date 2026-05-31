@@ -1,0 +1,40 @@
+{
+  "id": "/?source=pwa",
+  "name": "ITS",
+  "short_name": "ITS",
+  "description": "ITS realtime traffic dashboard oleh Hanifa Septhi Larasati, Telkom University",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f2f7ff",
+  "theme_color": "#f2f7ff",
+  "prefer_related_applications": false,
+  "related_applications": [
+    {
+      "platform": "play",
+      "id": "id.ac.telkomuniversity.its"
+    }
+  ],
+  "categories": ["maps", "navigation", "utilities"],
+  "shortcuts": [
+    {
+      "name": "Peta Realtime",
+      "short_name": "Peta",
+      "url": "/?route=map",
+      "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "Grafik Lalu Lintas",
+      "short_name": "Grafik",
+      "url": "/?route=chart",
+      "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    }
+  ],
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

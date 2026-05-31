@@ -1,4 +1,13 @@
 {
+<<<<<<< HEAD
   "snapshotUrl": "https://itstelkom-default-rtdb.asia-southeast1.firebasedatabase.app/devices.json",
   "refreshMs": 5000
+=======
+  "snapshotUrl": "./data/its-state.json",
+  "refreshMs": 5000,
+  "mapAttribution": "OpenStreetMap contributors",
+  "mapLabel": "Custom ITS map",
+  "githubRepo": "https://github.com/hanifasepthi/its",
+  "githubBranch": "main"
+>>>>>>> 42767f8 (Initial-ITS-Maps-upload)
 }

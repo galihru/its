@@ -1,0 +1,17 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "init-and-push-its-maps",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d C:\\Users\\asus\\public\\its-maps && git init -b main && git add . && git config user.name \"hanifasepthi\" && git config user.email \"hanifasepthi@users.noreply.github.com\" && git commit -m \"Initial ITS Maps upload\" && git remote add origin https://github.com/hanifasepthi/its.git && git push -u origin main"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		}
+	]
+}

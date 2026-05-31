@@ -1,0 +1,48 @@
+{
+  "updatedAt": 1778814317887,
+  "source": "scala-controller",
+  "devices": [
+    {
+  "id": "raspberry-its",
+  "label": "Raspberry Pi 5 Controller",
+  "status": "online",
+  "lastSeen": 1778814317887,
+  "lastSeenText": "Jumat, 15 Mei 2026 10:05:17",
+  "note": "controller aktif",
+  "roadName": "Jalan Cinta",
+  "locationSource": "road-snapped",
+  "locationLabel": "Jalan Cinta",
+  "locationAccuracyM": 50,
+  "cameraEnabled": true,
+  "cameraMode": "webrtc",
+  "webrtcEnabled": true,
+  "webrtcPath": "webrtc/devices/raspberry-its",
+  "cameraReady": true,
+  "cameraStatus": "online",
+  "detectorStatus": "online",
+  "detectorNote": "YOLO realtime detection active",
+  "detectorUpdatedAt": 1778814317887,
+  "detectorFps": 7.5,
+  "vehicleCount": 16,
+  "vehicleBreakdown": {
+    "car": 10,
+    "motorcycle": 5,
+    "bus": 0,
+    "truck": 1,
+    "bicycle": 0,
+    "total": 16
+  },
+  "detections": [],
+  "trafficColor": "red",
+  "trafficStartedAt": 1778814316262,
+  "trafficDurationSec": 5,
+  "trafficSource": "adaptive-yolo",
+  "gpioBackend": "pinctrl",
+  "gpioReady": true,
+  "position": {
+    "lat": -6.180487,
+    "lng": 106.90368
+  }
+}
+  ]
+}
