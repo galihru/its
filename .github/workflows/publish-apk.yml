@@ -1,0 +1,91 @@
+name: Publish APK and Manifest
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  publish-apk:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Build Android debug APK
+        working-directory: web/android
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleDebug -x lint
+
+      - name: Find APK
+        id: find_apk
+        run: |
+          APK_PATH="web/android/app/build/outputs/apk/debug/app-debug.apk"
+          if [ -f "$APK_PATH" ]; then
+            echo "apk_found=true" >> $GITHUB_OUTPUT
+            echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
+          else
+            echo "apk_found=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create release (if apk present)
+        if: steps.find_apk.outputs.apk_found == 'true'
+        id: create_release
+        uses: actions/create-release@v1
+        with:
+          tag_name: apk-${{ github.run_id }}
+          release_name: APK build ${{ github.run_id }}
+          draft: false
+          prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload release asset
+        if: steps.find_apk.outputs.apk_found == 'true'
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ${{ steps.find_apk.outputs.apk_path }}
+          asset_name: app-debug.apk
+          asset_content_type: application/vnd.android.package-archive
+
+      - name: Write app-update manifest
+        if: steps.find_apk.outputs.apk_found == 'true'
+        run: |
+          mkdir -p dist/apk
+          TAG=apk-${{ github.run_id }}
+          APK_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/app-debug.apk"
+          cat > dist/apk/app-update.json <<EOF
+          {
+            "version": "${{ github.run_number }}",
+            "versionName": "${{ github.run_number }}",
+            "url": "${APK_URL}",
+            "fileName": "app-debug.apk",
+            "notes": ["Automated APK upload"],
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add dist/apk/app-update.json
+          git commit -m "chore(ci): publish apk manifest [skip ci]" || true
+          git push origin HEAD:main || true
+
+      - name: Upload workflow artifact (APK manifest)
+        if: steps.find_apk.outputs.apk_found == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-update-manifest
+          path: dist/apk/app-update.json
+
+      - name: Notify (no APK)
+        if: steps.find_apk.outputs.apk_found == 'false'
+        run: echo "No APK found at web/android/app/build/outputs/apk/debug/app-debug.apk; please build artifact first."
