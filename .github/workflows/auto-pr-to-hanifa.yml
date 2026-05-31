@@ -1,0 +1,42 @@
+name: Auto PR to target repo
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  create-pr:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      TARGET_REPO: hanifasepthi/its
+      TARGET_BRANCH: main
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+      - name: Push source branch for PR
+        run: |
+          BRANCH="auto-pr/${{ github.run_id }}"
+          git checkout -B "$BRANCH"
+          git push origin "HEAD:$BRANCH" --force
+
+      - name: Create pull request
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          BRANCH="auto-pr/${{ github.run_id }}"
+          gh pr create \
+            --repo "$TARGET_REPO" \
+            --base "$TARGET_BRANCH" \
+            --head "${{ github.repository_owner }}:$BRANCH" \
+            --title "Auto PR from ${{ github.repository }}" \
+            --body "Automated PR created from ${{ github.repository }} run ${{ github.run_id }}."
