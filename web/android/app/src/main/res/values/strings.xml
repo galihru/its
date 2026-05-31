@@ -1,0 +1,12 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">ITS</string>
+    <string name="title_activity_main">ITS</string>
+    <string name="widget_maps_name">ITS</string>
+    <string name="widget_maps_description">Widget ITS realtime</string>
+    <string name="widget_chart_name">ITS Live</string>
+    <string name="widget_chart_description">Widget ITS Live realtime</string>
+    <string name="package_name">id.ac.telkomuniversity.its</string>
+    <string name="custom_url_scheme">its</string>
+    <string name="asset_statements">[{\"relation\":[\"delegate_permission/common.handle_all_urls\"],\"target\":{\"namespace\":\"web\",\"site\":\"https://itstelkom.web.app\"}}]</string>
+</resources>
