@@ -12,7 +12,6 @@ jobs:
       contents: write
       pull-requests: write
     env:
-      TARGET_REPO: hanifasepthi/its
       TARGET_BRANCH: main
     steps:
       - name: Checkout
@@ -29,14 +28,15 @@ jobs:
           git checkout -B "$BRANCH"
           git push origin "HEAD:$BRANCH" --force
 
-      - name: Create pull request
+      - name: Create pull request (same repo)
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           BRANCH="auto-pr/${{ github.run_id }}"
+          # Create PR in the same repository (do not target external repos)
           gh pr create \
-            --repo "$TARGET_REPO" \
             --base "$TARGET_BRANCH" \
-            --head "${{ github.repository_owner }}:$BRANCH" \
+            --head "$BRANCH" \
             --title "Auto PR from ${{ github.repository }}" \
-            --body "Automated PR created from ${{ github.repository }} run ${{ github.run_id }}."
+            --body "Automated PR created from ${{ github.repository }} run ${{ github.run_id }}." \
+            --repo "${{ github.repository }}"
