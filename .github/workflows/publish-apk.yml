@@ -13,6 +13,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Detect Android changes
+        id: android_changes
+        run: |
+          # If this is the first commit in the branch, assume changes
+          if [ -z "${{ github.event.before }}" ] || [ "${{ github.event.before }}" = "0000000000000000000000000000000000000000" ]; then
+            echo "android_changed=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          git fetch --no-tags --prune
+          CHANGED=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep -E '^(web/android/|^android/)' || true)
+          if [ -n "$CHANGED" ]; then
+            echo "android_changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "android_changed=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -27,6 +43,7 @@ jobs:
         run: npm run build
 
       - name: Sync Capacitor Android project
+        if: steps.android_changes.outputs.android_changed == 'true'
         working-directory: web
         run: npx cap sync android
 
@@ -37,6 +54,7 @@ jobs:
           java-version: '21'
 
       - name: Build Android debug APK
+        if: steps.android_changes.outputs.android_changed == 'true'
         working-directory: web/android
         run: |
           chmod +x ./gradlew
@@ -66,7 +84,7 @@ jobs:
             ${{ steps.find_apk.outputs.apk_path }}
 
       - name: Copy APK to web/dist and update manifest
-        if: steps.find_apk.outputs.apk_found == 'true'
+        if: steps.android_changes.outputs.android_changed == 'true' && steps.find_apk.outputs.apk_found == 'true'
         run: |
           set -e
           APK_SRC="${{ steps.find_apk.outputs.apk_path }}"
@@ -77,16 +95,17 @@ jobs:
           if [ -f web/dist/app-update.json ]; then
             node -e "const fs=require('fs');const p='web/dist/app-update.json';let j=JSON.parse(fs.readFileSync(p));j.apkUrl='https://itstelkom.web.app/apk/its-latest.apk';j.downloadUrl=j.apkUrl;j.latestUrl=j.apkUrl;j.fileName='its-latest.apk';j.sizeBytes=require('fs').statSync('web/dist/apk/its-latest.apk').size;j.updatedAt=new Date().toISOString();fs.writeFileSync(p,JSON.stringify(j,null,2));console.log('updated',p);"
           fi
-
       - name: Deploy to Firebase Hosting
-        if: steps.find_apk.outputs.apk_found == 'true'
+        if: steps.android_changes.outputs.android_changed == 'true' && steps.find_apk.outputs.apk_found == 'true'
         env:
-          GOOGLE_APPLICATION_CREDENTIALS: itstelkom-firebase-adminsdk-fbsvc-2abe9e70b0.json
+          FIREBASE_SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_ITSTELKOM }}
         run: |
+          set -e
+          # write service account JSON from secret to file and point GOOGLE_APPLICATION_CREDENTIALS at it
+          echo "$FIREBASE_SA" > /tmp/firebase-sa.json
+          export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
           npm install -g firebase-tools
-          # Use service account JSON checked into the repo (itstelkom-firebase-adminsdk-*.json)
-          # firebase-tools will pick up GOOGLE_APPLICATION_CREDENTIALS for authentication
-          firebase deploy --only hosting --project itstelkom
+          firebase deploy --only hosting --project itstelkom --non-interactive
 
       - name: Write app-update manifest
         if: steps.find_apk.outputs.apk_found == 'true'
