@@ -1,8 +1,9 @@
-<<<<<<< HEAD
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "leaflet-rotate";
 import "maplibre-gl/dist/maplibre-gl.css";
+import { App as CapacitorApp } from "@capacitor/app";
+import { Capacitor } from "@capacitor/core";
 import "./style.css";
 
 // ─── Type augmentation untuk leaflet-rotate ─────────────────────
@@ -40,18 +41,47 @@ type YoloDetection = {
   width: number;
   height: number;
 };
-=======
-import "./style.css";
-
-type BackendMode = "github-json" | "demo";
-type DeviceStatus = "online" | "offline" | "degraded";
-type EventSeverity = "info" | "good" | "warn" | "danger";
->>>>>>> 42767f8 (Initial-ITS-Maps-upload)
+type ControllerUpdateInfo = {
+  status?: "running" | "complete" | "error";
+  stage?: string;
+  message?: string;
+  updatedAt?: number;
+  source?: string;
+};
+type AppUpdateInfo = {
+  appId?: string;
+  appName?: string;
+  ownerName?: string;
+  institution?: string;
+  versionCode?: number;
+  versionName?: string;
+  apkUrl?: string;
+  downloadUrl?: string;
+  latestUrl?: string;
+  logoUrl?: string;
+  releaseNotes?: string[];
+  updatedAt?: string;
+  force?: boolean;
+  autoDownload?: boolean;
+  minSupportedVersionCode?: number;
+  fileName?: string;
+  sizeBytes?: number;
+  sha256?: string;
+  deepLinks?: Record<string, string>;
+};
+type RelatedApplication = {
+  platform?: string;
+  id?: string;
+  url?: string;
+  version?: string;
+};
+type NavigatorWithRelatedApps = Navigator & {
+  getInstalledRelatedApps?: () => Promise<RelatedApplication[]>;
+};
 
 type DeviceRecord = {
   id: string;
   label: string;
-<<<<<<< HEAD
   status: DeviceStatus;
   lastSeen: number;
   lastSeenText?: string;
@@ -84,39 +114,18 @@ type DeviceRecord = {
   gpioBackend?: string;
   gpioReady?: boolean;
   gpioNote?: string;
+  update?: ControllerUpdateInfo;
   position: { lat: number; lng: number };
 };
 
 type SnapshotDevice = Partial<Omit<DeviceRecord, "position" | "lastSeen">> & {
   lastSeen?: number;
   position?: Partial<DeviceRecord["position"]> & { x?: number; y?: number };
-=======
-  district: string;
-  ip?: string;
-  status: DeviceStatus;
-  vehicles: number;
-  congestion: number;
-  speedKph: number;
-  camera: string;
-  note?: string;
-  lastSeen: number;
-  position: { x: number; y: number };
-};
-
-type EventRecord = {
-  id: string;
-  time: number;
-  label: string;
-  detail: string;
-  severity: EventSeverity;
-  deviceId?: string;
->>>>>>> 42767f8 (Initial-ITS-Maps-upload)
 };
 
 type Snapshot = {
   updatedAt?: number;
   source?: string;
-<<<<<<< HEAD
   devices?: SnapshotDevice[] | Record<string, SnapshotDevice>;
 };
 type AppConfig = { snapshotUrl?: string; refreshMs?: number };
@@ -145,6 +154,7 @@ type WebRtcSessionRecord = {
 };
 type BaseMapMode = "street" | "3d" | "satellite";
 type TrafficColor = "red" | "yellow" | "green";
+type NoticeKind = "info" | "success" | "warning" | "error";
 type TrafficState = {
   color: TrafficColor;
   duration: number;
@@ -155,7 +165,19 @@ type TrafficState = {
   updatedAt: number;
 };
 
-type PoiKind = "hospital" | "mall" | "campus" | "parking" | "park" | "worship" | "school" | "office" | "restaurant" | "monument" | "terminal" | "station" | "shelter" | "cemetery" | "transport" | "other";
+type PoiKind =
+  | "mosque" | "church" | "church_catholic" | "temple_hindu" | "temple_buddha" | "temple_chinese" | "synagogue" | "chapel" | "pesantren"
+  | "school" | "kindergarten" | "campus" | "library" | "course"
+  | "hospital" | "clinic" | "pharmacy" | "dentist" | "veterinary" | "posyandu"
+  | "restaurant" | "cafe" | "fast_food" | "food_court" | "bakery" | "street_food" | "bar"
+  | "mall" | "supermarket" | "minimarket" | "market" | "shop"
+  | "station" | "airport" | "port" | "terminal" | "shelter" | "transport"
+  | "parking" | "fuel" | "ev_charging"
+  | "bank" | "atm" | "post_office" | "office_govt" | "office_corp" | "police" | "fire_station"
+  | "hotel" | "hostel" | "villa" | "guesthouse"
+  | "park" | "sports" | "playground" | "stadium"
+  | "monument" | "museum" | "beach" | "mountain" | "waterfall" | "cinema" | "zoo" | "theme_park"
+  | "cemetery" | "toilet" | "tower" | "warehouse" | "laundry" | "salon" | "other";
 
 type PoiRecord = {
   id: string;
@@ -168,6 +190,20 @@ type PoiRecord = {
   icon: string;
   lat: number;
   lng: number;
+  priority?: number;
+  minZoom?: number;
+  named?: boolean;
+  iconKey?: string;
+};
+
+type RoadLabelRecord = {
+  id: string;
+  title: string;
+  lat: number;
+  lng: number;
+  priority: number;
+  kind: "road" | "place" | "area" | "building" | "direction" | "pedestrian";
+  bearing?: number;
 };
 
 // ─── Constants ──────────────────────────────────────────────────
@@ -197,6 +233,26 @@ const BEARING_STEP = 90;
 const BEARING_SNAP = 5;
 const MAPLIBRE_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
 const MAPLIBRE_3D_PITCH = 52;
+const OVERPASS_ENDPOINTS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://z.overpass-api.de/api/interpreter",
+];
+const OVERPASS_FETCH_TIMEOUT_MS = 18000;
+const POI_QUERY_MAX_RADIUS_M = 3500;
+const ROAD_QUERY_MAX_RADIUS_M = 4200;
+const APP_NAME = "ITS";
+const APP_PACKAGE_ID = "id.ac.telkomuniversity.its";
+const APP_OWNER_NAME = "Hanifa Septhi Larasati";
+const APP_INSTITUTION = "Telkom University";
+const APP_VERSION = "1.0.0";
+const APP_VERSION_CODE = 1;
+const APP_PUBLIC_URL = "https://itstelkom.web.app/";
+const ANDROID_DEEP_LINK_SCHEME = "its";
+const APP_UPDATE_MANIFEST_URL = "./app-update.json";
+const APP_UPDATE_DATABASE_URL = `${FIREBASE_ROOT_URL}/apk.json`;
+const APP_DOWNLOAD_FALLBACK_URL = `${APP_PUBLIC_URL}apk/its-latest.apk`;
+const APP_STARTED_AT = Date.now();
 
 // ─── DOM bootstrap ──────────────────────────────────────────────
 
@@ -224,6 +280,27 @@ const map = L.map(mapRoot, {
   rotateControl: false,
 });
 
+const initialUrlParams = new URLSearchParams(window.location.search);
+const initialLat = Number(initialUrlParams.get("lat"));
+const initialLng = Number(initialUrlParams.get("lng"));
+const initialZoom = Number(initialUrlParams.get("z"));
+if (Number.isFinite(initialLat) && Number.isFinite(initialLng)) {
+  map.setView([initialLat, initialLng], Number.isFinite(initialZoom) ? clamp(initialZoom, 3, 20) : DEFAULT_ZOOM, { animate: false });
+}
+
+map.createPane("customPoiPane");
+const customPoiPane = map.getPane("customPoiPane");
+if (customPoiPane) {
+  customPoiPane.style.zIndex = "670";
+  customPoiPane.style.pointerEvents = "auto";
+}
+map.createPane("customLabelPane");
+const customLabelPane = map.getPane("customLabelPane");
+if (customLabelPane) {
+  customLabelPane.style.zIndex = "640";
+  customLabelPane.style.pointerEvents = "none";
+}
+
 // ─── State ──────────────────────────────────────────────────────
 
 const state = {
@@ -236,11 +313,13 @@ const state = {
   baseMode: "street" as BaseMapMode,
   compassNeedle: null as SVGGElement | null,
   compassBtn: null as HTMLButtonElement | null,
-  cameraPreview: null as HTMLDivElement | null,
   cameraButton: null as HTMLButtonElement | null,
+  cameraPreview: null as HTMLDivElement | null,
   markers: new Map<string, L.Marker>(),
   poiMarkers: new Map<string, L.Marker>(),
   poiData: new Map<string, PoiRecord>(),
+  roadLabelMarkers: new Map<string, L.Marker>(),
+  roadLabelData: new Map<string, RoadLabelRecord>(),
   trafficById: new Map<string, TrafficState>(),
   roadNameById: new Map<string, string>(),
   maplibreMap: null as any,
@@ -257,9 +336,18 @@ const state = {
   trafficRefreshTimer: 0,
   offlineReported: new Set<string>(),
   overpassLayer: null as L.LayerGroup | null,
+  poiFetchSeq: 0,
+  roadFetchSeq: 0,
   modeControl: null as L.Control | null,
   routeRequestSeq: 0,
   prevPositionById: new Map<string, L.LatLng>(),
+  lastUpdateNoticeKey: "",
+  lastAppUpdateKey: "",
+  lastAppAutoDownloadKey: "",
+  androidAppDetected: null as boolean | null,
+  relatedAppsChecked: false,
+  pendingDeepLinkUrl: "",
+  notificationPromptShown: false,
   webrtc: {
     pc: null,
     deviceId: "",
@@ -280,9 +368,18 @@ const state = {
 
 // ─── Tile layers ────────────────────────────────────────────────
 
-const streetLayer = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+const streetLayer = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png", {
+  subdomains: "abcd",
   maxZoom: 20,
-  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+}).addTo(map);
+
+const streetLabelLayer = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png", {
+  subdomains: "abcd",
+  maxZoom: 20,
+  attribution: "",
+  pane: "overlayPane",
+  opacity: 0.95,
 }).addTo(map);
 
 const satelliteLayer = L.tileLayer(
@@ -295,7 +392,7 @@ if (map.attributionControl) {
 }
 
 // Add Overpass vector layer for clickable features (kept separate from POI markers)
-state.overpassLayer = L.layerGroup().addTo(map);
+state.overpassLayer = L.layerGroup([], { pane: "customPoiPane" }).addTo(map);
 
 // ─── Scale Control ──────────────────────────────────────────────
 // Custom scale ruler yang dinamis sesuai zoom level
@@ -324,11 +421,13 @@ new ScaleControl().addTo(map);
 
 // ─── POI Layer ─────────────────────────────────────────────────────
 
-const POI_LIBRARY: Record<PoiKind, {
+type PoiLibraryEntry = {
   rating: string;
   imageUrl: string;
   description: string;
-}> = {
+};
+
+const BASE_POI_LIBRARY: Record<string, PoiLibraryEntry> = {
   hospital: {
     rating: "4.7",
     imageUrl: "https://images.unsplash.com/photo-1516549655169-df83a0774514?auto=format&fit=crop&w=900&q=80",
@@ -368,6 +467,21 @@ const POI_LIBRARY: Record<PoiKind, {
     rating: "4.1",
     imageUrl: "https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=900&q=80",
     description: "Bangunan kantor, administrasi, dan fasilitas kerja.",
+  },
+  government: {
+    rating: "4.1",
+    imageUrl: "https://images.unsplash.com/photo-1529107386315-e1a2ed48a620?auto=format&fit=crop&w=900&q=80",
+    description: "Kantor pemerintahan dan layanan publik.",
+  },
+  bank: {
+    rating: "4.1",
+    imageUrl: "https://images.unsplash.com/photo-1541354329998-f4d9a9f9297f?auto=format&fit=crop&w=900&q=80",
+    description: "Layanan perbankan, ATM, dan fasilitas keuangan.",
+  },
+  hotel: {
+    rating: "4.2",
+    imageUrl: "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=900&q=80",
+    description: "Hotel, penginapan, atau akomodasi di sekitar lokasi.",
   },
   restaurant: {
     rating: "4.3",
@@ -411,62 +525,820 @@ const POI_LIBRARY: Record<PoiKind, {
   },
 };
 
-const POI_VISUALS: Record<PoiKind, { icon: string; color: string }> = {
-  hospital: { icon: "🏥", color: "#ef4444" },
-  mall: { icon: "🏬", color: "#8b5cf6" },
-  campus: { icon: "🎓", color: "#0ea5e9" },
-  parking: { icon: "🅿️", color: "#64748b" },
-  park: { icon: "🌳", color: "#22c55e" },
-  worship: { icon: "🕌", color: "#f59e0b" },
+const POI_LIBRARY = new Proxy(BASE_POI_LIBRARY, {
+  get(target, prop: string) {
+    return target[prop] || target.other;
+  },
+}) as Record<PoiKind, PoiLibraryEntry>;
+
+/* Granular POI visuals, labels, classifier, and zoom priority. */
+// =============================================================================
+// poi.ts — Full POI classification, visuals, priority & zoom
+// Supports granular sub-kind icons (e.g. mosque ≠ church ≠ temple ≠ vihara)
+// =============================================================================
+
+// ---------------------------------------------------------------------------
+// 1. TYPES
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// 2. SVG PATH HELPERS
+// ---------------------------------------------------------------------------
+
+function poiSvg(path: string, extra = ""): string {
+  return `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" ${extra}><path d="${path}"/></svg>`;
+}
+
+function poiSvgMulti(paths: string[], extra = ""): string {
+  const inner = paths.map((p) => `<path d="${p}"/>`).join("");
+  return `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" ${extra}>${inner}</svg>`;
+}
+
+// ---------------------------------------------------------------------------
+// 3. EMOJI VISUALS (runtime UI / map markers)
+// ---------------------------------------------------------------------------
+
+export const POI_VISUALS: Record<PoiKind, { icon: string; color: string }> = {
+  // Ibadah — setiap agama/jenis punya emoji & warna berbeda
+  mosque: { icon: "🕌", color: "#16a34a" },
+  church: { icon: "⛪", color: "#7c3aed" },
+  church_catholic: { icon: "✝️", color: "#6d28d9" },
+  temple_hindu: { icon: "🛕", color: "#dc2626" },
+  temple_buddha: { icon: "🏯", color: "#d97706" },
+  temple_chinese: { icon: "🏮", color: "#b91c1c" },
+  synagogue: { icon: "✡️", color: "#1d4ed8" },
+  chapel: { icon: "⛪", color: "#8b5cf6" },
+  pesantren: { icon: "📚", color: "#15803d" },
+  // Pendidikan
   school: { icon: "🏫", color: "#2563eb" },
-  office: { icon: "🏢", color: "#14b8a6" },
+  kindergarten: { icon: "🧒", color: "#f59e0b" },
+  campus: { icon: "🎓", color: "#0ea5e9" },
+  library: { icon: "📚", color: "#6366f1" },
+  course: { icon: "📝", color: "#8b5cf6" },
+  // Kesehatan
+  hospital: { icon: "🏥", color: "#ef4444" },
+  clinic: { icon: "🩺", color: "#f87171" },
+  pharmacy: { icon: "💊", color: "#10b981" },
+  dentist: { icon: "🦷", color: "#06b6d4" },
+  veterinary: { icon: "🐾", color: "#84cc16" },
+  posyandu: { icon: "👶", color: "#fb923c" },
+  // Kuliner
   restaurant: { icon: "🍽️", color: "#fb7185" },
-  terminal: { icon: "🚌", color: "#0f766e" },
+  cafe: { icon: "☕", color: "#92400e" },
+  fast_food: { icon: "🍔", color: "#f97316" },
+  food_court: { icon: "🥘", color: "#e11d48" },
+  bakery: { icon: "🥐", color: "#d97706" },
+  street_food: { icon: "🍢", color: "#c2410c" },
+  bar: { icon: "🍺", color: "#78350f" },
+  // Belanja
+  mall: { icon: "🏬", color: "#8b5cf6" },
+  supermarket: { icon: "🛒", color: "#7c3aed" },
+  minimarket: { icon: "🏪", color: "#6d28d9" },
+  market: { icon: "🛍️", color: "#a855f7" },
+  shop: { icon: "🏪", color: "#9333ea" },
+  // Transportasi
   station: { icon: "🚉", color: "#1d4ed8" },
+  airport: { icon: "✈️", color: "#0369a1" },
+  port: { icon: "⚓", color: "#0c4a6e" },
+  terminal: { icon: "🚌", color: "#0f766e" },
   shelter: { icon: "🚏", color: "#0ea5e9" },
-  cemetery: { icon: "⚰️", color: "#64748b" },
   transport: { icon: "🚍", color: "#0284c7" },
+  // Parkir & SPBU
+  parking: { icon: "🅿️", color: "#64748b" },
+  fuel: { icon: "⛽", color: "#dc2626" },
+  ev_charging: { icon: "🔋", color: "#16a34a" },
+  // Kantor & Bank
+  bank: { icon: "🏦", color: "#1e40af" },
+  atm: { icon: "💳", color: "#2563eb" },
+  post_office: { icon: "📮", color: "#b45309" },
+  office_govt: { icon: "🏛️", color: "#475569" },
+  office_corp: { icon: "🏢", color: "#14b8a6" },
+  police: { icon: "👮", color: "#1e3a5f" },
+  fire_station: { icon: "🚒", color: "#dc2626" },
+  // Hotel & Penginapan
+  hotel: { icon: "🏨", color: "#0891b2" },
+  hostel: { icon: "🛏️", color: "#0e7490" },
+  villa: { icon: "🏡", color: "#16a34a" },
+  guesthouse: { icon: "🏠", color: "#65a30d" },
+  // Taman & Olahraga
+  park: { icon: "🌳", color: "#22c55e" },
+  sports: { icon: "⚽", color: "#16a34a" },
+  playground: { icon: "🎠", color: "#f59e0b" },
+  stadium: { icon: "🏟️", color: "#0284c7" },
+  // Wisata & Hiburan
   monument: { icon: "🗿", color: "#a16207" },
+  museum: { icon: "🏛️", color: "#78350f" },
+  beach: { icon: "🏖️", color: "#0891b2" },
+  mountain: { icon: "⛰️", color: "#4d7c0f" },
+  waterfall: { icon: "💧", color: "#0284c7" },
+  cinema: { icon: "🎬", color: "#7c3aed" },
+  zoo: { icon: "🦁", color: "#92400e" },
+  theme_park: { icon: "🎡", color: "#db2777" },
+  // Makam
+  cemetery: { icon: "⚰️", color: "#64748b" },
+  // Utilitas
+  toilet: { icon: "🚻", color: "#0369a1" },
+  tower: { icon: "📡", color: "#6b7280" },
+  warehouse: { icon: "🏭", color: "#9ca3af" },
+  laundry: { icon: "🧺", color: "#38bdf8" },
+  salon: { icon: "💇", color: "#f472b6" },
+  // Fallback
   other: { icon: "📍", color: "#475569" },
 };
 
-function classifyPoiKind(tags: Record<string, string>): PoiKind {
-  const amenity = tags.amenity;
-  const tourism = tags.tourism;
-  if (amenity === "hospital") return "hospital";
-  if (amenity === "place_of_worship" || tags.religion) return "worship";
-  if (amenity === "school" || amenity === "kindergarten" || tags.education === "school") return "school";
-  if (amenity === "university" || amenity === "college" || tourism === "university") return "campus";
-  if (amenity === "restaurant" || amenity === "cafe" || amenity === "fast_food") return "restaurant";
-  if (amenity === "parking" || tags.parking) return "parking";
-  if (amenity === "bus_station" || amenity === "ferry_terminal" || amenity === "terminal" || tags.public_transport === "station") return "station";
-  if (amenity === "bus_stop" || tags.highway === "bus_stop") return "shelter";
-  if (amenity === "grave_yard" || tags.landuse === "cemetery") return "cemetery";
-  if (amenity === "public_transport" || tags.public_transport) return "transport";
-  if (amenity === "office" || tags.office) return "office";
-  if (tags.shop) return "mall";
-  if (tags.historic === "monument" || tourism === "attraction" || tags.building === "monument") return "monument";
-  if (tags.leisure === "park") return "park";
+// ---------------------------------------------------------------------------
+// 4. SVG VISUALS (untuk map rendering — path berbeda per kind)
+// ---------------------------------------------------------------------------
+
+export const POI_SVG_VISUALS: Record<PoiKind, { icon: string; color: string }> = {
+  // --- IBADAH ---
+  // Masjid: kubah + menara
+  mosque: {
+    icon: poiSvgMulti([
+      "M12 2C10.9 2 10 2.9 10 4c0 .7.4 1.4 1 1.7V7H9l-1 2H6v2h1v8h10v-8h1V9h-2l-1-2h-2V5.7c.6-.3 1-1 1-1.7 0-1.1-.9-2-2-2z",
+      "M9 9h6v1H9zm0 3h6v1H9z",
+    ]),
+    color: "#16a34a",
+  },
+  // Gereja Protestan: salib
+  church: {
+    icon: poiSvg("M11 2h2v7h7v2h-7v11h-2V11H4V9h7V2z"),
+    color: "#7c3aed",
+  },
+  // Gereja Katolik: salib gothic
+  church_catholic: {
+    icon: poiSvgMulti([
+      "M11 2h2v5h5v2h-5v13h-2V9H6V7h5V2z",
+      "M8 6h8v1H8z",
+    ]),
+    color: "#6d28d9",
+  },
+  // Pura Hindu: gapura meru
+  temple_hindu: {
+    icon: poiSvg("M12 2l2 3h2l1 2-1 1v1l1 2H3l1-2 1-1-1-1 1-2h2l2-3zm-6 9h12v10H6V11zm2 2v6h2v-6H8zm4 0v6h2v-6h-2z"),
+    color: "#dc2626",
+  },
+  // Vihara / Pagoda Buddha
+  temple_buddha: {
+    icon: poiSvg("M12 2l3 3h1l1 2h-1l1 2h-1l1 3H7l1-3H7l1-2H7l1-2h1l3-3zM6 12h12v1H6zm1 2h10v7H7v-7zm2 2v3h2v-3H9zm4 0v3h2v-3h-2z"),
+    color: "#d97706",
+  },
+  // Klenteng Tionghoa: atap melengkung
+  temple_chinese: {
+    icon: poiSvg("M12 2L4 7h1v1H4v1h16V8h-1V7h1L12 2zm-7 8h14v11H5V10zm2 2v7h3v-7H7zm5 0v7h3v-7h-3z"),
+    color: "#b91c1c",
+  },
+  // Synagogue: Bintang Daud
+  synagogue: {
+    icon: poiSvg("M12 4l2.6 4.5H9.4L12 4zm0 16l-2.6-4.5h5.2L12 20zM5.1 8.5h5.2L7.7 13 5.1 8.5zm8.7 0h5.2L16.3 13l-2.5-4.5zM5.1 15.5L7.7 11l2.6 4.5H5.1zm8.7 0h5.2L16.3 11l-2.5 4.5z"),
+    color: "#1d4ed8",
+  },
+  // Kapel: bangunan kecil + salib kecil
+  chapel: {
+    icon: poiSvg("M12 3l-8 5v13h16V8l-8-5zm-1 3h2v3h3v1h-3v8h-2v-8H8V9h3V6z"),
+    color: "#8b5cf6",
+  },
+  // Pesantren: bangunan + buku
+  pesantren: {
+    icon: poiSvgMulti([
+      "M3 21V8l9-5 9 5v13H3z",
+      "M9 11h6v2H9zm0 3h6v2H9z",
+    ]),
+    color: "#15803d",
+  },
+
+  // --- PENDIDIKAN ---
+  school: {
+    icon: poiSvg("M3 10l9-5 9 5-9 5-9-5zm3 3.2 6 3.2 6-3.2V18c-1.4 1.1-3.4 1.7-6 1.7S7.4 19.1 6 18v-4.8z"),
+    color: "#2563eb",
+  },
+  kindergarten: {
+    icon: poiSvg("M12 2a5 5 0 0 1 5 5c0 1.5-.7 2.9-1.7 3.8L17 21H7l1.7-10.2A5 5 0 0 1 7 7a5 5 0 0 1 5-5zm-2 8h4l-1 7h-2l-1-7z"),
+    color: "#f59e0b",
+  },
+  campus: {
+    icon: poiSvg("M2 8l10-5 10 5-10 5L2 8zm4 3.2 6 3 6-3V17c-1.6 1.2-3.6 1.8-6 1.8S7.6 18.2 6 17v-5.8z"),
+    color: "#0ea5e9",
+  },
+  library: {
+    icon: poiSvg("M4 2h4v20H4V2zm6 0h4v20h-4V2zm6 0h4v20h-4V2zM5 4v2h2V4H5zm0 4v2h2V8H5zm6-4v2h2V4h-2zm0 4v2h2V8h-2zm6-4v2h2V4h-2zm0 4v2h2V8h-2z"),
+    color: "#6366f1",
+  },
+  course: {
+    icon: poiSvg("M4 4h16v2H4V4zm0 4h10v2H4V8zm0 4h10v2H4v-2zm0 4h7v2H4v-2zm12-4l5 4-5 4v-3h-4v-2h4v-3z"),
+    color: "#8b5cf6",
+  },
+
+  // --- KESEHATAN ---
+  hospital: {
+    icon: poiSvg("M4 21h16V8l-8-5-8 5v13zm6-10V8h4v3h3v4h-3v3h-4v-3H7v-4h3z"),
+    color: "#ef4444",
+  },
+  clinic: {
+    icon: poiSvg("M12 2a7 7 0 0 1 7 7c0 4-3 7-7 9-4-2-7-5-7-9a7 7 0 0 1 7-7zm-1 4v3H8v2h3v3h2v-3h3V9h-3V6h-2z"),
+    color: "#f87171",
+  },
+  pharmacy: {
+    icon: poiSvg("M11 2h2v4h4v2h-4v4h-2V8H7V6h4V2zm-7 10h16v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-9zm2 2v5h4v-5H6zm6 0v2h2v-2h-2zm0 3v2h2v-2h-2z"),
+    color: "#10b981",
+  },
+  dentist: {
+    icon: poiSvg("M12 2C9.2 2 7 4.2 7 7c0 1.8.9 3.4 2.2 4.4L8 22h2l2-7 2 7h2l-1.2-10.6C16.1 10.4 17 8.8 17 7c0-2.8-2.2-5-5-5z"),
+    color: "#06b6d4",
+  },
+  veterinary: {
+    icon: poiSvg("M4.5 9.5a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm15 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4zM9 6a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm6 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4zM12 9c-3.3 0-6 2.7-6 6 0 2.1 1 3.9 2.6 5h6.8c1.6-1.1 2.6-2.9 2.6-5 0-3.3-2.7-6-6-6z"),
+    color: "#84cc16",
+  },
+  posyandu: {
+    icon: poiSvg("M12 2a3 3 0 1 1 0 6 3 3 0 0 1 0-6zm0 8c3.3 0 6 1.3 6 3v1H6v-1c0-1.7 2.7-3 6-3zm-5 6h10l-1 6H8l-1-6z"),
+    color: "#fb923c",
+  },
+
+  // --- KULINER ---
+  restaurant: {
+    icon: poiSvg("M7 3h2v8H7V3zm-3 0h2v8H4V3zm4 10c-2.2 0-4-1.8-4-4h6c0 2.2-1.8 4-4 4zm-1 1h2v7H7v-7zm9-11h2v18h-2v-7h-2V7c0-2.2 1-4 2-4z"),
+    color: "#fb7185",
+  },
+  cafe: {
+    icon: poiSvg("M2 21h18v-2H2v2zm2-5h14a2 2 0 0 0 2-2v-3H2v3a2 2 0 0 0 2 2zm16-9h-2V5h2a2 2 0 0 1 2 2 2 2 0 0 1-2 2zm-4-5H4v7h12V7l-2-5z"),
+    color: "#92400e",
+  },
+  fast_food: {
+    icon: poiSvg("M2 14h20v2H2v-2zm1-4h18l-1 3H4l-1-3zm4-5c0-1.7 2.2-3 5-3s5 1.3 5 3H7zm2 2h6v1H9v-1z"),
+    color: "#f97316",
+  },
+  food_court: {
+    icon: poiSvg("M2 21h20v-2H2v2zm2-4h16V5H4v12zm2-10h3v2H6V7zm5 0h3v2h-3V7zm5 0h2v2h-2V7zM6 11h3v2H6v-2zm5 0h3v2h-3v-2zm5 0h2v2h-2v-2z"),
+    color: "#e11d48",
+  },
+  bakery: {
+    icon: poiSvg("M12 2C9.2 2 7 4.2 7 7H5v13h14V7h-2c0-2.8-2.2-5-5-5zm0 2c1.7 0 3 1.3 3 3H9c0-1.7 1.3-3 3-3zM7 10h10v8H7v-8zm2 2v4h2v-4H9zm4 0v4h2v-4h-2z"),
+    color: "#d97706",
+  },
+  street_food: {
+    icon: poiSvg("M12 2l1.5 4H17l-2.8 2.1 1 3.4L12 9.5l-3.2 2L9.8 8.1 7 6h3.5L12 2zm-5 12h10l-1 8H8l-1-8zm2 2v4h2v-4H9zm4 0v4h2v-4h-2z"),
+    color: "#c2410c",
+  },
+  bar: {
+    icon: poiSvg("M7 3h10l1 5H6L7 3zm-1 6h12l-1 3H8l-1-3zm1 4h10v9a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1v-9zm2 2v5h2v-5H9zm4 0v5h2v-5h-2z"),
+    color: "#78350f",
+  },
+
+  // --- BELANJA ---
+  mall: {
+    icon: poiSvg("M5 9h14l-1 12H6L5 9zm1-2 2-4h8l2 4H6zm3 5v6h2v-6H9zm4 0v6h2v-6h-2z"),
+    color: "#8b5cf6",
+  },
+  supermarket: {
+    icon: poiSvg("M2 3h2l.5 2H21l-2 9H6L4.5 5H2V3zm4 14a2 2 0 1 1 0 4 2 2 0 0 1 0-4zm12 0a2 2 0 1 1 0 4 2 2 0 0 1 0-4zM6 7l1 6h10l1.5-6H6z"),
+    color: "#7c3aed",
+  },
+  minimarket: {
+    icon: poiSvg("M3 4h18v2l-2 13H5L3 6V4zm3 3 1.5 9h9L18 7H6zm2 2h8v2H8V9zm0 3h6v2H8v-2z"),
+    color: "#6d28d9",
+  },
+  market: {
+    icon: poiSvg("M3 5h18v3H3V5zm2 4h14l-1 11H6L5 9zm3 2v7h2v-7H8zm4 0v7h2v-7h-2z"),
+    color: "#a855f7",
+  },
+  shop: {
+    icon: poiSvg("M2 7h20v2l-2 12H4L2 9V7zm4 4v7h2v-7H6zm4 0v7h2v-7h-2zm4 0v7h2v-7h-2z"),
+    color: "#9333ea",
+  },
+
+  // --- TRANSPORTASI ---
+  station: {
+    icon: poiSvg("M6 3h12a3 3 0 0 1 3 3v8a4 4 0 0 1-4 4l2 3h-2.5l-1.5-3H9l-1.5 3H5l2-3a4 4 0 0 1-4-4V6a3 3 0 0 1 3-3zm1 3v4h10V6H7zm1 9a1.3 1.3 0 1 0 0-2.6A1.3 1.3 0 0 0 8 15zm8 0a1.3 1.3 0 1 0 0-2.6A1.3 1.3 0 0 0 16 15z"),
+    color: "#1d4ed8",
+  },
+  airport: {
+    icon: poiSvg("M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"),
+    color: "#0369a1",
+  },
+  port: {
+    icon: poiSvg("M12 2a2 2 0 1 1 0 4 2 2 0 0 1 0-4zm1 5v6l4 2-1 2-4-2-4 2-1-2 4-2V7h2zm-6 9 1-1h8l1 1-1 4H7l-1-4z"),
+    color: "#0c4a6e",
+  },
+  terminal: {
+    icon: poiSvg("M5 5h14a2 2 0 0 1 2 2v8a3 3 0 0 1-3 3l1 3h-2l-1-3H8l-1 3H5l1-3a3 3 0 0 1-3-3V7a2 2 0 0 1 2-2zm1 3v5h12V8H6zm2 8a1.2 1.2 0 1 0 0-2.4A1.2 1.2 0 0 0 8 16zm8 0a1.2 1.2 0 1 0 0-2.4A1.2 1.2 0 0 0 16 16z"),
+    color: "#0f766e",
+  },
+  shelter: {
+    icon: poiSvg("M4 5h16v3H4V5zm2 4h12v9h2v3H4v-3h2V9zm3 2v5h6v-5H9z"),
+    color: "#0ea5e9",
+  },
+  transport: {
+    icon: poiSvg("M4 7a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v9a2 2 0 0 1-2 2l1 3h-2l-1-3H8l-1 3H5l1-3a2 2 0 0 1-2-2V7zm3 1v5h10V8H7z"),
+    color: "#0284c7",
+  },
+
+  // --- PARKIR & SPBU ---
+  parking: {
+    icon: `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="3" width="18" height="18" rx="3"/><text x="12" y="17" text-anchor="middle" font-size="14" font-weight="900" fill="white">P</text></svg>`,
+    color: "#64748b",
+  },
+  fuel: {
+    icon: poiSvg("M3 3h12v18H3V3zm2 2v14h8V5H5zm9 2h2l2 2v8a1 1 0 0 1-2 0v-4h-2V7zm-4 2h4v2H10V9zm0 4h4v2H10v-2z"),
+    color: "#dc2626",
+  },
+  ev_charging: {
+    icon: poiSvg("M7 4h4V2h2v2h4v6h-2v9a1 1 0 0 1-2 0v-4h-4v4a1 1 0 0 1-2 0V10H5V4h2zm1 2v4h6V6H8zm3 5 2 3h-2v3l-2-3h2v-3z"),
+    color: "#16a34a",
+  },
+
+  // --- KANTOR & BANK ---
+  bank: {
+    icon: poiSvg("M2 10l10-7 10 7v1H2v-1zm2 2h2v7H4v-7zm4 0h2v7H8v-7zm4 0h2v7h-2v-7zm4 0h2v7h-2v-7zM2 20h20v2H2v-2z"),
+    color: "#1e40af",
+  },
+  atm: {
+    icon: poiSvg("M2 5h20v14H2V5zm2 2v10h16V7H4zm2 2h12v2H6V9zm0 4h5v2H6v-2zm7 0h5v2h-5v-2z"),
+    color: "#2563eb",
+  },
+  post_office: {
+    icon: poiSvg("M2 4h20v16H2V4zm2 2v1.5l8 5 8-5V6H4zm0 4v8h16v-8l-8 5-8-5z"),
+    color: "#b45309",
+  },
+  office_govt: {
+    icon: poiSvg("M2 21V9l10-6 10 6v12H2zm4-2h3v-5H9v5zm3 0h2v-5h-2v5zm3 0h3v-5h-3v5zM12 5.5 5 9.5v1h14v-1L12 5.5z"),
+    color: "#475569",
+  },
+  office_corp: {
+    icon: poiSvg("M5 21V4h14v17h-4v-4h-6v4H5zm4-14v2h2V7H9zm4 0v2h2V7h-2zm-4 4v2h2v-2H9zm4 0v2h2v-2h-2z"),
+    color: "#14b8a6",
+  },
+  police: {
+    icon: poiSvg("M12 1l8 3v6c0 5-3.5 9.7-8 11C7.5 19.7 4 15 4 10V4l8-3zm-1 10V7h2v4h2l-3 4-3-4h2z"),
+    color: "#1e3a5f",
+  },
+  fire_station: {
+    icon: poiSvg("M4 20h16v-8l-8-9-8 9v8zm2-2v-5h4v5H6zm6 0v-5h4v5h-4zm-4-7 4-4.5 4 4.5H8z"),
+    color: "#dc2626",
+  },
+
+  // --- HOTEL ---
+  hotel: {
+    icon: poiSvg("M7 21V9l5-6 5 6v12H7zm2-2h2v-4H9v4zm4 0h2v-4h-2v4zm-4-7h2v-2H9v2zm4 0h2v-2h-2v2z"),
+    color: "#0891b2",
+  },
+  hostel: {
+    icon: poiSvg("M2 8h20v13H2V8zm2 2v9h16v-9H4zm1 2h14v2H5v-2zm0 4h8v2H5v-2zM6 2h12v5H6V2zm2 2v1h8V4H8z"),
+    color: "#0e7490",
+  },
+  villa: {
+    icon: poiSvg("M3 21V10l9-7 9 7v11H3zm5-2h3v-4H8v4zm5 0h3v-4h-3v4zm-5-7h3V9H8v3zm5 0h3V9h-3v3z"),
+    color: "#16a34a",
+  },
+  guesthouse: {
+    icon: poiSvg("M2 21V10l10-8 10 8v11h-6v-6H8v6H2zm4-4h2v-2H6v2zm10 0h2v-2h-2v2z"),
+    color: "#65a30d",
+  },
+
+  // --- TAMAN & OLAHRAGA ---
+  park: {
+    icon: poiSvg("M12 3c2.2 0 4 1.8 4 4 1.7.4 3 1.9 3 3.7 0 2.1-1.7 3.8-3.8 3.8H14V21h-4v-6.5H8.8A3.8 3.8 0 0 1 5 10.7C5 8.9 6.3 7.4 8 7c0-2.2 1.8-4 4-4z"),
+    color: "#22c55e",
+  },
+  sports: {
+    icon: poiSvg("M12 2a10 10 0 1 1 0 20A10 10 0 0 1 2 12zm-2 5-3 3 3 3 1-1-2-2 2-2-1-1zm4 0-1 1 2 2-2 2 1 1 3-3-3-3zm-2 9a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"),
+    color: "#16a34a",
+  },
+  playground: {
+    icon: poiSvg("M7 2l2 5H7l1 3H5L3 7h2l2-5zm10 0 2 5h-2l1 3h-3l-1-3h-2l2-5h3zm-8 12a3 3 0 1 1 0 6 3 3 0 0 1 0-6zm6 0a3 3 0 1 1 0 6 3 3 0 0 1 0-6z"),
+    color: "#f59e0b",
+  },
+  stadium: {
+    icon: poiSvg("M2 9h20v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9zm4 2v6h12v-6H6zm0-4h12V5H6v2zm3 6h6v2H9v-2z"),
+    color: "#0284c7",
+  },
+
+  // --- WISATA & HIBURAN ---
+  monument: {
+    icon: poiSvg("M12 3 7 8h10l-5-5zM8 10h8l2 11H6l2-11zm3 2v6h2v-6h-2z"),
+    color: "#a16207",
+  },
+  museum: {
+    icon: poiSvg("M2 21V9l10-6 10 6v12H2zm4-2h3v-6H6v6zm5 0h2v-6h-2v6zm4 0h3v-6h-3v6zM12 5.5 4.8 9.7h14.4L12 5.5z"),
+    color: "#78350f",
+  },
+  beach: {
+    icon: poiSvg("M13 7a3 3 0 0 1 3 3H10a3 3 0 0 1 3-3zm-8 9 3-2 2 1 2-1 2 1 2-1 3 2v2H5v-2zm0-3 2 1 4-4 2 1 4-3v2l-4 3-2-1-4 4-2-1v-2zm15-3a1 1 0 1 1-2 0V5a1 1 0 0 1 2 0v5z"),
+    color: "#0891b2",
+  },
+  mountain: {
+    icon: poiSvg("M8.5 5l-7 13h17l-7-13-3 6zm-1 11 4-7.3 4 7.3H7.5zm9.5-3 3 6H18l-1-6z"),
+    color: "#4d7c0f",
+  },
+  waterfall: {
+    icon: poiSvg("M7 2h2v6H7V2zm4 0h2v8h-2V2zm4 0h2v6h-2V2zm-8 9h2v2H7v-2zm4 2h2v2h-2v-2zm4-2h2v2h-2v-2zM5 16h14v1c0 2.8-2 5-4.5 5h-5C7 22 5 19.8 5 17v-1z"),
+    color: "#0284c7",
+  },
+  cinema: {
+    icon: poiSvg("M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm2 2v2h2V6H6zm4 0v2h2V6h-2zm4 0v2h2V6h-2zm4 0v2h2V6h-2zm-12 4v2h2v-2H6zm4 0v2h2v-2h-2zm4 0v2h2v-2h-2zm4 0v2h2v-2h-2zM10 8l5 4-5 4V8z"),
+    color: "#7c3aed",
+  },
+  zoo: {
+    icon: poiSvg("M8 3a4 4 0 0 0-4 4c0 .7.2 1.4.5 2H3v2h2v2H3v2h2v6h14v-6h2v-2h-2v-2h2V9h-1.5c.3-.6.5-1.3.5-2a4 4 0 0 0-4-4c-1 0-2 .4-2.7 1A4 4 0 0 0 8 3zm1 9h6v7H9v-7zm-3 2a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm10 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"),
+    color: "#92400e",
+  },
+  theme_park: {
+    icon: poiSvg("M12 2a5 5 0 0 1 5 5c0 2.4-1.7 4.4-4 4.9V21h-2v-9.1C8.7 11.4 7 9.4 7 7a5 5 0 0 1 5-5zm-6 8 3 11H7l-3-11h2zm12 0h2l-3 11h-2l3-11z"),
+    color: "#db2777",
+  },
+
+  // --- MAKAM ---
+  cemetery: {
+    icon: poiSvg("M12 3a5 5 0 0 1 5 5v13H7V8a5 5 0 0 1 5-5zm-1 4v3H8v2h3v5h2v-5h3v-2h-3V7h-2z"),
+    color: "#64748b",
+  },
+
+  // --- UTILITAS ---
+  toilet: {
+    icon: poiSvg("M7 2h3v7H8v7a1 1 0 0 1-2 0V9H4V2h3zm4 0h3v10h-2v6a1 1 0 0 1-2 0V2zm5 0a4 4 0 0 1 4 4v4h-2v8a2 2 0 0 1-4 0v-8h-2V6a4 4 0 0 1 4-4z"),
+    color: "#0369a1",
+  },
+  tower: {
+    icon: poiSvg("M9 2h6l1 5H8L9 2zm-1 6h8l-1 4H10L8 8zm-1 5h10l-2 9H9L7 13zm3 2 1 5h2l1-5h-4z"),
+    color: "#6b7280",
+  },
+  warehouse: {
+    icon: poiSvg("M2 9h20v12H2V9zm2 2v8h16v-8H4zm14-6 2 3H2L4 5h16zm-6 8h4v4h-4v-4z"),
+    color: "#9ca3af",
+  },
+  laundry: {
+    icon: poiSvg("M5 2h14a2 2 0 0 1 2 2v18H3V4a2 2 0 0 1 2-2zm7 4a6 6 0 1 0 0 12A6 6 0 0 0 12 6zm0 2a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm-2 2v4h4v-4h-4z"),
+    color: "#38bdf8",
+  },
+  salon: {
+    icon: poiSvg("M9.5 4a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5zm5 1a2 2 0 1 1 0 4 2 2 0 0 1 0-4zM5 12c0-1.7 2-3 4.5-3S14 10.3 14 12v9H5v-9zm9 2h5v7h-5v-7z"),
+    color: "#f472b6",
+  },
+
+  // --- FALLBACK ---
+  other: {
+    icon: poiSvg("M12 2a7 7 0 0 1 7 7c0 5-7 13-7 13S5 14 5 9a7 7 0 0 1 7-7zm0 9.5A2.5 2.5 0 1 0 12 6a2.5 2.5 0 0 0 0 5.5z"),
+    color: "#475569",
+  },
+};
+
+// ---------------------------------------------------------------------------
+// 5. LABELS
+// ---------------------------------------------------------------------------
+
+export const POI_KIND_LABELS: Record<PoiKind, string> = {
+  mosque: "Masjid", church: "Gereja", church_catholic: "Gereja Katolik",
+  temple_hindu: "Pura", temple_buddha: "Vihara", temple_chinese: "Klenteng",
+  synagogue: "Synagogue", chapel: "Kapel", pesantren: "Pesantren",
+  school: "Sekolah", kindergarten: "TK/PAUD", campus: "Kampus",
+  library: "Perpustakaan", course: "Kursus/Bimbel",
+  hospital: "Rumah Sakit", clinic: "Klinik", pharmacy: "Apotek",
+  dentist: "Klinik Gigi", veterinary: "Klinik Hewan", posyandu: "Posyandu",
+  restaurant: "Restoran", cafe: "Kafe", fast_food: "Fast Food",
+  food_court: "Food Court", bakery: "Bakery", street_food: "Street Food", bar: "Bar",
+  mall: "Mall", supermarket: "Supermarket", minimarket: "Minimarket",
+  market: "Pasar", shop: "Toko",
+  station: "Stasiun", airport: "Bandara", port: "Pelabuhan",
+  terminal: "Terminal Bus", shelter: "Halte", transport: "Transportasi",
+  parking: "Parkir", fuel: "SPBU", ev_charging: "Charger EV",
+  bank: "Bank", atm: "ATM", post_office: "Kantor Pos",
+  office_govt: "Kantor Pemerintah", office_corp: "Kantor", police: "Kepolisian", fire_station: "Pemadam",
+  hotel: "Hotel", hostel: "Hostel", villa: "Villa", guesthouse: "Guest House",
+  park: "Taman", sports: "Olahraga", playground: "Taman Bermain", stadium: "Stadion",
+  monument: "Landmark", museum: "Museum", beach: "Pantai", mountain: "Gunung",
+  waterfall: "Air Terjun", cinema: "Bioskop", zoo: "Kebun Binatang", theme_park: "Taman Hiburan",
+  cemetery: "Makam",
+  toilet: "Toilet Umum", tower: "Menara", warehouse: "Gudang",
+  laundry: "Laundry", salon: "Salon",
+  other: "Lokasi",
+};
+
+// ---------------------------------------------------------------------------
+// 6. CLASSIFY — granular, menggantikan versi lama
+// ---------------------------------------------------------------------------
+
+export function classifyPoiKind(tags: Record<string, string>): PoiKind {
+  const a = tags.amenity ?? "";
+  const t = tags.tourism ?? "";
+  const r = tags.religion ?? "";
+  const denom = (tags.denomination ?? "").toLowerCase();
+  const leisure = tags.leisure ?? "";
+  const historic = tags.historic ?? "";
+  const building = tags.building ?? "";
+  const landuse = tags.landuse ?? "";
+
+  // --- Ibadah (granular per agama/jenis) ---
+  if (a === "place_of_worship" || tags.religion) {
+    if (r === "muslim" || r === "islam") return "mosque";
+    if (r === "hindu") return "temple_hindu";
+    if (r === "buddhist" || r === "buddhism") return "temple_buddha";
+    if (r === "taoist" || denom.includes("chinese") || denom.includes("tionghoa")) return "temple_chinese";
+    if (r === "jewish") return "synagogue";
+    if (r === "christian" || r === "christianity") {
+      if (denom.includes("catholic") || denom.includes("katolik")) return "church_catholic";
+      if (denom.includes("chapel") || a === "chapel") return "chapel";
+      return "church";
+    }
+    return "other";
+  }
+  if (building === "mosque" || building === "masjid") return "mosque";
+  if (building === "church") return "church";
+  if (building === "temple") return "temple_hindu";
+  if (tags.education === "islamic_school" || building === "pesantren") return "pesantren";
+
+  // --- Kesehatan ---
+  if (a === "hospital") return "hospital";
+  if (a === "clinic" || a === "doctors") return "clinic";
+  if (a === "pharmacy" || tags.healthcare === "pharmacy") return "pharmacy";
+  if (a === "dentist") return "dentist";
+  if (a === "veterinary" || tags.healthcare === "veterinary") return "veterinary";
+  if (a === "social_facility" && tags.social_facility === "nursing_home") return "hospital";
+  if (tags.healthcare) return "clinic";
+
+  // --- Pendidikan ---
+  if (a === "kindergarten" || a === "childcare") return "kindergarten";
+  if (a === "school" || tags.education === "school") return "school";
+  if (a === "university" || a === "college" || t === "university") return "campus";
+  if (a === "library") return "library";
+  if (a === "language_school" || a === "driving_school" || a === "music_school") return "course";
+
+  // --- Kuliner ---
+  if (a === "cafe" || a === "coffee_shop") return "cafe";
+  if (a === "fast_food") return "fast_food";
+  if (a === "food_court") return "food_court";
+  if (a === "bakery" || (tags.shop === "bakery")) return "bakery";
+  if (a === "bar" || a === "pub" || a === "nightclub") return "bar";
+  if (a === "restaurant") return "restaurant";
+  if (a === "food_kiosk" || a === "street_vendor") return "street_food";
+
+  // --- Keuangan / Kantor ---
+  if (a === "bank") return "bank";
+  if (a === "atm" || a === "bureau_de_change") return "atm";
+  if (a === "post_office") return "post_office";
+  if (a === "police") return "police";
+  if (a === "fire_station") return "fire_station";
+  if (a === "townhall" || a === "government" || building === "government") return "office_govt";
+  if (a === "office" || tags.office) return "office_corp";
+
+  // --- Transportasi ---
+  if (a === "aerodrome" || t === "aerodrome" || building === "aerodrome") return "airport";
+  if (a === "ferry_terminal") return "port";
+  if (a === "bus_station" || tags.public_transport === "station" || tags.railway === "station") return "station";
+  if (a === "bus_stop" || tags.highway === "bus_stop" || tags.public_transport === "platform") return "shelter";
+  if (tags.railway === "halt" || tags.railway === "tram_stop") return "transport";
+  if (a === "public_transport" || tags.public_transport) return "transport";
+
+  // --- Parkir & SPBU ---
+  if (a === "fuel") return "fuel";
+  if (a === "charging_station" || a === "ev_charging") return "ev_charging";
+  if (a === "parking" || tags.parking || a === "motorcycle_parking") return "parking";
+  if (a === "car_wash") return "transport";
+
+  // --- Belanja ---
+  if (building === "mall" || building === "shopping_centre") return "mall";
+  if (tags.shop === "supermarket") return "supermarket";
+  if (tags.shop === "convenience") return "minimarket";
+  if (a === "marketplace" || tags.shop === "market") return "market";
+  if (tags.shop) return "shop";
+
+  // --- Hotel ---
+  if (t === "hotel") return "hotel";
+  if (t === "hostel") return "hostel";
+  if (t === "guest_house") return "guesthouse";
+  if (t === "villa" || t === "chalet") return "villa";
+  if (building === "hotel" || a === "hotel") return "hotel";
+
+  // --- Wisata / Landmark ---
+  if (t === "museum") return "museum";
+  if (t === "attraction" || historic === "monument" || historic === "memorial") return "monument";
+  if (t === "beach" || tags.natural === "beach") return "beach";
+  if (tags.natural === "peak" || tags.natural === "mountain") return "mountain";
+  if (tags.waterway === "waterfall" || tags.natural === "waterfall") return "waterfall";
+  if (a === "cinema" || t === "cinema") return "cinema";
+  if (t === "zoo" || a === "zoo") return "zoo";
+  if (t === "theme_park" || t === "amusement_park") return "theme_park";
+  if (historic) return "monument";
+
+  // --- Taman & Olahraga ---
+  if (leisure === "park" || leisure === "garden") return "park";
+  if (leisure === "playground") return "playground";
+  if (leisure === "stadium") return "stadium";
+  if (leisure === "sports_centre" || leisure === "pitch" || leisure === "track") return "sports";
+
+  // --- Makam ---
+  if (a === "grave_yard" || landuse === "cemetery" || tags.cemetery) return "cemetery";
+
+  // --- Utilitas ---
+  if (a === "toilets") return "toilet";
+  if (tags.man_made === "tower" || tags.man_made === "mast") return "tower";
+  if (landuse === "industrial" || building === "warehouse") return "warehouse";
+  if (tags.shop === "laundry" || a === "laundry") return "laundry";
+  if (tags.shop === "hairdresser" || tags.shop === "beauty") return "salon";
+
   return "other";
 }
 
-function poiVisual(kind: PoiKind): { icon: string; color: string } {
-  return POI_VISUALS[kind] || POI_VISUALS.other;
+// ---------------------------------------------------------------------------
+// 7. PRIORITY & ZOOM
+// ---------------------------------------------------------------------------
+
+export function poiPriority(kind: PoiKind, tags: Record<string, string> = {}): number {
+  const named = Boolean(tags.name ?? tags.official_name ?? tags.brand ?? tags.operator);
+
+  if (kind === "hospital" || kind === "airport" || kind === "station" || kind === "port") return 5;
+  if (kind === "campus" || kind === "mosque" || kind === "monument" || kind === "museum") return 4;
+  if (kind === "church" || kind === "church_catholic" || kind === "temple_hindu" ||
+    kind === "temple_buddha" || kind === "temple_chinese" || kind === "synagogue") return 4;
+  if (kind === "park" || kind === "stadium" || kind === "zoo" || kind === "theme_park") return 4;
+  if (kind === "school" || kind === "mall" || kind === "supermarket" || kind === "terminal") return named ? 4 : 3;
+  if (kind === "hotel" || kind === "villa" || kind === "bank" || kind === "police") return 3;
+  if (kind === "clinic" || kind === "pharmacy" || kind === "restaurant" || kind === "cafe") return named ? 3 : 2;
+  if (kind === "shelter" || kind === "parking" || kind === "fuel" || kind === "atm") return named ? 3 : 1;
+  if (named) return 2;
+  return 1;
 }
 
-function poiMarkerSizeByZoom(): number {
-  const zoom = map.getZoom();
-  return clamp(12 + (zoom - 13) * 1.15, 12, 24);
+export function poiMinZoom(kind: PoiKind, priority: number): number {
+  if (priority >= 5) return 10;
+  if (priority >= 4) return 12;
+  if (kind === "school" || kind === "mall" || kind === "supermarket" || kind === "terminal" || kind === "bank" || kind === "hotel") return 13;
+  if (kind === "clinic" || kind === "pharmacy" || kind === "restaurant" || kind === "cafe" || kind === "fuel" || kind === "atm") return 15;
+  if (kind === "shelter" || kind === "parking" || kind === "fast_food" || kind === "bakery" || kind === "shop" || kind === "minimarket") return 16;
+  if (priority >= 3) return 14;
+  return 15;
+}
+
+// ---------------------------------------------------------------------------
+// 8. MARKER SIZE (by zoom)
+// ---------------------------------------------------------------------------
+
+// Gunakan: poiMarkerSize(map.getZoom())
+export function poiMarkerSize(zoom: number): number {
+  return clamp(18 + (zoom - 13) * 1.15, 18, 28);
+}
+
+// ---------------------------------------------------------------------------
+// 9. PUBLIC GETTER
+// ---------------------------------------------------------------------------
+
+export function poiVisual(kind: PoiKind): { icon: string; color: string } {
+  return POI_SVG_VISUALS[kind] ?? POI_SVG_VISUALS.other;
+}
+
+export function poiEmoji(kind: PoiKind): { icon: string; color: string } {
+  return POI_VISUALS[kind] ?? POI_VISUALS.other;
+}
+
+function cleanPoiTitle(tags: Record<string, string>, kind: PoiKind): { title: string; named: boolean } {
+  const raw = tags.name || tags.official_name || tags["name:id"] || tags.brand || tags.operator;
+  const title = String(raw || "").trim();
+  if (title && !/^(poi|yes)$/i.test(title)) return { title, named: true };
+  return { title: POI_KIND_LABELS[kind], named: false };
+}
+
+function poiDisplayMinZoom(poi: PoiRecord): number {
+  const base = poi.minZoom ?? poiMinZoom(poi.kind, poi.priority ?? 1);
+  return poi.named === false ? Math.max(base, 14) : Math.max(base - 1, 10);
+}
+
+function poiVisibleLimit(zoom: number): number {
+  if (zoom < 11) return 28;
+  if (zoom < 13) return 75;
+  if (zoom < 15) return 180;
+  if (zoom < 17) return 420;
+  return 900;
+}
+
+function visiblePoisForZoom(pois: PoiRecord[], zoom = map.getZoom()): PoiRecord[] {
+  if (zoom < 10) return [];
+  const limit = poiVisibleLimit(zoom);
+  return dedupePoiRecords(pois)
+    .filter((poi) => zoom >= poiDisplayMinZoom(poi))
+    .sort((a, b) => (b.priority ?? 1) - (a.priority ?? 1) || Number(b.named) - Number(a.named) || a.title.localeCompare(b.title))
+    .slice(0, limit);
+}
+
+function normalizedPoiTitle(title: string): string {
+  return title.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function isLowValueNamelessPoi(poi: PoiRecord): boolean {
+  if (poi.named) return false;
+  return poi.priority !== undefined && poi.priority <= 1 && poi.kind === "other";
+}
+
+function dedupePoiRecords(pois: PoiRecord[]): PoiRecord[] {
+  const sorted = [...pois]
+    .filter((poi) => poi.lat && poi.lng && !Number.isNaN(poi.lat) && !Number.isNaN(poi.lng))
+    .filter((poi) => !isLowValueNamelessPoi(poi))
+    .sort((a, b) => (b.priority ?? 1) - (a.priority ?? 1) || Number(b.named) - Number(a.named));
+  const result: PoiRecord[] = [];
+  sorted.forEach((poi) => {
+    const title = normalizedPoiTitle(poi.title);
+    const duplicate = result.some((existing) => {
+      if (existing.kind !== poi.kind) return false;
+      const sameTitle = normalizedPoiTitle(existing.title) === title;
+      const distance = L.latLng(existing.lat, existing.lng).distanceTo([poi.lat, poi.lng]);
+      if (sameTitle && distance < 120) return true;
+      if (!poi.named && !existing.named && distance < 95) return true;
+      return false;
+    });
+    if (!duplicate) result.push(poi);
+  });
+  return result;
+}
+
+function renderPoiMarkers(pois?: PoiRecord[]): void {
+  if (pois) {
+    const nextData = new Map<string, PoiRecord>();
+    dedupePoiRecords(pois).forEach((poi) => nextData.set(poi.id, poi));
+    state.poiData = nextData;
+  }
+
+  const visiblePois = visiblePoisForZoom([...state.poiData.values()]);
+  updateMapLibrePoiLayer(visiblePois);
+
+  if (state.baseMode === "3d") {
+    state.poiMarkers.forEach((marker) => {
+      try { marker.remove(); } catch { /* ignore */ }
+    });
+    state.poiMarkers.clear();
+    state.overpassLayer?.clearLayers();
+    updateTabletCategoryView();
+    return;
+  }
+
+  if (!state.overpassLayer) state.overpassLayer = L.layerGroup([], { pane: "customPoiPane" }).addTo(map);
+  const size = poiMarkerSize(map.getZoom());
+  const visibleIds = new Set(visiblePois.map((poi) => poi.id));
+
+  state.poiMarkers.forEach((marker, id) => {
+    if (!visibleIds.has(id)) {
+      try { marker.remove(); } catch { /* ignore */ }
+      state.poiMarkers.delete(id);
+    }
+  });
+
+  visiblePois.forEach((poi) => {
+    const icon = makePoiIcon(poi, size);
+    const existing = state.poiMarkers.get(poi.id);
+    if (existing) {
+      existing.setLatLng([poi.lat, poi.lng]);
+      existing.setIcon(icon);
+      existing.off("click");
+      existing.on("click", (ev: L.LeafletMouseEvent) => {
+        L.DomEvent.stop(ev);
+        handlePoiClick(poi);
+      });
+      return;
+    }
+
+    const marker = L.marker([poi.lat, poi.lng], {
+      icon,
+      pane: "customPoiPane",
+      interactive: true,
+      riseOnHover: true,
+      zIndexOffset: 450 + (poi.priority ?? 1),
+    }).addTo(state.overpassLayer as L.LayerGroup);
+    // Ensure the generated Leaflet marker element exposes an accessible name
+    try {
+      const el = (marker as any).getElement?.() as HTMLElement | null;
+      if (el) {
+        // Outer wrapper used by Leaflet may already have role/tabindex; ensure aria-label is present
+        el.setAttribute("aria-label", poi.title || `POI ${poi.id}`);
+        el.setAttribute("role", el.getAttribute("role") || "button");
+        el.setAttribute("tabindex", el.getAttribute("tabindex") || "0");
+        // Keyboard activation for Enter / Space
+        el.addEventListener("keydown", (ev: KeyboardEvent) => {
+          if (ev.key === "Enter" || ev.key === " ") {
+            ev.preventDefault();
+            marker.fire("click");
+          }
+        });
+      }
+    } catch { /* ignore DOM access errors on some renderers */ }
+    (marker.options as any).poiId = poi.id;
+    marker.on("click", (ev: L.LeafletMouseEvent) => {
+      L.DomEvent.stop(ev);
+      handlePoiClick(poi);
+    });
+    state.poiMarkers.set(poi.id, marker);
+  });
+  updateTabletCategoryView();
 }
 
 function makePoiIcon(poi: PoiRecord, size: number): L.DivIcon {
   const visual = poiVisual(poi.kind);
+  const zoom = map.getZoom();
+  const priority = poi.priority ?? 1;
+  const showLabel = Boolean(poi.named) && (zoom >= 15 || (zoom >= 13 && priority >= 3) || (zoom >= 11 && priority >= 4));
   return L.divIcon({
     className: "poi-marker-icon",
-    html: `<div class="poi-marker poi-kind-${poi.kind}" title="${escapeHtml(poi.title)}" style="--poi-accent:${visual.color}; --poi-size:${size}px;">
+    html: `<div class="poi-marker poi-kind-${poi.kind} ${showLabel ? "has-label" : "no-label"}" title="${escapeHtml(poi.title)}" style="--poi-accent:${visual.color}; --poi-size:${size}px;">
       <span class="poi-marker-glyph">${visual.icon}</span>
+      <span class="poi-marker-label">${escapeHtml(poi.title)}</span>
     </div>`,
-    iconSize: [size, size],
+    iconSize: [Math.max(86, size), size + 32],
     iconAnchor: [Math.round(size / 2), Math.round(size / 2)],
   });
 }
@@ -504,6 +1376,65 @@ function renderPoiModal(poi: PoiRecord): string {
     </div>`;
 }
 
+type DeepLinkParams = Record<string, string | number | boolean | undefined | null>;
+
+function applyParams(url: URL, params: DeepLinkParams): URL {
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === "") return;
+    url.searchParams.set(key, String(value));
+  });
+  return url;
+}
+
+function appWebUrl(params: DeepLinkParams = {}): string {
+  const url = new URL(APP_PUBLIC_URL);
+  return applyParams(url, params).toString();
+}
+
+function appDeepLink(route = "map", params: DeepLinkParams = {}): string {
+  const safeRoute = route.replace(/[^a-z0-9-]/gi, "") || "map";
+  const url = new URL(`${ANDROID_DEEP_LINK_SCHEME}://${safeRoute}`);
+  return applyParams(url, params).toString();
+}
+
+function currentMapDeepLink(params: DeepLinkParams = {}): string {
+  const center = map.getCenter();
+  return appDeepLink("map", {
+    lat: center.lat.toFixed(7),
+    lng: center.lng.toFixed(7),
+    z: Math.round(map.getZoom() || DEFAULT_ZOOM),
+    ...params,
+  });
+}
+
+function appPoiUrl(poi: PoiRecord): string {
+  return appWebUrl({
+    lat: poi.lat.toFixed(7),
+    lng: poi.lng.toFixed(7),
+    z: Math.max(DEFAULT_ZOOM, Math.round(map.getZoom() || DEFAULT_ZOOM)),
+    poi: poi.id,
+  });
+}
+
+function appPoiDeepLink(poi: PoiRecord): string {
+  return appDeepLink("poi", {
+    lat: poi.lat.toFixed(7),
+    lng: poi.lng.toFixed(7),
+    z: Math.max(DEFAULT_ZOOM, Math.round(map.getZoom() || DEFAULT_ZOOM)),
+    poi: poi.id,
+  });
+}
+
+function appDeviceDeepLink(device: DeviceRecord): string {
+  return appDeepLink("map", {
+    focus: "device",
+    device: device.id,
+    lat: device.position.lat.toFixed(7),
+    lng: device.position.lng.toFixed(7),
+    z: DEFAULT_ZOOM,
+  });
+}
+
 function openPoiModal(poi: PoiRecord): void {
   closeModal();
   state.activeModalPoiId = poi.id;
@@ -525,12 +1456,14 @@ function openPoiModal(poi: PoiRecord): void {
   const shareBtn = sheet.querySelector<HTMLButtonElement>(".btn-share");
   const startBtn = sheet.querySelector<HTMLButtonElement>(".btn-start");
   shareBtn?.addEventListener("click", async () => {
-    const url = `https://www.openstreetmap.org/?mlat=${poi.lat}&mlon=${poi.lng}#map=${DEFAULT_ZOOM}/${poi.lat}/${poi.lng}`;
+    const url = appPoiUrl(poi);
+    const deepLink = appPoiDeepLink(poi);
+    const shareText = `${poi.description || poi.title}\nBuka di app ${APP_NAME}: ${deepLink}`;
     try {
       if ((navigator as any).share) {
-        await (navigator as any).share({ title: poi.title, text: poi.description || poi.title, url });
+        await (navigator as any).share({ title: poi.title, text: shareText, url });
       } else {
-        await navigator.clipboard.writeText(url);
+        await navigator.clipboard.writeText(`${url}\n${deepLink}`);
         alert("Link lokasi disalin ke clipboard");
       }
     } catch (err) { console.warn(err); }
@@ -543,10 +1476,12 @@ function openPoiModal(poi: PoiRecord): void {
     }
   });
 
-  // populate image from Unsplash (fallback) and compute distance/ETA via OSRM
+  // keep the curated category image unless OSM provides a valid image.
   const heroImg = sheet.querySelector<HTMLImageElement>(".poi-hero-image");
   if (heroImg) {
-    heroImg.src = `https://source.unsplash.com/featured/?${encodeURIComponent(poi.title)}`;
+    heroImg.onerror = () => {
+      heroImg.src = POI_LIBRARY[poi.kind].imageUrl;
+    };
   }
 
   const distanceEl = sheet.querySelector<HTMLElement>("[data-field=poi-distance]");
@@ -988,7 +1923,7 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
             const grd = ctx.createLinearGradient(0, 0, canvasEl.width, canvasEl.height);
             grd.addColorStop(0, 'rgba(59,130,246,0.08)');
             grd.addColorStop(0.5, 'rgba(16,185,129,0.04)');
-            grd.addColorStop(1, 'rgba(236,72,153,0.06)');
+            grd.addColorStop(1, 'rgba(245,158,11,0.06)');
             ctx.fillStyle = grd;
             ctx.fillRect(0, 0, canvasEl.width, canvasEl.height);
           }
@@ -1040,7 +1975,10 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
           }
           if (!pipMapInstance && currentPos) {
             pipMapInstance = L.map(pipMapElDiv).setView([currentPos.lat, currentPos.lng], 17);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OSM' }).addTo(pipMapInstance);
+            L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png", {
+              subdomains: "abcd",
+              attribution: "© OSM © CARTO",
+            }).addTo(pipMapInstance);
             L.marker([currentPos.lat, currentPos.lng], { icon: L.icon({ iconUrl: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSI4IiBmaWxsPSIjZmY0NDQ0Ii8+PC9zdmc+', iconSize: [24, 24] }) }).addTo(pipMapInstance);
             L.marker([currentTarget.lat, currentTarget.lng], { icon: L.icon({ iconUrl: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48cmVjdCB4PSI0IiB5PSI0IiB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIGZpbGw9IiMxMGI5ODEiIHJ4PSIyIi8+PC9zdmc+', iconSize: [24, 24] }) }).addTo(pipMapInstance);
           }
@@ -1092,7 +2030,12 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
 
 function syncPoiMarkers(anchor: L.LatLngExpression): void {
   const center = L.latLng(anchor);
-  const radiusMeters = 400; // search radius for nearby POIs
+  const zoom = map.getZoom();
+  if (zoom < 9) {
+    renderPoiMarkers([]);
+    return;
+  }
+  const radiusMeters = zoom < 12 ? 5000 : zoom < 14 ? 2600 : zoom < 16 ? 1400 : 850;
 
   // Build a small bbox around center (approximate degrees)
   const lat = center.lat;
@@ -1100,59 +2043,18 @@ function syncPoiMarkers(anchor: L.LatLngExpression): void {
   const latDelta = radiusMeters / 111320; // ~ meters to degrees
   const lngDelta = Math.abs(radiusMeters / (111320 * Math.cos((lat * Math.PI) / 180)));
   const bounds = L.latLngBounds([lat - latDelta, lng - lngDelta], [lat + latDelta, lng + lngDelta]);
+  const seq = ++state.poiFetchSeq;
   void fetchOverpassFeaturesForBounds(bounds).then((pois) => {
+    if (seq !== state.poiFetchSeq) return;
     let finalPois = pois;
     // If Overpass returned no POIs for this area, always fall back to local sample POIs
     // so the UI remains usable offline or when the API times out.
     if (!pois || pois.length === 0) {
-      // fallback local POIs
-      const c = center;
-      finalPois = [
-        { id: 'local-school-1', kind: 'campus', title: 'SD Negeri 1', description: '', address: '', imageUrl: POI_LIBRARY.campus.imageUrl, rating: POI_LIBRARY.campus.rating, icon: poiVisual('campus').icon, lat: c.lat + 0.0012, lng: c.lng + 0.0012 },
-        { id: 'local-mall-1', kind: 'mall', title: 'Pusat Perbelanjaan', description: '', address: '', imageUrl: POI_LIBRARY.mall.imageUrl, rating: POI_LIBRARY.mall.rating, icon: poiVisual('mall').icon, lat: c.lat - 0.0014, lng: c.lng + 0.0018 },
-        { id: 'local-hospital-1', kind: 'hospital', title: 'Klinik Sehat', description: '', address: '', imageUrl: POI_LIBRARY.hospital.imageUrl, rating: POI_LIBRARY.hospital.rating, icon: poiVisual('hospital').icon, lat: c.lat + 0.0020, lng: c.lng - 0.0010 },
-        { id: 'local-parking-1', kind: 'parking', title: 'Parkir Umum', description: '', address: '', imageUrl: POI_LIBRARY.parking.imageUrl, rating: POI_LIBRARY.parking.rating, icon: poiVisual('parking').icon, lat: c.lat - 0.0018, lng: c.lng - 0.0015 },
-      ];
+      if (state.poiData.size > 0) return;
+      finalPois = fallbackPoiRecords(center, "local");
     }
 
-    const keep = new Set<string>();
-    const iconSize = poiMarkerSizeByZoom();
-    finalPois.forEach((poi) => {
-      keep.add(poi.id);
-      state.poiData.set(poi.id, poi);
-      const existing = state.poiMarkers.get(poi.id);
-      const icon = makePoiIcon(poi, iconSize);
-      if (!existing) {
-        const marker = L.marker([poi.lat, poi.lng], {
-          icon,
-          interactive: true,
-          riseOnHover: true,
-          zIndexOffset: 500,
-        }).addTo(map);
-        (marker.options as any).poiId = poi.id;
-        marker.on("click", () => handlePoiClick(poi));
-        const el = marker.getElement() as HTMLElement | null;
-        if (el) el.style.display = '';
-        state.poiMarkers.set(poi.id, marker);
-        return;
-      }
-      existing.setLatLng([poi.lat, poi.lng]);
-      existing.setIcon(icon);
-      existing.off("click");
-      existing.on("click", () => handlePoiClick(poi));
-      const el2 = existing.getElement() as HTMLElement | null;
-      if (el2) el2.style.display = '';
-    });
-
-    // Remove stale POI markers
-    for (const [id, marker] of state.poiMarkers.entries()) {
-      id;
-      if (!keep.has(id)) {
-        map.removeLayer(marker);
-        state.poiMarkers.delete(id);
-        state.poiData.delete(id);
-      }
-    }
+    renderPoiMarkers(finalPois);
   }).catch(() => { /* ignore */ });
 }
 
@@ -1166,11 +2068,314 @@ function buildOverpassBBoxString(bounds: L.LatLngBounds): string {
   return `${s},${w},${n},${e}`;
 }
 
+function limitPoiQueryBounds(bounds: L.LatLngBounds): L.LatLngBounds {
+  const center = bounds.getCenter();
+  const diagonal = bounds.getSouthWest().distanceTo(bounds.getNorthEast());
+  if (diagonal <= POI_QUERY_MAX_RADIUS_M * 2) return bounds;
+  const latDelta = POI_QUERY_MAX_RADIUS_M / 111320;
+  const lngDelta = Math.abs(POI_QUERY_MAX_RADIUS_M / (111320 * Math.cos((center.lat * Math.PI) / 180)));
+  return L.latLngBounds(
+    [center.lat - latDelta, center.lng - lngDelta],
+    [center.lat + latDelta, center.lng + lngDelta],
+  );
+}
+
+function limitRoadQueryBounds(bounds: L.LatLngBounds): L.LatLngBounds {
+  const center = bounds.getCenter();
+  const diagonal = bounds.getSouthWest().distanceTo(bounds.getNorthEast());
+  if (diagonal <= ROAD_QUERY_MAX_RADIUS_M * 2) return bounds;
+  const latDelta = ROAD_QUERY_MAX_RADIUS_M / 111320;
+  const lngDelta = Math.abs(ROAD_QUERY_MAX_RADIUS_M / (111320 * Math.cos((center.lat * Math.PI) / 180)));
+  return L.latLngBounds(
+    [center.lat - latDelta, center.lng - lngDelta],
+    [center.lat + latDelta, center.lng + lngDelta],
+  );
+}
+
+function fallbackPoiRecords(center: L.LatLng, prefix = "fallback"): PoiRecord[] {
+  const entries: Array<[PoiKind, string, number, number]> = [
+    ["mosque", "Tempat Ibadah", 0.0060, -0.0042],
+    ["school", "Sekolah Terdekat", -0.0046, 0.0052],
+    ["hospital", "Klinik Terdekat", 0.0037, 0.0047],
+    ["mall", "Pusat Belanja", -0.0062, -0.0038],
+    ["park", "Taman Kota", 0.0055, 0.0060],
+    ["parking", "Parkir Umum", -0.0035, -0.0061],
+    ["restaurant", "Kuliner Sekitar", 0.0018, -0.0050],
+    ["office_corp", "Kantor Layanan", -0.0056, 0.0014],
+    ["station", "Transit Publik", 0.0070, 0.0018],
+  ];
+  return entries.map(([kind, title, latOffset, lngOffset], index) => {
+    const priority = poiPriority(kind, { name: title });
+    return {
+      id: `${prefix}-${kind}-${index}`,
+      kind,
+      title,
+      description: POI_LIBRARY[kind].description,
+      address: "Fallback custom POI saat server OSM lambat",
+      imageUrl: POI_LIBRARY[kind].imageUrl,
+      rating: POI_LIBRARY[kind].rating,
+      icon: poiVisual(kind).icon,
+      priority,
+      minZoom: 9,
+      named: true,
+      lat: center.lat + latOffset,
+      lng: center.lng + lngOffset,
+    };
+  });
+}
+
+async function postOverpassQuery(q: string): Promise<any> {
+  let lastError: unknown = null;
+  for (const endpoint of OVERPASS_ENDPOINTS) {
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), OVERPASS_FETCH_TIMEOUT_MS);
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: q,
+        signal: controller.signal,
+      });
+      if (!res.ok) throw new Error(`Overpass HTTP ${res.status}`);
+      return await res.json();
+    } catch (err) {
+      lastError = err;
+      console.warn(`Overpass fetch failed at ${endpoint}:`, err);
+    } finally {
+      window.clearTimeout(timer);
+    }
+  }
+  throw lastError || new Error("Overpass unavailable");
+}
+
+function roadPriority(tags: Record<string, string>): number {
+  if (tags.place) return tags.place === "city" || tags.place === "town" ? 8 : 6;
+  if (tags.building) return 3;
+  if (tags.landuse || tags.leisure || tags.natural) return 4;
+  const highway = tags.highway || "";
+  if (highway === "motorway" || highway === "trunk") return 6;
+  if (highway === "primary" || highway === "secondary") return 5;
+  if (highway === "tertiary") return 4;
+  if (highway === "residential" || highway === "unclassified") return 3;
+  return 2;
+}
+
+function mapLabelKind(tags: Record<string, string>): RoadLabelRecord["kind"] {
+  if (tags.highway) return "road";
+  if (tags.place) return "place";
+  if (tags.building) return "building";
+  return "area";
+}
+
+function makeRoadLabelIcon(road: RoadLabelRecord): L.DivIcon {
+  if (road.kind === "direction") {
+    const bearing = Number.isFinite(road.bearing) ? road.bearing : 0;
+    return L.divIcon({
+      className: "road-label-icon road-direction-icon",
+      html: `<div class="road-direction-marker" title="${escapeHtml(road.title)}" style="--road-bearing:${bearing}deg"><span>&#9654;</span></div>`,
+      iconSize: [28, 28],
+      iconAnchor: [14, 14],
+    });
+  }
+  if (road.kind === "pedestrian") {
+    return L.divIcon({
+      className: "road-label-icon pedestrian-label-icon",
+      html: `<div class="pedestrian-marker" title="${escapeHtml(road.title)}"><span>P</span></div>`,
+      iconSize: [24, 24],
+      iconAnchor: [12, 12],
+    });
+  }
+  return L.divIcon({
+    className: `road-label-icon map-label-icon map-label-${road.kind}`,
+    html: `<div class="road-label map-label map-label-${road.kind}" title="${escapeHtml(road.title)}"><span>${escapeHtml(road.title)}</span></div>`,
+    iconSize: [140, 24],
+    iconAnchor: [70, 12],
+  });
+}
+
+function bearingBetween(a: { lat: number; lon?: number; lng?: number }, b: { lat: number; lon?: number; lng?: number }): number {
+  const lng1 = ((a.lon ?? a.lng ?? 0) * Math.PI) / 180;
+  const lng2 = ((b.lon ?? b.lng ?? 0) * Math.PI) / 180;
+  const lat1 = (a.lat * Math.PI) / 180;
+  const lat2 = (b.lat * Math.PI) / 180;
+  const y = Math.sin(lng2 - lng1) * Math.cos(lat2);
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(lng2 - lng1);
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+
+function roadGeometrySamples(geometry: Array<{ lat: number; lon: number }>, spacingMeters: number, maxSamples: number): Array<{ lat: number; lng: number; bearing: number }> {
+  const samples: Array<{ lat: number; lng: number; bearing: number }> = [];
+  let carried = 0;
+  for (let i = 1; i < geometry.length && samples.length < maxSamples; i += 1) {
+    const prev = geometry[i - 1];
+    const next = geometry[i];
+    const segmentMeters = L.latLng(prev.lat, prev.lon).distanceTo([next.lat, next.lon]);
+    if (!segmentMeters) continue;
+    carried += segmentMeters;
+    if (carried < spacingMeters) continue;
+    carried = 0;
+    samples.push({
+      lat: (prev.lat + next.lat) / 2,
+      lng: (prev.lon + next.lon) / 2,
+      bearing: bearingBetween(prev, next),
+    });
+  }
+  return samples;
+}
+
+function renderRoadLabels(labels?: RoadLabelRecord[]): void {
+  if (labels) {
+    state.roadLabelData.clear();
+    labels.forEach((label) => state.roadLabelData.set(label.id, label));
+  }
+
+  const zoom = map.getZoom();
+  const maxLabels = zoom < 11 ? 18 : zoom < 13 ? 40 : zoom < 15 ? 90 : 180;
+  const visible = [...state.roadLabelData.values()]
+    .sort((a, b) => b.priority - a.priority || a.title.localeCompare(b.title))
+    .slice(0, maxLabels);
+  const visibleIds = new Set(visible.map((label) => label.id));
+
+  state.roadLabelMarkers.forEach((marker, id) => {
+    if (!visibleIds.has(id)) {
+      try { marker.remove(); } catch { /* ignore */ }
+      state.roadLabelMarkers.delete(id);
+    }
+  });
+
+  visible.forEach((label) => {
+    const icon = makeRoadLabelIcon(label);
+    const existing = state.roadLabelMarkers.get(label.id);
+    if (existing) {
+      existing.setLatLng([label.lat, label.lng]);
+      existing.setIcon(icon);
+      return;
+    }
+    const marker = L.marker([label.lat, label.lng], {
+      pane: "customLabelPane",
+      icon,
+      interactive: false,
+      keyboard: false,
+      zIndexOffset: 320 + label.priority,
+    }).addTo(map);
+    state.roadLabelMarkers.set(label.id, marker);
+  });
+}
+
+async function fetchRoadLabelsForBounds(bounds: L.LatLngBounds): Promise<RoadLabelRecord[]> {
+  const safeBounds = limitRoadQueryBounds(bounds);
+  const bbox = buildOverpassBBoxString(safeBounds);
+  const q = `
+    [out:json][timeout:10];
+    (
+      way["highway"]["name"](${bbox});
+      relation["highway"]["name"](${bbox});
+      way["highway"]["oneway"](${bbox});
+      way["highway"~"footway|pedestrian|crossing|path"](${bbox});
+      node["place"]["name"](${bbox});
+      way["landuse"]["name"](${bbox});
+      relation["landuse"]["name"](${bbox});
+      way["leisure"]["name"](${bbox});
+      relation["leisure"]["name"](${bbox});
+      way["natural"]["name"](${bbox});
+      relation["natural"]["name"](${bbox});
+      way["building"]["name"](${bbox});
+      relation["building"]["name"](${bbox});
+      node["amenity"]["name"](${bbox});
+      way["amenity"]["name"](${bbox});
+      node["shop"]["name"](${bbox});
+      way["shop"]["name"](${bbox});
+      node["tourism"]["name"](${bbox});
+      way["tourism"]["name"](${bbox});
+    );
+    out center geom tags 1800;
+  `;
+
+  try {
+    const data = await postOverpassQuery(q);
+    const elements = Array.isArray(data.elements) ? data.elements : [];
+    const deduped = new Map<string, RoadLabelRecord>();
+    elements.forEach((el: any) => {
+      const tags = el.tags || {};
+      const highway = tags.highway || "";
+      const isPedestrianWay = highway === "footway" || highway === "pedestrian" || highway === "crossing" || highway === "path";
+      const title = tags.name || tags.ref || (isPedestrianWay ? "Pejalan kaki" : "");
+      const lat = (el.center && el.center.lat) || el.lat || 0;
+      const lng = (el.center && el.center.lon) || el.lon || 0;
+      if (!title || !lat || !lng) return;
+      const label: RoadLabelRecord = {
+        id: `label-${el.type}-${el.id}`,
+        title,
+        lat,
+        lng,
+        priority: roadPriority(tags),
+        kind: mapLabelKind(tags),
+      };
+      const key = `${title.toLowerCase()}@${lat.toFixed(4)},${lng.toFixed(4)}`;
+      if (!deduped.has(key)) deduped.set(key, label);
+      const geometry = Array.isArray(el.geometry) ? el.geometry : [];
+      if (el.type === "way" && geometry.length > 1 && highway) {
+        if (isPedestrianWay) {
+          roadGeometrySamples(geometry, 280, 2).forEach((sample, index) => {
+            deduped.set(`ped-${el.id}-${index}`, {
+              id: `ped-${el.id}-${index}`,
+              title: "Pejalan kaki",
+              lat: sample.lat,
+              lng: sample.lng,
+              priority: 2,
+              kind: "pedestrian",
+              bearing: sample.bearing,
+            });
+          });
+        } else if (tags.oneway === "yes" || tags.oneway === "1" || tags.junction === "roundabout") {
+          roadGeometrySamples(geometry, 320, 4).forEach((sample, index) => {
+            deduped.set(`dir-${el.id}-${index}`, {
+              id: `dir-${el.id}-${index}`,
+              title: tags.junction === "roundabout" ? "Arah bundaran" : `Arah ${title}`,
+              lat: sample.lat,
+              lng: sample.lng,
+              priority: 5,
+              kind: "direction",
+              bearing: sample.bearing,
+            });
+          });
+        }
+      }
+    });
+    return [...deduped.values()];
+  } catch (err) {
+    console.warn("Road label fetch failed:", err);
+    return [];
+  }
+}
+
+let lastRoadFetchBounds: L.LatLngBounds | null = null;
+void fetchRoadLabelsForBounds;
+void lastRoadFetchBounds;
+
+async function refreshRoadLabelLayer(): Promise<void> {
+  const bounds = map.getBounds();
+  if (lastRoadFetchBounds && lastRoadFetchBounds.contains(bounds.getSouthWest()) && lastRoadFetchBounds.contains(bounds.getNorthEast())) {
+    renderRoadLabels();
+    return;
+  }
+  lastRoadFetchBounds = bounds.pad(0.18);
+  const seq = ++state.roadFetchSeq;
+  const labels = await fetchRoadLabelsForBounds(bounds);
+  if (seq !== state.roadFetchSeq) return;
+  if (!labels.length && state.roadLabelData.size > 0) {
+    renderRoadLabels();
+    return;
+  }
+  renderRoadLabels(labels);
+}
+
 async function fetchOverpassFeaturesForBounds(bounds: L.LatLngBounds): Promise<PoiRecord[]> {
-  const bbox = buildOverpassBBoxString(bounds);
+  const safeBounds = limitPoiQueryBounds(bounds);
+  const bbox = buildOverpassBBoxString(safeBounds);
   // Query common POI tags; return nodes + ways + relations with center
   const q = `
-    [out:json][timeout:15];
+    [out:json][timeout:12];
     (
       node["amenity"](${bbox});
       way["amenity"](${bbox});
@@ -1181,25 +2386,43 @@ async function fetchOverpassFeaturesForBounds(bounds: L.LatLngBounds): Promise<P
       node["tourism"](${bbox});
       way["tourism"](${bbox});
       relation["tourism"](${bbox});
+      node["leisure"](${bbox});
+      way["leisure"](${bbox});
+      relation["leisure"](${bbox});
+      node["historic"](${bbox});
+      way["historic"](${bbox});
+      relation["historic"](${bbox});
+      node["office"](${bbox});
+      way["office"](${bbox});
+      relation["office"](${bbox});
+      node["public_transport"](${bbox});
+      way["public_transport"](${bbox});
+      relation["public_transport"](${bbox});
+      node["railway"](${bbox});
+      way["railway"](${bbox});
+      relation["railway"](${bbox});
+      node["highway"="bus_stop"](${bbox});
+      way["highway"="bus_stop"](${bbox});
+      node["healthcare"](${bbox});
+      way["healthcare"](${bbox});
+      relation["healthcare"](${bbox});
+      node["landuse"="cemetery"](${bbox});
+      way["landuse"="cemetery"](${bbox});
+      relation["landuse"="cemetery"](${bbox});
     );
-    out center tags;
+    out center tags 1800;
   `;
 
   try {
-    const res = await fetch("https://overpass-api.de/api/interpreter", {
-      method: "POST",
-      headers: { "Content-Type": "text/plain" },
-      body: q,
-    });
-    if (!res.ok) throw new Error(`Overpass HTTP ${res.status}`);
-    const data = await res.json();
+    const data = await postOverpassQuery(q);
     const elements = Array.isArray(data.elements) ? data.elements : [];
     const pois: PoiRecord[] = elements.map((el: any) => {
       const tags = el.tags || {};
-      const name = tags.name || tags.official_name || tags['brand'] || tags['operator'] || tags.amenity || tags.shop || tags.tourism || `${tags.amenity || tags.shop || 'POI'}`;
       const lat = el.type === 'node' ? el.lat : (el.center && el.center.lat) || el.lat || 0;
       const lng = el.type === 'node' ? el.lon : (el.center && el.center.lon) || el.lon || 0;
       const kind = classifyPoiKind(tags);
+      const priority = poiPriority(kind, tags);
+      const { title, named } = cleanPoiTitle(tags, kind);
       const imageUrl = tags.image || tags['image:source'] || POI_LIBRARY[kind].imageUrl;
       const description = tags.description || tags['note'] || POI_LIBRARY[kind].description;
       const addressParts = [] as string[];
@@ -1210,16 +2433,19 @@ async function fetchOverpassFeaturesForBounds(bounds: L.LatLngBounds): Promise<P
       return {
         id: `overpass-${el.type}-${el.id}`,
         kind,
-        title: name || `POI ${el.id}`,
+        title,
         description: description || '',
         address: address || '',
         imageUrl: imageUrl || POI_LIBRARY[kind].imageUrl,
         rating: POI_LIBRARY[kind].rating,
         icon: poiVisual(kind).icon,
+        priority,
+        minZoom: poiMinZoom(kind, priority),
+        named,
         lat, lng,
       };
     }).filter((p: PoiRecord) => p.lat && p.lng && !Number.isNaN(p.lat) && !Number.isNaN(p.lng));
-    return pois;
+    return dedupePoiRecords(pois);
   } catch (err) {
     console.warn("Overpass fetch failed:", err);
     return [];
@@ -1231,7 +2457,7 @@ let lastOverpassFetchBounds: L.LatLngBounds | null = null;
 // Helper: Update MapLibre POI layer with GeoJSON features
 function updateMapLibrePoiLayer(pois: PoiRecord[]): void {
   const maplibreMap = state.maplibreMap;
-  if (!maplibreMap || state.baseMode !== "3d") return;
+  if (!maplibreMap) return;
 
   try {
     const features = pois.map(poi => ({
@@ -1240,7 +2466,10 @@ function updateMapLibrePoiLayer(pois: PoiRecord[]): void {
         id: poi.id,
         title: poi.title,
         kind: poi.kind,
-        "icon-emoji": poi.icon // Use emoji from POI record
+        priority: poi.priority ?? 1,
+        minZoom: poi.minZoom ?? poiMinZoom(poi.kind, poi.priority ?? 1),
+        "icon-emoji": POI_KIND_LABELS[poi.kind].slice(0, 1),
+        color: poiVisual(poi.kind).color,
       },
       geometry: { type: "Point", coordinates: [poi.lng, poi.lat] }
     }));
@@ -1257,46 +2486,27 @@ function updateMapLibrePoiLayer(pois: PoiRecord[]): void {
 async function refreshOverpassLayer(): Promise<void> {
   const bounds = map.getBounds();
   // Avoid refetch if bounds similar
-  if (lastOverpassFetchBounds && lastOverpassFetchBounds.contains(bounds.getSouthWest()) && lastOverpassFetchBounds.contains(bounds.getNorthEast())) return;
+  if (lastOverpassFetchBounds && lastOverpassFetchBounds.contains(bounds.getSouthWest()) && lastOverpassFetchBounds.contains(bounds.getNorthEast())) {
+    renderPoiMarkers();
+    return;
+  }
   lastOverpassFetchBounds = bounds.pad(0.2);
+  const seq = ++state.poiFetchSeq;
   const pois = await fetchOverpassFeaturesForBounds(bounds);
+  if (seq !== state.poiFetchSeq) return;
 
   // If Overpass returned empty and we have no POI data yet, provide a local fallback
   let finalPois = pois;
   if (!pois || pois.length === 0) {
+    if (state.poiData.size > 0) {
+      renderPoiMarkers();
+      return;
+    }
     console.warn("Overpass empty — using local POI fallback for UI testing.");
-    const c = map.getCenter();
-    finalPois = [
-      { id: 'local-school-1', kind: 'campus', title: 'SD Negeri 1', description: '', address: '', imageUrl: POI_LIBRARY.campus.imageUrl, rating: POI_LIBRARY.campus.rating, icon: poiVisual('campus').icon, lat: c.lat + 0.0012, lng: c.lng + 0.0012 },
-      { id: 'local-worship-1', kind: 'worship', title: 'Masjid Al Furqan', description: '', address: '', imageUrl: POI_LIBRARY.worship.imageUrl, rating: POI_LIBRARY.worship.rating, icon: poiVisual('worship').icon, lat: c.lat - 0.0010, lng: c.lng - 0.0016 },
-      { id: 'local-mall-1', kind: 'mall', title: 'Pusat Perbelanjaan', description: '', address: '', imageUrl: POI_LIBRARY.mall.imageUrl, rating: POI_LIBRARY.mall.rating, icon: poiVisual('mall').icon, lat: c.lat - 0.0014, lng: c.lng + 0.0018 },
-      { id: 'local-hospital-1', kind: 'hospital', title: 'Klinik Sehat', description: '', address: '', imageUrl: POI_LIBRARY.hospital.imageUrl, rating: POI_LIBRARY.hospital.rating, icon: poiVisual('hospital').icon, lat: c.lat + 0.0020, lng: c.lng - 0.0010 },
-      { id: 'local-parking-1', kind: 'parking', title: 'Parkir Umum', description: '', address: '', imageUrl: POI_LIBRARY.parking.imageUrl, rating: POI_LIBRARY.parking.rating, icon: poiVisual('parking').icon, lat: c.lat - 0.0018, lng: c.lng - 0.0015 },
-    ];
+    finalPois = fallbackPoiRecords(map.getCenter(), "local");
   }
 
-  // Update MapLibre POI layer (for 3D)
-  updateMapLibrePoiLayer(finalPois);
-
-  if (!state.overpassLayer) state.overpassLayer = L.layerGroup().addTo(map);
-  state.overpassLayer.clearLayers();
-  finalPois.forEach((poi) => {
-    const marker = L.marker([poi.lat, poi.lng], {
-      icon: makePoiIcon(poi, poiMarkerSizeByZoom()),
-      interactive: true,
-      riseOnHover: true,
-      zIndexOffset: 450,
-    }).addTo(state.overpassLayer as L.LayerGroup);
-    (marker.options as any).poiId = poi.id;
-    marker.on('click', () => handlePoiClick(poi));
-    const el = marker.getElement() as HTMLElement | null;
-    if (el) el.style.display = '';
-    // track poi data/marker so other features can use them
-    state.poiData.set(poi.id, poi);
-    state.poiMarkers.set(poi.id, marker);
-  });
-
-  updateTabletCategoryView();
+  renderPoiMarkers(finalPois);
 }
 
 // When user clicks on raster tile, query a small radius for nearby features and open modal
@@ -1372,11 +2582,8 @@ map.on('click', async (ev: L.LeafletMouseEvent) => {
 });
 
 map.on('moveend', () => {
-  if (state.baseMode === '3d') {
-    if (state.overpassLayer) state.overpassLayer.clearLayers();
-    return;
-  }
   void refreshOverpassLayer();
+  void refreshRoadLabelLayer();
 });
 
 // ─── Helpers ────────────────────────────────────────────────────
@@ -1393,6 +2600,33 @@ function isTrafficColor(v: unknown): v is TrafficColor {
 function clamp(v: number, min: number, max: number) { return Math.min(max, Math.max(min, v)); }
 function finiteNumber(v: unknown): number | undefined {
   return typeof v === "number" && Number.isFinite(v) ? v : undefined;
+}
+function normalizeUpdateInfo(rawRecord: Record<string, unknown>): ControllerUpdateInfo | undefined {
+  const nested = rawRecord.update && typeof rawRecord.update === "object"
+    ? rawRecord.update as Record<string, unknown>
+    : {};
+  const status = typeof nested.status === "string" ? nested.status
+    : typeof rawRecord.updateStatus === "string" ? rawRecord.updateStatus
+      : undefined;
+  const stage = typeof nested.stage === "string" ? nested.stage
+    : typeof rawRecord.updateStage === "string" ? rawRecord.updateStage
+      : undefined;
+  const message = typeof nested.message === "string" ? nested.message
+    : typeof rawRecord.updateMessage === "string" ? rawRecord.updateMessage
+      : undefined;
+  const updatedAt = finiteNumber(nested.updatedAt) ?? finiteNumber(rawRecord.updateUpdatedAt);
+  const source = typeof nested.source === "string" ? nested.source
+    : typeof rawRecord.updateSource === "string" ? rawRecord.updateSource
+      : undefined;
+
+  if (!status && !stage && !message && !updatedAt) return undefined;
+  return {
+    status: status === "running" || status === "complete" || status === "error" ? status : undefined,
+    stage: stage?.trim() || undefined,
+    message: message?.trim() || undefined,
+    updatedAt,
+    source: source?.trim() || undefined,
+  };
 }
 function normalizeVehicleBreakdown(v: unknown): VehicleBreakdown | undefined {
   if (!v || typeof v !== "object") return undefined;
@@ -1452,6 +2686,12 @@ function formatAge(v: number): string {
   if (ms < 3_600_000) return `${Math.round(ms / 60_000)}m ago`;
   if (ms < 86_400_000) return `${Math.round(ms / 3_600_000)}h ago`;
   return `${Math.round(ms / 86_400_000)}d ago`;
+}
+function formatBytes(v?: number): string {
+  if (!Number.isFinite(v || 0) || !v || v <= 0) return "";
+  if (v < 1024) return `${v} B`;
+  if (v < 1024 * 1024) return `${(v / 1024).toFixed(1)} KB`;
+  return `${(v / (1024 * 1024)).toFixed(1)} MB`;
 }
 function escapeHtml(v: string): string {
   return v.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
@@ -1593,15 +2833,15 @@ function renderDetectionOverlay(device: DeviceRecord | null): string {
   if (!detections.length || frameWidth <= 0 || frameHeight <= 0) return "";
   return `<div class="m-detection-overlay" aria-hidden="true">
     ${detections.slice(0, 12).map((d) => {
-      const left = clamp((d.x / frameWidth) * 100, 0, 100);
-      const top = clamp((d.y / frameHeight) * 100, 0, 100);
-      const width = clamp((d.width / frameWidth) * 100, 1, 100 - left);
-      const height = clamp((d.height / frameHeight) * 100, 1, 100 - top);
-      const label = `${detectionLabel(d.label)} ${(d.confidence * 100).toFixed(0)}%`;
-      return `<span class="m-detection-box${d.vehicle ? " is-vehicle" : ""}${top < 8 ? " is-top-edge" : ""}" style="left:${left}%;top:${top}%;width:${width}%;height:${height}%">
+    const left = clamp((d.x / frameWidth) * 100, 0, 100);
+    const top = clamp((d.y / frameHeight) * 100, 0, 100);
+    const width = clamp((d.width / frameWidth) * 100, 1, 100 - left);
+    const height = clamp((d.height / frameHeight) * 100, 1, 100 - top);
+    const label = `${detectionLabel(d.label)} ${(d.confidence * 100).toFixed(0)}%`;
+    return `<span class="m-detection-box${d.vehicle ? " is-vehicle" : ""}${top < 8 ? " is-top-edge" : ""}" style="left:${left}%;top:${top}%;width:${width}%;height:${height}%">
         <span class="m-detection-label">${escapeHtml(label)}</span>
       </span>`;
-    }).join("")}
+  }).join("")}
   </div>`;
 }
 
@@ -1656,7 +2896,7 @@ function normalizeOneDevice(raw: SnapshotDevice): DeviceRecord | null {
   const webrtcUrl = typeof rawRecord.webrtcUrl === "string" ? rawRecord.webrtcUrl.trim() || undefined : undefined;
   const cameraMode = isCameraMode(rawCameraMode)
     ? rawCameraMode
-    : cameraUrl || webrtcUrl
+    : cameraUrl
       ? "mjpeg"
       : undefined;
   const trafficDuration = finiteNumber(rawRecord.trafficDuration)
@@ -1700,6 +2940,7 @@ function normalizeOneDevice(raw: SnapshotDevice): DeviceRecord | null {
     gpioBackend: typeof rawRecord.gpioBackend === "string" ? rawRecord.gpioBackend.trim() || undefined : undefined,
     gpioReady: typeof rawRecord.gpioReady === "boolean" ? rawRecord.gpioReady : undefined,
     gpioNote: typeof rawRecord.gpioNote === "string" ? rawRecord.gpioNote.trim() || undefined : undefined,
+    update: normalizeUpdateInfo(rawRecord),
     position: { lat: clamp(lat, -90, 90), lng: clamp(lng, -180, 180) },
   };
 }
@@ -1795,6 +3036,7 @@ function renderDeviceModal(device: DeviceRecord, traffic: TrafficState): string 
   const detectorSource = escapeHtml(device.detectorCameraSource || "-");
   const gpio = escapeHtml(`${device.gpioBackend || "-"}${device.gpioReady === false ? " / error" : ""}`);
   const gpioNote = escapeHtml(device.gpioNote || "-");
+  const deviceLink = escapeHtml(appDeviceDeepLink(device));
   return `
     <div class="modal-header">
       <button class="modal-close" data-action="close">×</button>
@@ -1812,6 +3054,7 @@ function renderDeviceModal(device: DeviceRecord, traffic: TrafficState): string 
       <div class="modal-tab-pane active" data-tab="system">
         <div class="info-row"><span class="label">Lokasi</span><span class="value" data-field="device-location">${device.position.lat.toFixed(6)}, ${device.position.lng.toFixed(6)}</span></div>
         <div class="info-row"><span class="label">ID Sistem</span><span class="value" data-field="device-id">${escapeHtml(device.id)}</span></div>
+        <div class="info-row"><span class="label">Android Link</span><span class="value">${deviceLink}</span></div>
         <div class="info-row"><span class="label">Status</span><span class="value status-${device.status}" data-field="device-status">${escapeHtml(device.status)}</span></div>
         <div class="info-row"><span class="label">Last Seen</span><span class="value" data-field="device-last-seen">${escapeHtml(device.lastSeenText || formatTime(device.lastSeen))}</span></div>
         <div class="info-row"><span class="label">Age</span><span class="value" data-field="device-age">${formatAge(device.lastSeen)}</span></div>
@@ -1836,10 +3079,13 @@ function renderDeviceModal(device: DeviceRecord, traffic: TrafficState): string 
 
 function closeModal(): void {
   document.querySelectorAll(".modal-wrapper, #m-device-modal, #m-poi-modal").forEach((m) => m.remove());
+  document.body.classList.remove("its-desktop-sidebar-open");
+  mapRoot.classList.remove("desktop-sidebar-open");
   state.activeModalDeviceId = null;
   state.activeModalPoiId = null;
   window.clearInterval(state.trafficRefreshTimer);
   state.trafficRefreshTimer = 0;
+  setTimeout(() => map.invalidateSize(), 260);
 }
 
 function setSheetActiveTab(sheet: HTMLElement, tabName: string): void {
@@ -1862,6 +3108,11 @@ function createSwipeableSheetModal(id: string, sheetClass: string, bodyHtml: str
     <div class="${sheetClass}">${bodyHtml}</div>
   `;
   document.body.appendChild(overlay);
+  if (window.matchMedia("(min-width: 900px)").matches) {
+    document.body.classList.add("its-desktop-sidebar-open");
+    mapRoot.classList.add("desktop-sidebar-open");
+    setTimeout(() => map.invalidateSize(), 60);
+  }
   requestAnimationFrame(() => overlay.classList.add("open"));
   L.DomEvent.disableClickPropagation(overlay);
   L.DomEvent.disableScrollPropagation(overlay);
@@ -1939,6 +3190,21 @@ function ensureMarker(device: DeviceRecord): void {
       zIndexOffset: 1000,
       riseOnHover: true,
     }).addTo(map);
+    // Add accessible name and keyboard activation for device markers
+    try {
+      const el = (m as any).getElement?.() as HTMLElement | null;
+      if (el) {
+        el.setAttribute("aria-label", device.label || `Device ${device.id}`);
+        el.setAttribute("role", el.getAttribute("role") || "button");
+        el.setAttribute("tabindex", el.getAttribute("tabindex") || "0");
+        el.addEventListener("keydown", (ev: KeyboardEvent) => {
+          if (ev.key === "Enter" || ev.key === " ") {
+            ev.preventDefault();
+            m.fire("click");
+          }
+        });
+      }
+    } catch { /* ignore DOM access errors */ }
     m.on("click", () => {
       state.device = device;
       renderCameraTile();
@@ -1967,6 +3233,22 @@ function ensureMarker(device: DeviceRecord): void {
       el.style.filter = "grayscale(0.35)";
       el.style.transition = "transform 300ms linear, filter 300ms";
       el.style.pointerEvents = "auto";
+      // Ensure accessible name and keyboard activation remain present after updates
+      try {
+        el.setAttribute("aria-label", device.label || `Device ${device.id}`);
+        el.setAttribute("role", el.getAttribute("role") || "button");
+        el.setAttribute("tabindex", el.getAttribute("tabindex") || "0");
+        // Avoid adding duplicate listeners by using a small guard
+        if (!(el as any).__accessibilityKeybound) {
+          el.addEventListener("keydown", (ev: KeyboardEvent) => {
+            if (ev.key === "Enter" || ev.key === " ") {
+              ev.preventDefault();
+              existing.fire("click");
+            }
+          });
+          (el as any).__accessibilityKeybound = true;
+        }
+      } catch { }
     }
   } catch { /* ignore DOM access errors */ }
 
@@ -1994,23 +3276,8 @@ function rescaleMarkers(): void {
     }));
   }
 
-  const poiSize = poiMarkerSizeByZoom();
-  for (const [id, poi] of state.poiData.entries()) {
-    const marker = state.poiMarkers.get(id);
-    if (!marker) continue;
-    marker.setIcon(makePoiIcon(poi, poiSize));
-  }
-
-  // Rescale MapLibre POI layer text size
-  const maplibreMap = state.maplibreMap;
-  if (maplibreMap && state.baseMode === "3d") {
-    try {
-      const scaledSize = 14 + (map.getZoom() - 13) * 1.2;
-      maplibreMap.setLayoutProperty("poi-symbols", "text-size", Math.min(Math.max(scaledSize, 10), 24));
-    } catch {
-      /* ignore */
-    }
-  }
+  renderPoiMarkers();
+  renderRoadLabels();
 }
 
 function removeMissingMarkers(activeIds: Set<string>): void {
@@ -2138,10 +3405,18 @@ async function ensureMapLibreMap(): Promise<any | null> {
             layout: {
               "text-field": ["get", "icon-emoji"],
               "text-font": ["Open Sans Regular", "Arial Unicode MS Regular"],
-              "text-size": 18,
+              "text-size": [
+                "interpolate",
+                ["linear"],
+                ["zoom"],
+                12, 13,
+                16, 18,
+                19, 20
+              ],
               "text-offset": [0, 0],
-              "text-allow-overlap": true,
-              "text-ignore-placement": true
+              "text-allow-overlap": false,
+              "text-ignore-placement": false,
+              "symbol-sort-key": ["-", ["get", "priority"]]
             },
             paint: {
               "text-opacity": 1
@@ -2152,6 +3427,7 @@ async function ensureMapLibreMap(): Promise<any | null> {
         // Add click handler for POI (allow MapLibre to detect clicks)
         // Note: MapLibre is non-interactive by default, so we detect features via ray casting
         // when Leaflet receives a click and is in 3D mode
+        updateMapLibrePoiLayer(visiblePoisForZoom([...state.poiData.values()]));
       } catch (err) {
         console.warn("Failed to setup POI layer:", err);
       }
@@ -2335,15 +3611,18 @@ async function setBaseMap(mode: BaseMapMode): Promise<void> {
     await removeMapLibreMap();
     if (map.hasLayer(satelliteLayer)) map.removeLayer(satelliteLayer);
     if (!map.hasLayer(streetLayer)) streetLayer.addTo(map);
+    if (!map.hasLayer(streetLabelLayer)) streetLabelLayer.addTo(map);
   } else if (mode === "3d") {
     // Prefer true 3D: render MapLibre GL above the Leaflet map.
     if (map.hasLayer(satelliteLayer)) map.removeLayer(satelliteLayer);
     if (map.hasLayer(streetLayer)) map.removeLayer(streetLayer);
+    if (map.hasLayer(streetLabelLayer)) map.removeLayer(streetLabelLayer);
 
     const gl = await ensureMapLibreMap();
     if (!gl) {
       // fallback: use CSS tilt if MapLibre not available
       if (!map.hasLayer(streetLayer)) streetLayer.addTo(map);
+      if (!map.hasLayer(streetLabelLayer)) streetLabelLayer.addTo(map);
       const wrapper = mapEl.parentElement as HTMLElement | null;
       if (wrapper) wrapper.style.perspective = "800px";
       mapEl.style.transform = "rotateX(45deg) scale(1.4)";
@@ -2361,15 +3640,19 @@ async function setBaseMap(mode: BaseMapMode): Promise<void> {
     await removeMapLibreMap();
     if (map.hasLayer(streetLayer)) map.removeLayer(streetLayer);
     if (!map.hasLayer(satelliteLayer)) satelliteLayer.addTo(map);
+    if (!map.hasLayer(streetLabelLayer)) streetLabelLayer.addTo(map);
   }
 
   state.baseMode = mode;
+  renderPoiMarkers();
+  renderRoadLabels();
+  void refreshRoadLabelLayer();
 }
 
 // ─── Camera tile ────────────────────────────────────────────────
 
 function publicCameraUrl(device: DeviceRecord | null): string {
-  return device?.cameraUrl?.trim() || device?.webrtcUrl?.trim() || "";
+  return device?.cameraUrl?.trim() || "";
 }
 
 function isLikelyImageUrl(url: string): boolean {
@@ -2379,12 +3662,11 @@ function isLikelyImageUrl(url: string): boolean {
 function cameraModeFor(device: DeviceRecord | null): CameraMode | null {
   if (!device || device.status === "offline") return null;
   if (publicCameraUrl(device)) return device.cameraMode || "mjpeg";
-  if (device.cameraMode === "webrtc" || device.webrtcEnabled || device.cameraReady) return "webrtc";
   return null;
 }
 
 function isWebRtcSignalingCamera(device: DeviceRecord | null): boolean {
-  return cameraModeFor(device) === "webrtc" && !publicCameraUrl(device);
+  return false;
 }
 
 function webRtcSignalPath(device: DeviceRecord): string {
@@ -2662,15 +3944,7 @@ async function startWebRtcSession(device: DeviceRecord): Promise<void> {
 }
 
 function syncCameraViews(device: DeviceRecord | null = state.device): void {
-  if (!device || !isWebRtcSignalingCamera(device)) {
-    if (!device || state.webrtc.deviceId !== device.id) stopWebRtcSession(true);
-    return;
-  }
-  if (state.webrtc.pc && state.webrtc.deviceId === device.id && state.webrtc.status !== "failed") {
-    attachWebRtcStream();
-    return;
-  }
-  void startWebRtcSession(device);
+  stopWebRtcSession(true);
 }
 
 function renderWebRtcSurface(device: DeviceRecord, videoClass: string): string {
@@ -2689,11 +3963,8 @@ function renderWebRtcSurface(device: DeviceRecord, videoClass: string): string {
 function renderCameraSurface(device: DeviceRecord | null, imageClass: string, frameClass: string): string {
   const url = publicCameraUrl(device);
   if (url) {
-    return isLikelyImageUrl(url)
-      ? `<img class="${imageClass}" src="${escapeHtml(url)}" alt="Camera preview">`
-      : `<iframe class="${frameClass}" src="${escapeHtml(url)}" allow="autoplay; camera; microphone; fullscreen" referrerpolicy="no-referrer" loading="lazy"></iframe>`;
+    return `<iframe class="${frameClass}" src="${escapeHtml(url)}" allow="autoplay; fullscreen" referrerpolicy="no-referrer" loading="lazy"></iframe>`;
   }
-  if (device && isWebRtcSignalingCamera(device)) return renderWebRtcSurface(device, imageClass);
   return "";
 }
 
@@ -2701,11 +3972,7 @@ function renderCameraTile(): void {
   if (!state.cameraPreview) return;
   const device = state.device;
   const url = publicCameraUrl(device);
-  state.cameraPreview.innerHTML = url && isLikelyImageUrl(url)
-    ? `<img class="camera-thumb-img" src="${escapeHtml(url)}" alt="Camera preview">`
-    : device && (url || isWebRtcSignalingCamera(device))
-      ? `<div class="camera-live-badge"><span data-webrtc-dot data-status="${state.webrtc.status}"></span>LIVE</div>`
-      : "";
+  state.cameraPreview.innerHTML = url ? `<div class="camera-live-badge">LIVE</div>` : "";
   syncCameraViews(device);
 }
 
@@ -3183,6 +4450,7 @@ function applyDevices(devices: DeviceRecord[]): void {
     ? devices.find((d) => d.id === state.device!.id) ?? devices[0]
     : devices[0];
   state.device = selected;
+  showUpdateNoticeForDevice(selected);
   renderCameraTile();
   devices.forEach((device) => {
     void resolveRoadName(device).then(() => {
@@ -3211,6 +4479,486 @@ function applyDevices(devices: DeviceRecord[]): void {
 
   syncPoiMarkers([selected.position.lat, selected.position.lng]);
   rescaleMarkers();
+  replayPendingDeepLink();
+}
+
+function updateNoticeTitle(update: ControllerUpdateInfo): string {
+  if (update.status === "error") return "Update controller gagal";
+  if (update.stage === "downloading") return "Mengunduh update controller";
+  if (update.stage === "downloaded") return "Update controller berhasil diunduh";
+  if (update.stage === "installing") return "Menerapkan update controller";
+  if (update.stage === "rebooting") return "Raspberry Pi akan restart";
+  if (update.stage === "restarted") return "Controller berhasil direstart";
+  if (update.stage === "up-to-date") return "Controller sudah versi terbaru";
+  if (update.status === "complete") return "Update controller selesai";
+  return "Status update controller";
+}
+
+function maybeShowBrowserNotification(title: string, message: string): void {
+  if (!("Notification" in window)) return;
+  if (Notification.permission !== "granted") return;
+  try {
+    const notification = new Notification(title, {
+      body: message,
+      tag: "its-controller-update",
+      silent: false,
+    });
+    window.setTimeout(() => notification.close(), 7000);
+  } catch {
+    // Browser may block system notifications despite a granted permission.
+  }
+}
+
+function requestBrowserNotificationPermission(): void {
+  if (!("Notification" in window)) {
+    showGlobalNotice("warning", "Notifikasi browser tidak didukung", "Browser ini belum mendukung notifikasi sistem");
+    return;
+  }
+  void Notification.requestPermission().then((permission) => {
+    if (permission === "granted") {
+      showGlobalNotice("success", "Notifikasi aktif", "Update Raspberry Pi akan muncul sebagai notifikasi browser");
+      maybeShowBrowserNotification("Notifikasi ITS aktif", "Dashboard akan memberi kabar saat update controller berjalan");
+    } else {
+      showGlobalNotice("warning", "Notifikasi belum aktif", "Izin notifikasi browser belum diberikan");
+    }
+  });
+}
+
+function maybePromptNotificationPermission(): void {
+  if (state.notificationPromptShown) return;
+  if (Date.now() - APP_STARTED_AT < 12_000) return;
+  if (!("Notification" in window) || Notification.permission !== "default") return;
+  state.notificationPromptShown = true;
+  showGlobalNotice(
+    "info",
+    "Aktifkan notifikasi update",
+    "Tekan Aktifkan agar status download, restart, dan update Raspberry muncul di browser",
+    { actionLabel: "Aktifkan", onAction: requestBrowserNotificationPermission },
+  );
+}
+
+function showGlobalNotice(
+  kind: NoticeKind,
+  title: string,
+  message: string,
+  action?: { actionLabel: string; onAction: () => void },
+): void {
+  let host = document.querySelector<HTMLDivElement>(".global-notice-host");
+  if (!host) {
+    host = document.createElement("div");
+    host.className = "global-notice-host";
+    document.body.appendChild(host);
+  }
+
+  const notice = document.createElement("div");
+  notice.className = `global-notice global-notice-${kind}`;
+  notice.innerHTML = `
+    <div class="global-notice-dot"></div>
+    <div class="global-notice-copy">
+      <strong>${escapeHtml(title)}</strong>
+      <span>${escapeHtml(message)}</span>
+    </div>
+    ${action ? `<button class="global-notice-action" type="button">${escapeHtml(action.actionLabel)}</button>` : ""}
+  `;
+  notice.querySelector<HTMLButtonElement>(".global-notice-action")?.addEventListener("click", () => {
+    action?.onAction();
+    notice.classList.remove("show");
+    window.setTimeout(() => notice.remove(), 220);
+  });
+  host.appendChild(notice);
+  window.setTimeout(() => notice.classList.add("show"), 20);
+  window.setTimeout(() => {
+    notice.classList.remove("show");
+    window.setTimeout(() => notice.remove(), 220);
+  }, action ? 12000 : kind === "error" ? 9000 : 6500);
+}
+
+function showUpdateNoticeForDevice(device: DeviceRecord | null): void {
+  const update = device?.update;
+  if (!device || !update) return;
+  const updatedAt = normalizeEpoch(update.updatedAt ?? 0);
+  if (!updatedAt) return;
+  const ageMs = Date.now() - updatedAt;
+  if (ageMs > 20 * 60_000 && update.status !== "running") return;
+  const key = `${device.id}:${update.status || ""}:${update.stage || ""}:${updatedAt}`;
+  if (state.lastUpdateNoticeKey === key) return;
+  state.lastUpdateNoticeKey = key;
+
+  const kind = update.status === "error"
+    ? "error"
+    : update.status === "complete"
+      ? "success"
+      : update.stage === "rebooting"
+        ? "warning"
+        : "info";
+  const title = updateNoticeTitle(update);
+  const message = update.message || "Status update controller berubah";
+  showGlobalNotice(kind, title, message);
+  maybeShowBrowserNotification(title, message);
+}
+
+function appDownloadUrl(update: AppUpdateInfo): string {
+  return update.downloadUrl || update.apkUrl || update.latestUrl || APP_DOWNLOAD_FALLBACK_URL;
+}
+
+function openAppInstaller(update: AppUpdateInfo, automatic = false): void {
+  const url = appDownloadUrl(update);
+  if (!url) {
+    showGlobalNotice("warning", "Link update belum siap", "APK terbaru belum tersedia di Firebase");
+    return;
+  }
+
+  if (!automatic) {
+    showGlobalNotice(
+      "info",
+      "Download APK ITS",
+      "Android tetap akan meminta konfirmasi sebelum aplikasi diperbarui",
+    );
+  }
+
+  const link = document.createElement("a");
+  link.href = url;
+  link.rel = "noopener";
+  link.download = update.fileName || "its-latest.apk";
+  link.style.display = "none";
+  document.body.appendChild(link);
+  link.click();
+  window.setTimeout(() => link.remove(), 100);
+}
+
+async function fetchAppUpdateInfo(): Promise<AppUpdateInfo | null> {
+  const sources = [APP_UPDATE_DATABASE_URL, APP_UPDATE_MANIFEST_URL];
+  for (const url of sources) {
+    try {
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) continue;
+      const update = await res.json() as AppUpdateInfo | null;
+      if (!update || typeof update !== "object") continue;
+      if (!update.versionCode && !update.versionName && !appDownloadUrl(update)) continue;
+      return update;
+    } catch (err) {
+      console.warn("[ITS] app update source failed", url, err);
+    }
+  }
+  return null;
+}
+
+function closeAppUpdateModal(): void {
+  const modal = document.getElementById("app-update-modal");
+  if (!modal) return;
+  modal.classList.remove("open");
+  modal.classList.add("closing");
+  window.setTimeout(() => modal.remove(), 260);
+}
+
+function showAppUpdateModal(update: AppUpdateInfo): void {
+  document.getElementById("app-update-modal")?.remove();
+
+  const appName = update.appName || APP_NAME;
+  const ownerName = update.ownerName || APP_OWNER_NAME;
+  const institution = update.institution || APP_INSTITUTION;
+  const remoteCode = Number(update.versionCode);
+  const remoteVersion = update.versionName || (Number.isFinite(remoteCode) ? String(remoteCode) : "baru");
+  const localVersion = `v${APP_VERSION}`;
+  const latestVersion = remoteVersion.startsWith("v") ? remoteVersion : `v${remoteVersion}`;
+  const logoUrl = update.logoUrl || "/favicon.svg";
+  const notes = (update.releaseNotes || [])
+    .filter(Boolean)
+    .slice(0, 5);
+  const noteItems = notes.length
+    ? notes.map((note) => `<li>${escapeHtml(note)}</li>`).join("")
+    : "<li>APK terbaru ITS sudah tersedia.</li>";
+  const releaseTime = update.updatedAt ? new Date(update.updatedAt).getTime() : 0;
+  const releaseLabel = Number.isFinite(releaseTime) && releaseTime > 0
+    ? `Rilis ${new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeStyle: "short" }).format(new Date(releaseTime))}`
+    : "";
+  const meta = [
+    formatBytes(update.sizeBytes),
+    releaseLabel,
+  ].filter(Boolean).join(" - ");
+
+  const modal = document.createElement("div");
+  modal.id = "app-update-modal";
+  modal.className = "app-update-modal";
+  modal.innerHTML = `
+    <div class="app-update-backdrop"></div>
+    <section class="app-update-sheet" role="dialog" aria-modal="true" aria-labelledby="app-update-title">
+      <div class="app-update-handle"></div>
+      <div class="app-update-logo-wrap">
+        <img class="app-update-logo" src="${escapeHtml(logoUrl)}" alt="${escapeHtml(appName)}">
+      </div>
+      <h2 id="app-update-title">${escapeHtml(appName)}</h2>
+      <div class="app-update-owner">${escapeHtml(ownerName)} - ${escapeHtml(institution)}</div>
+      <div class="app-update-version">
+        <div class="app-update-version-item">
+          <span class="app-update-version-label">Versi saat ini</span>
+          <strong>${escapeHtml(localVersion)}</strong>
+        </div>
+        <div class="app-update-version-arrow">→</div>
+        <div class="app-update-version-item">
+          <span class="app-update-version-label">Versi terbaru</span>
+          <strong>${escapeHtml(latestVersion)}</strong>
+        </div>
+      </div>
+      <div class="app-update-notes">
+        <h3>Catatan update</h3>
+        <ul>${noteItems}</ul>
+      </div>
+      ${meta ? `<div class="app-update-meta">${escapeHtml(meta)}</div>` : ""}
+      <div class="app-update-actions">
+        <button class="app-update-primary" type="button" data-action="download">Download APK</button>
+        <button class="app-update-secondary" type="button" data-action="later">Nanti</button>
+      </div>
+    </section>
+  `;
+
+  modal.querySelector(".app-update-backdrop")?.addEventListener("click", closeAppUpdateModal);
+  modal.querySelector<HTMLButtonElement>('[data-action="later"]')?.addEventListener("click", closeAppUpdateModal);
+  modal.querySelector<HTMLButtonElement>('[data-action="download"]')?.addEventListener("click", () => {
+    openAppInstaller(update);
+  });
+
+  document.body.appendChild(modal);
+  const sheet = modal.querySelector<HTMLElement>(".app-update-sheet");
+  if (sheet) setupSheetSwipe(sheet, closeAppUpdateModal);
+  window.setTimeout(() => modal.classList.add("open"), 20);
+
+  const key = `${update.versionCode || ""}:${update.versionName || ""}:${appDownloadUrl(update)}`;
+  if (update.autoDownload && state.lastAppAutoDownloadKey !== key) {
+    state.lastAppAutoDownloadKey = key;
+    window.setTimeout(() => {
+      if (document.getElementById("app-update-modal")) {
+        openAppInstaller(update, true);
+        showGlobalNotice("info", "Download APK dimulai", "File APK ITS terbaru sedang diunduh");
+      }
+    }, 1400);
+  }
+}
+
+async function checkAppUpdateManifest(): Promise<void> {
+  try {
+    const update = await fetchAppUpdateInfo();
+    if (!update) return;
+
+    const remoteCode = Number(update.versionCode);
+    const hasNewCode = Number.isFinite(remoteCode) && remoteCode > APP_VERSION_CODE;
+    const hasNewName = Boolean(update.versionName && update.versionName !== APP_VERSION);
+    if (!hasNewCode && !hasNewName) return;
+
+    const key = `${update.versionCode || ""}:${update.versionName || ""}:${appDownloadUrl(update)}`;
+    if (state.lastAppUpdateKey === key) return;
+    state.lastAppUpdateKey = key;
+
+    const versionLabel = update.versionName || (Number.isFinite(remoteCode) ? String(remoteCode) : "baru");
+    const title = update.force ? "Update wajib ITS" : "Update aplikasi tersedia";
+    const message = `Versi ${versionLabel} siap didownload`;
+    showAppUpdateModal(update);
+    maybeShowBrowserNotification(title, message);
+  } catch (err) {
+    console.warn("[ITS] app update check failed", err);
+  }
+}
+
+function routeFromIncomingUrl(url: URL): string {
+  if (url.protocol === `${ANDROID_DEEP_LINK_SCHEME}:`) {
+    return (url.hostname || url.pathname.replace(/^\/+/, "") || "map").toLowerCase();
+  }
+  return (url.searchParams.get("route") || "map").toLowerCase();
+}
+
+function focusFromIncomingUrl(rawUrl: string, allowDefer = true): boolean {
+  let url: URL;
+  try {
+    url = new URL(rawUrl, APP_PUBLIC_URL);
+  } catch {
+    return false;
+  }
+
+  const route = routeFromIncomingUrl(url);
+  const focus = (url.searchParams.get("focus") || url.searchParams.get("view") || "").toLowerCase();
+  const mode = (url.searchParams.get("mode") || "").toLowerCase();
+  const lat = Number(url.searchParams.get("lat"));
+  const lng = Number(url.searchParams.get("lng"));
+  const z = Number(url.searchParams.get("z"));
+  if (mode === "street" || mode === "2d") {
+    void setBaseMap("street");
+  } else if (mode === "3d") {
+    void setBaseMap("3d");
+  } else if (mode === "satellite" || mode === "sat") {
+    void setBaseMap("satellite");
+  }
+
+  if (focus === "user" || focus === "me" || focus === "self" || focus === "lokasi-saya") {
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      map.setView(
+        [clamp(lat, -90, 90), clamp(lng, -180, 180)],
+        Number.isFinite(z) ? clamp(z, 3, 20) : Math.max(DEFAULT_ZOOM, map.getZoom() || DEFAULT_ZOOM),
+        { animate: true },
+      );
+    } else {
+      locateUser();
+    }
+    return true;
+  }
+
+  if (focus === "device" || focus === "raspi" || focus === "raspberry" || focus === "raspberry-pi") {
+    const deviceId = url.searchParams.get("device") || url.searchParams.get("deviceId") || state.device?.id || "raspberry-its";
+    const device = state.devices.find((d) => d.id === deviceId) ?? state.devices.find((d) => d.id.includes("rasp")) ?? state.device;
+    if (device) {
+      state.device = device;
+      map.setView([device.position.lat, device.position.lng], DEFAULT_ZOOM, { animate: true });
+      return true;
+    }
+    if (allowDefer) state.pendingDeepLinkUrl = rawUrl;
+    return true;
+  }
+
+  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+    map.setView(
+      [clamp(lat, -90, 90), clamp(lng, -180, 180)],
+      Number.isFinite(z) ? clamp(z, 3, 20) : Math.max(DEFAULT_ZOOM, map.getZoom() || DEFAULT_ZOOM),
+      { animate: true },
+    );
+  }
+
+  const deviceId = url.searchParams.get("device") || url.searchParams.get("deviceId") || "";
+  if (deviceId) {
+    const device = state.devices.find((d) => d.id === deviceId);
+    if (device) {
+      state.device = device;
+      map.setView([device.position.lat, device.position.lng], DEFAULT_ZOOM, { animate: true });
+      return true;
+    }
+    if (allowDefer) state.pendingDeepLinkUrl = rawUrl;
+  }
+
+  const poiId = url.searchParams.get("poi") || "";
+  if (poiId) {
+    const poi = state.poiData.get(poiId);
+    if (poi) {
+      openPoiModal(poi);
+      return true;
+    }
+    if (allowDefer) state.pendingDeepLinkUrl = rawUrl;
+  }
+
+  if (route === "traffic" || route === "chart" || route === "its") {
+    if (isMobile()) {
+      openITSSheet();
+    } else if (state.device) {
+      openModal(state.device);
+      const modal = document.querySelector<HTMLElement>(".m-device-sheet");
+      if (modal) setSheetActiveTab(modal, "traffic");
+    }
+    return true;
+  }
+
+  return route === "map" || route === "open" || route === "device" || (Number.isFinite(lat) && Number.isFinite(lng));
+}
+
+function replayPendingDeepLink(): void {
+  if (!state.pendingDeepLinkUrl) return;
+  const pending = state.pendingDeepLinkUrl;
+  state.pendingDeepLinkUrl = "";
+  if (!focusFromIncomingUrl(pending, false)) {
+    state.pendingDeepLinkUrl = pending;
+  }
+}
+
+function setupNativeDeepLinks(): void {
+  if (!Capacitor.isNativePlatform()) return;
+  void CapacitorApp.getLaunchUrl()
+    .then((launch) => {
+      if (launch?.url) focusFromIncomingUrl(launch.url);
+    })
+    .catch((err) => console.warn("[ITS] launch url failed", err));
+
+  void CapacitorApp.addListener("appUrlOpen", (event) => {
+    if (event.url) focusFromIncomingUrl(event.url);
+  });
+}
+
+function updateAndroidButtonState(): void {
+  const link = document.getElementById("android-open-btn");
+  if (!link) return;
+  link.dataset.installed = state.androidAppDetected === true
+    ? "true"
+    : state.androidAppDetected === false
+      ? "false"
+      : "unknown";
+  link.textContent = state.androidAppDetected === false ? "Download ITS" : "Buka ITS";
+}
+
+async function checkInstalledAndroidApp(showNotice = false): Promise<boolean> {
+  const relatedAppsApi = (navigator as NavigatorWithRelatedApps).getInstalledRelatedApps;
+  if (!relatedAppsApi) {
+    state.androidAppDetected = null;
+    state.relatedAppsChecked = true;
+    updateAndroidButtonState();
+    if (showNotice) {
+      showGlobalNotice("warning", "Apps on Device tidak tersedia", "Browser ini belum mendukung pengecekan aplikasi terpasang");
+    }
+    return false;
+  }
+
+  try {
+    const relatedApps = await relatedAppsApi.call(navigator);
+    const detected = relatedApps.some((app) =>
+      app.id === APP_PACKAGE_ID
+      || app.url === APP_PUBLIC_URL
+      || app.url === APP_PUBLIC_URL.replace(/\/$/, ""),
+    );
+    state.androidAppDetected = detected;
+    state.relatedAppsChecked = true;
+    updateAndroidButtonState();
+    if (showNotice) {
+      showGlobalNotice(
+        detected ? "success" : "info",
+        detected ? "Aplikasi ITS terdeteksi" : "Aplikasi ITS belum terdeteksi",
+        detected ? "Website bisa membuka aplikasi lewat its://map" : "Download APK terbaru dari panel update ITS",
+      );
+    }
+    return detected;
+  } catch (err) {
+    state.androidAppDetected = null;
+    state.relatedAppsChecked = true;
+    updateAndroidButtonState();
+    console.warn("[ITS] related app check failed", err);
+    if (showNotice) {
+      showGlobalNotice("warning", "Apps on Device belum aktif", "Izinkan Apps on Device di pengaturan situs browser");
+    }
+    return false;
+  }
+}
+
+function createOpenAndroidButton(): void {
+  if (Capacitor.isNativePlatform()) return;
+  if (document.getElementById("android-open-btn")) return;
+
+  const link = document.createElement("a");
+  link.id = "android-open-btn";
+  link.className = "android-open-btn";
+  link.href = currentMapDeepLink();
+  link.textContent = "Buka ITS";
+  link.setAttribute("aria-label", "Buka aplikasi Android ITS");
+  link.addEventListener("click", () => {
+    link.href = currentMapDeepLink();
+    void checkInstalledAndroidApp(true);
+    window.setTimeout(() => {
+      if (document.visibilityState === "visible") {
+        showGlobalNotice("info", "Aplikasi ITS", "Jika belum terbuka, install APK ITS terlebih dahulu");
+      }
+    }, 1200);
+  });
+
+  document.body.appendChild(link);
+  const updateHref = () => {
+    link.href = currentMapDeepLink();
+  };
+  map.on("moveend zoomend", updateHref);
+  window.setTimeout(() => {
+    void checkInstalledAndroidApp(false);
+  }, 1800);
 }
 
 function reportOfflineDevices(devices: DeviceRecord[]): void {
@@ -3272,6 +5020,7 @@ async function refreshSnapshot(): Promise<void> {
     if (!devices.length) throw new Error("No valid devices found (local & Firebase)");
 
     applyDevices(devices);
+    maybePromptNotificationPermission();
     reportOfflineDevices(devices);
   } catch (err) {
     console.warn("[ITS] Snapshot error:", err);
@@ -3467,33 +5216,64 @@ function closeLayerModal(): void {
 // ─── 3. Generic Sheet Swipe Handler ──────────────────────────────────────────
 
 function setupSheetSwipe(sheetEl: HTMLElement, onClose: () => void): void {
+  let startX = 0;
   let startY = 0;
-  let currentY = 0;
+  let current = 0;
+  let dragging = false;
 
-  const onTouchStart = (e: TouchEvent) => {
-    startY = e.touches[0].clientY;
-    currentY = 0;
+  const isDesktopSheet = () => window.matchMedia("(min-width: 900px)").matches;
+  const dragHandles = Array.from(
+    sheetEl.querySelectorAll<HTMLElement>(".m-sheet-handle-bar, .m-its-handle-zone, .app-update-handle"),
+  );
+
+  const beginDrag = (e: PointerEvent) => {
+    const target = e.target as HTMLElement | null;
+    if (target?.closest("button, a, input, textarea, select")) return;
+    dragging = true;
+    current = 0;
+    startX = e.clientX;
+    startY = e.clientY;
     sheetEl.style.transition = "none";
+    try {
+      (e.currentTarget as HTMLElement | null)?.setPointerCapture?.(e.pointerId);
+    } catch {
+      // Ignore capture failures on older WebView builds.
+    }
   };
 
-  const onTouchMove = (e: TouchEvent) => {
-    const delta = e.touches[0].clientY - startY;
-    currentY = Math.max(0, delta);
-    sheetEl.style.transform = `translateY(${currentY}px)`;
+  const onPointerMove = (e: PointerEvent) => {
+    if (!dragging) return;
+    const desktop = isDesktopSheet();
+    const delta = desktop ? e.clientX - startX : e.clientY - startY;
+    current = desktop ? Math.min(0, delta) : Math.max(0, delta);
+    if (Math.abs(current) < 4) return;
+    sheetEl.classList.add("is-dragging");
+    sheetEl.style.transform = desktop ? `translateX(${current}px)` : `translateY(${current}px)`;
   };
 
-  const onTouchEnd = () => {
+  const onPointerUp = () => {
+    if (!dragging) return;
+    dragging = false;
+    sheetEl.classList.remove("is-dragging");
     sheetEl.style.transition = "";
-    if (currentY > 80) {
-      onClose();
+    const desktop = isDesktopSheet();
+    const shouldClose = desktop ? current < -110 : current > 80;
+    if (shouldClose) {
+      sheetEl.style.transform = desktop ? "translateX(-112%)" : "translateY(100%)";
+      window.setTimeout(onClose, 120);
     } else {
       sheetEl.style.transform = "";
     }
   };
 
-  sheetEl.addEventListener("touchstart", onTouchStart, { passive: true });
-  sheetEl.addEventListener("touchmove", onTouchMove, { passive: true });
-  sheetEl.addEventListener("touchend", onTouchEnd);
+  const listenerTargets = dragHandles.length ? dragHandles : [sheetEl];
+  listenerTargets.forEach((target) => {
+    target.addEventListener("pointerdown", beginDrag);
+    target.addEventListener("pointermove", onPointerMove);
+    target.addEventListener("pointerup", onPointerUp);
+    target.addEventListener("pointercancel", onPointerUp);
+    target.addEventListener("lostpointercapture", onPointerUp);
+  });
 }
 
 // ─── 4. ITS Sheet (Swipeable, Dynamic Map Resize) ────────────────────────────
@@ -3716,14 +5496,14 @@ function renderITSSheetContent(): void {
     <div class="m-its-section">
       <div class="m-its-section-title">Perangkat (${state.devices.length})</div>
       ${state.devices.map(d => {          // FIX 2: hapus parameter idx yang tidak dipakai
-      const t = trafficStateForDevice(d);
-      const c = colorMap[t.color];
-      return `<div class="m-device-row" data-id="${d.id}">
+    const t = trafficStateForDevice(d);
+    const c = colorMap[t.color];
+    return `<div class="m-device-row" data-id="${d.id}">
           <span class="m-device-bulb" style="background:${c}"></span>
           <span class="m-device-name">${escapeHtml(d.label)}</span>
           <span class="m-device-status status-${d.status}">${d.status}</span>
         </div>`;
-    }).join("")}
+  }).join("")}
     </div>
 
     <div style="height:24px"></div>
@@ -3863,8 +5643,8 @@ function openProfilSheet(): void {
                 stroke="#3b82f6" stroke-width="2" stroke-linecap="round"/>
         </svg>
       </div>
-      <div class="m-profil-name">Operator ITS Maps</div>
-      <div class="m-profil-role">Sistem Manajemen Lalu Lintas</div>
+      <div class="m-profil-name">${APP_OWNER_NAME}</div>
+      <div class="m-profil-role">${APP_INSTITUTION} - ${APP_NAME} v${APP_VERSION}</div>
       <div class="m-profil-stats">
         <div class="m-stat">
           <span class="m-stat-val">${state.devices.length}</span>
@@ -3945,6 +5725,7 @@ initMobileUI();
 void refreshSnapshot();
 // Also fetch nearby POIs immediately so tablet filters have data even if devices are empty
 void refreshOverpassLayer();
+void refreshRoadLabelLayer();
 
 // ─── PWA: Service Worker registration and install prompt handler ─────
 if ('serviceWorker' in navigator) {
@@ -3963,19 +5744,21 @@ function createInstallButton(): HTMLButtonElement {
   const btn = document.createElement('button');
   btn.id = 'pwa-install-btn';
   btn.className = 'pwa-install-btn';
-  btn.textContent = 'Pasang Aplikasi';
+  btn.textContent = 'Pasang';
   Object.assign(btn.style, {
     position: 'fixed',
     right: '12px',
     bottom: '84px',
     zIndex: '9999',
+    width: '86px',
     padding: '8px 12px',
     background: '#2563eb',
     color: '#fff',
     border: 'none',
     borderRadius: '8px',
     boxShadow: '0 6px 14px rgba(37,99,235,0.24)',
-    cursor: 'pointer'
+    cursor: 'pointer',
+    whiteSpace: 'nowrap'
   });
 
   btn.addEventListener('click', async () => {
@@ -3996,12 +5779,14 @@ function createInstallButton(): HTMLButtonElement {
 window.addEventListener('beforeinstallprompt', (e: Event) => {
   e.preventDefault();
   deferredPrompt = e;
-  if (!document.getElementById('pwa-install-btn')) {
-    const btn = createInstallButton();
-    document.body.appendChild(btn);
-  } else {
-    (document.getElementById('pwa-install-btn') as HTMLElement).style.display = 'block';
+  if (window.innerWidth < 560) return;
+  const existingButton = document.getElementById('pwa-install-btn') as HTMLButtonElement | null;
+  if (existingButton) {
+    existingButton.style.display = 'block';
+    return;
   }
+  const btn = createInstallButton();
+  document.body.appendChild(btn);
 });
 
 window.addEventListener('appinstalled', () => {
@@ -4009,441 +5794,10 @@ window.addEventListener('appinstalled', () => {
   const b = document.getElementById('pwa-install-btn');
   if (b) b.remove();
 });
-=======
-  devices?: Array<Partial<DeviceRecord> & { position?: { x?: number; y?: number } }>;
-  events?: Array<Partial<EventRecord>>;
-};
 
-type AppConfig = {
-  snapshotUrl?: string;
-  refreshMs?: number;
-  mapAttribution?: string;
-  mapLabel?: string;
-  githubRepo?: string;
-  githubBranch?: string;
-};
+setupNativeDeepLinks();
+createOpenAndroidButton();
+window.setTimeout(() => {
+  void checkAppUpdateManifest();
+}, 0);
 
-const FALLBACK: Required<Snapshot> = {
-  updatedAt: 1777870000000,
-  source: "demo",
-  devices: [
-    {
-      id: "raspberry-its",
-      label: "Raspberry Pi 5 Controller",
-      district: "Koridor Utama ITS",
-      ip: "10.176.37.67",
-      status: "online",
-      vehicles: 28,
-      congestion: 62,
-      speedKph: 31,
-      camera: "pending",
-      note: "controller aktif; kamera belum terpasang",
-      lastSeen: 1777869995000,
-      position: { x: 54.8, y: 48.5 },
-    },
-    {
-      id: "edge-sensor-02",
-      label: "Edge Sensor Timur",
-      district: "Simpang Timur",
-      ip: "10.176.37.82",
-      status: "offline",
-      vehicles: 9,
-      congestion: 18,
-      speedKph: 40,
-      camera: "offline",
-      note: "node cadangan belum online",
-      lastSeen: 1777868880000,
-      position: { x: 70.5, y: 38.7 },
-    },
-    {
-      id: "camera-gate-01",
-      label: "Camera Gate Selatan",
-      district: "Gerbang Selatan",
-      ip: "10.176.37.120",
-      status: "degraded",
-      vehicles: 41,
-      congestion: 78,
-      speedKph: 22,
-      camera: "pending",
-      note: "AI detector menunggu kamera fisik",
-      lastSeen: 1777869972000,
-      position: { x: 43.8, y: 69.5 },
-    },
-  ],
-  events: [
-    {
-      id: "ev-1",
-      time: 1777869820000,
-      label: "Heartbeat Raspberry Pi",
-      detail: "device raspberry-its mengirim status online",
-      severity: "good",
-      deviceId: "raspberry-its",
-    },
-    {
-      id: "ev-2",
-      time: 1777869600000,
-      label: "Lonjakan kendaraan",
-      detail: "koridor timur naik ke 78% congestion",
-      severity: "warn",
-      deviceId: "camera-gate-01",
-    },
-  ],
-};
-
-const app = document.querySelector<HTMLDivElement>("#app");
-if (!app) {
-  throw new Error("Missing #app element.");
-}
-
-app.innerHTML = `
-  <div class="shell">
-    <header class="hero">
-      <div>
-        <p class="eyebrow">ITS live map</p>
-        <h1>Raspberry Pi traffic controller dashboard</h1>
-        <p class="hero-copy">Dashboard ini membaca JSON statis dari GitHub Pages. Nanti saat controller Scala aktif, data tinggal diganti oleh snapshot realtime yang ditulis ke file JSON atau endpoint publik yang kamu pilih.</p>
-      </div>
-      <div class="hero-badges">
-        <span id="backendBadge" class="badge">Github JSON</span>
-        <span id="syncNote" class="sync">belum sinkron</span>
-      </div>
-    </header>
-
-    <main class="layout">
-      <section class="map-card">
-        <div class="card-head">
-          <div>
-            <p class="eyebrow">Traffic map</p>
-            <h2>Digital twin koridor ITS</h2>
-          </div>
-          <button id="refreshBtn" class="tool-btn" type="button">Refresh</button>
-        </div>
-
-        <div class="map-stage" id="mapStage">
-          <svg class="map-svg" viewBox="0 0 1000 720" aria-hidden="true">
-            <g id="riverLayer"></g>
-            <g id="roadLayer"></g>
-            <g id="labelLayer"></g>
-          </svg>
-          <div class="device-layer" id="deviceLayer"></div>
-        </div>
-
-        <div class="legend">
-          <span><i class="dot good"></i>Online</span>
-          <span><i class="dot warn"></i>Congestion watch</span>
-          <span><i class="dot bad"></i>Offline</span>
-          <span><i class="line"></i>Road corridor</span>
-          <span><i class="water"></i>Water / boundary</span>
-        </div>
-        <div class="map-attribution">
-          <span id="mapLabel">OpenStreetMap-style custom map</span>
-          <span>Copyright ITS Telkom University</span>
-        </div>
-      </section>
-
-      <aside class="side">
-        <section class="stats">
-          <article><small>Device aktif</small><strong id="activeDevices">0</strong><span id="offlineDevices">0 offline</span></article>
-          <article><small>Jumlah kendaraan</small><strong id="vehicleTotal">0</strong><span>semua node</span></article>
-          <article><small>Rata-rata congestion</small><strong id="averageCongestion">0%</strong><span>indikasi macet</span></article>
-          <article><small>Kamera siap</small><strong id="cameraReady">0</strong><span>layer kamera</span></article>
-        </section>
-
-        <section class="panel">
-          <div class="panel-headline">
-            <div>
-              <p class="eyebrow">Raspberry devices</p>
-              <h3>Status node</h3>
-            </div>
-            <span id="syncAge" class="chip">demo</span>
-          </div>
-          <div id="deviceList" class="list"></div>
-        </section>
-
-        <section class="panel">
-          <div class="panel-headline">
-            <div>
-              <p class="eyebrow">Event feed</p>
-              <h3>Traffic signal</h3>
-            </div>
-          </div>
-          <div id="eventFeed" class="feed"></div>
-        </section>
-
-        <section class="panel selected">
-          <div class="panel-headline">
-            <div>
-              <p class="eyebrow">Selected device</p>
-              <h3 id="selectedTitle">Raspberry Pi 5 Controller</h3>
-            </div>
-          </div>
-          <div id="selectedBody"></div>
-        </section>
-      </aside>
-    </main>
-  </div>
-`;
-
-const DEFAULT_CONFIG: Required<Pick<AppConfig, "snapshotUrl" | "refreshMs" | "mapAttribution" | "mapLabel">> = {
-  snapshotUrl: "./data/its-state.json",
-  refreshMs: 5000,
-  mapAttribution: "OpenStreetMap contributors",
-  mapLabel: "Custom ITS map",
-};
-
-const state = {
-  devices: [...FALLBACK.devices],
-  events: [...FALLBACK.events],
-  backend: "github-json" as BackendMode,
-  selectedId: FALLBACK.devices[0].id,
-  updatedAt: FALLBACK.updatedAt,
-  zoom: 1,
-  config: DEFAULT_CONFIG,
-  refreshTimer: 0,
-  refreshBusy: false,
-};
-
-const svgRoads = [
-  "M 110 140 C 250 110, 410 120, 560 160 S 760 220, 930 190",
-  "M 70 250 C 230 225, 360 245, 510 292 S 780 345, 965 315",
-  "M 90 420 C 250 390, 400 398, 540 438 S 785 510, 955 475",
-  "M 130 570 C 310 538, 470 548, 632 590 S 820 648, 965 618",
-  "M 215 90 C 180 180, 180 300, 208 400 S 255 560, 220 675",
-  "M 385 68 C 360 175, 365 286, 390 402 S 442 562, 430 690",
-  "M 610 90 C 585 198, 594 310, 620 420 S 674 560, 664 682",
-  "M 840 92 C 804 214, 808 321, 830 438 S 870 580, 864 680",
-];
-
-const svgRivers = [
-  "M 20 640 C 140 600, 250 614, 360 602 S 590 540, 700 556 S 880 595, 980 575",
-  "M 30 612 C 155 578, 275 592, 396 580 S 630 522, 744 538 S 902 572, 972 560",
-];
-
-const districtLabels = [
-  { title: "Pusat ITS", x: 51, y: 35 },
-  { title: "Koridor Barat", x: 18, y: 43 },
-  { title: "Koridor Timur", x: 78, y: 30 },
-  { title: "Gerbang Selatan", x: 44, y: 79 },
-  { title: "Ruang Sungai", x: 68, y: 61 },
-];
-
-function esc(value: string): string {
-  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
-}
-
-function n(value: number): string {
-  return new Intl.NumberFormat("id-ID").format(value);
-}
-
-function ago(ms: number): string {
-  const delta = Math.max(0, Date.now() - ms);
-  if (delta < 60_000) return `${Math.max(1, Math.round(delta / 1000))} detik lalu`;
-  if (delta < 3_600_000) return `${Math.max(1, Math.round(delta / 60_000))} menit lalu`;
-  return `${Math.max(1, Math.round(delta / 3_600_000))} jam lalu`;
-}
-
-function renderBackground(): void {
-  const roadLayer = document.querySelector<SVGGElement>("#roadLayer");
-  const riverLayer = document.querySelector<SVGGElement>("#riverLayer");
-  const labelLayer = document.querySelector<SVGGElement>("#labelLayer");
-
-  if (!roadLayer || !riverLayer || !labelLayer) return;
-
-  roadLayer.innerHTML = svgRoads.map((d, i) => `<path d="${d}" class="road road-${i % 4}" />`).join("");
-  riverLayer.innerHTML = svgRivers.map((d) => `<path d="${d}" class="river" />`).join("");
-  labelLayer.innerHTML = districtLabels.map((label) => `
-    <g transform="translate(${label.x * 10}, ${label.y * 10})">
-      <rect x="-48" y="-14" width="96" height="24" rx="12" class="district-chip"></rect>
-      <text x="0" y="2" text-anchor="middle" class="district-text">${esc(label.title)}</text>
-    </g>
-  `).join("");
-}
-
-function selectedDevice(): DeviceRecord {
-  return state.devices.find((device) => device.id === state.selectedId) || state.devices[0];
-}
-
-function render(): void {
-  const active = state.devices.filter((device) => device.status !== "offline").length;
-  const offline = state.devices.length - active;
-  const vehicleTotal = state.devices.reduce((sum, device) => sum + device.vehicles, 0);
-  const averageCongestion = Math.round(state.devices.reduce((sum, device) => sum + device.congestion, 0) / state.devices.length);
-  const cameraReady = state.devices.filter((device) => device.camera === "online").length;
-
-  const badge = document.querySelector<HTMLElement>("#backendBadge");
-  const syncNote = document.querySelector<HTMLElement>("#syncNote");
-  const syncAge = document.querySelector<HTMLElement>("#syncAge");
-  const activeDevices = document.querySelector<HTMLElement>("#activeDevices");
-  const offlineDevices = document.querySelector<HTMLElement>("#offlineDevices");
-  const vehicleTotalEl = document.querySelector<HTMLElement>("#vehicleTotal");
-  const averageCongestionEl = document.querySelector<HTMLElement>("#averageCongestion");
-  const cameraReadyEl = document.querySelector<HTMLElement>("#cameraReady");
-  const deviceList = document.querySelector<HTMLElement>("#deviceList");
-  const eventFeed = document.querySelector<HTMLElement>("#eventFeed");
-  const selectedTitle = document.querySelector<HTMLElement>("#selectedTitle");
-  const selectedBody = document.querySelector<HTMLElement>("#selectedBody");
-  const deviceLayer = document.querySelector<HTMLElement>("#deviceLayer");
-  const mapLabel = document.querySelector<HTMLElement>("#mapLabel");
-
-  if (!badge || !syncNote || !syncAge || !activeDevices || !offlineDevices || !vehicleTotalEl || !averageCongestionEl || !cameraReadyEl || !deviceList || !eventFeed || !selectedTitle || !selectedBody || !deviceLayer || !mapLabel) {
-    throw new Error("Missing ITS dashboard element.");
-  }
-
-  badge.textContent = state.backend === "github-json" ? "GitHub JSON" : "Demo mode";
-  syncNote.textContent = state.refreshBusy ? "menarik snapshot terbaru..." : `sinkron ${ago(state.updatedAt)}`;
-  syncAge.textContent = state.backend === "github-json" ? `live / ${Math.round(state.config.refreshMs / 1000)}s` : "demo";
-  activeDevices.textContent = String(active);
-  offlineDevices.textContent = `${offline} offline`;
-  vehicleTotalEl.textContent = n(vehicleTotal);
-  averageCongestionEl.textContent = `${averageCongestion}%`;
-  cameraReadyEl.textContent = String(cameraReady);
-  mapLabel.textContent = `${state.config.mapLabel} · ${state.config.mapAttribution}`;
-
-  deviceLayer.innerHTML = state.devices.map((device) => `
-    <button class="pin ${device.status} ${device.id === state.selectedId ? "selected" : ""}" type="button" data-id="${esc(device.id)}" style="left:${device.position.x}%; top:${device.position.y}%">
-      <span class="pin-pulse"></span>
-      <span class="pin-core"></span>
-      <span class="pin-label">${esc(device.label)}</span>
-      <span class="pin-count">${n(device.vehicles)} kendaraan</span>
-    </button>
-  `).join("");
-
-  deviceList.innerHTML = state.devices.map((device) => `
-    <button class="device-row ${device.id === state.selectedId ? "selected" : ""}" type="button" data-id="${esc(device.id)}">
-      <div class="row-top">
-        <strong>${esc(device.label)}</strong>
-        <span class="status ${device.status}">${device.status}</span>
-      </div>
-      <div class="row-meta">
-        <span>${esc(device.district)}</span>
-        <span>${esc(device.ip || "no-ip")}</span>
-      </div>
-      <div class="row-stats">
-        <span>${n(device.vehicles)} kendaraan</span>
-        <span>${device.congestion}% macet</span>
-        <span>${device.speedKph} km/jam</span>
-      </div>
-      <div class="row-foot">
-        <span>Kamera: ${esc(device.camera)}</span>
-        <span>${ago(device.lastSeen)}</span>
-      </div>
-    </button>
-  `).join("");
-
-  eventFeed.innerHTML = state.events.map((event) => `
-    <article class="event">
-      <div class="bul ${event.severity}"></div>
-      <div>
-        <div class="event-head"><strong>${esc(event.label)}</strong><time>${new Intl.DateTimeFormat("id-ID", { hour: "2-digit", minute: "2-digit" }).format(new Date(event.time))}</time></div>
-        <p>${esc(event.detail)}</p>
-      </div>
-    </article>
-  `).join("");
-
-  selectedTitle.textContent = selectedDevice().label;
-  selectedBody.innerHTML = `
-    <div class="selected-grid">
-      <div><span>ID</span><strong>${esc(selectedDevice().id)}</strong></div>
-      <div><span>Status</span><strong>${esc(selectedDevice().status)}</strong></div>
-      <div><span>District</span><strong>${esc(selectedDevice().district)}</strong></div>
-      <div><span>Kamera</span><strong>${esc(selectedDevice().camera)}</strong></div>
-    </div>
-    <div class="selected-metrics">
-      <div><span>Kendaraan</span><strong>${n(selectedDevice().vehicles)}</strong></div>
-      <div><span>Congestion</span><strong>${selectedDevice().congestion}%</strong></div>
-      <div><span>Speed</span><strong>${selectedDevice().speedKph} km/jam</strong></div>
-    </div>
-    <p class="selected-note">${esc(selectedDevice().note || "Belum ada catatan.")}</p>
-    <div class="selected-footer"><span>${esc(selectedDevice().ip || "-")}</span><span>Last seen ${ago(selectedDevice().lastSeen)}</span></div>
-  `;
-
-  document.querySelectorAll<HTMLElement>("[data-id]").forEach((button) => {
-    button.onclick = () => {
-      state.selectedId = button.dataset.id || state.selectedId;
-      render();
-    };
-  });
-}
-
-async function loadSnapshot(): Promise<void> {
-  if (state.refreshBusy) {
-    return;
-  }
-  state.refreshBusy = true;
-  try {
-    const configResponse = await fetch("./data/its-config.json", { cache: "no-store" });
-    if (configResponse.ok) {
-      const config = (await configResponse.json()) as Partial<AppConfig>;
-      state.config = {
-        ...DEFAULT_CONFIG,
-        ...config,
-      };
-    } else {
-      state.config = { ...DEFAULT_CONFIG };
-    }
-
-    const response = await fetch(state.config.snapshotUrl, { cache: "no-store" });
-    if (!response.ok) throw new Error("snapshot not found");
-    const snapshot = (await response.json()) as Snapshot;
-    if (Array.isArray(snapshot.devices) && snapshot.devices.length) {
-      state.devices = snapshot.devices.map((device, index) => ({
-        id: String(device.id || FALLBACK.devices[index % FALLBACK.devices.length].id),
-        label: String(device.label || FALLBACK.devices[index % FALLBACK.devices.length].label),
-        district: String(device.district || FALLBACK.devices[index % FALLBACK.devices.length].district),
-        ip: String(device.ip || ""),
-        status: (device.status as DeviceStatus) || FALLBACK.devices[index % FALLBACK.devices.length].status,
-        vehicles: Number(device.vehicles ?? 0),
-        congestion: Number(device.congestion ?? 0),
-        speedKph: Number(device.speedKph ?? 0),
-        camera: String(device.camera || "pending"),
-        note: String(device.note || ""),
-        lastSeen: Number(device.lastSeen ?? Date.now()),
-        position: {
-          x: Number(device.position?.x ?? FALLBACK.devices[index % FALLBACK.devices.length].position.x),
-          y: Number(device.position?.y ?? FALLBACK.devices[index % FALLBACK.devices.length].position.y),
-        },
-      }));
-    }
-    if (Array.isArray(snapshot.events) && snapshot.events.length) {
-      state.events = snapshot.events.map((event) => ({
-        id: String(event.id || `event_${Date.now()}`),
-        time: Number(event.time ?? Date.now()),
-        label: String(event.label || "Event"),
-        detail: String(event.detail || ""),
-        severity: (event.severity as EventSeverity) || "info",
-        deviceId: String(event.deviceId || ""),
-      }));
-    }
-    state.backend = "github-json";
-    state.updatedAt = Number(snapshot.updatedAt || Date.now());
-  } catch {
-    state.backend = "demo";
-    state.updatedAt = Date.now();
-    state.devices = [...FALLBACK.devices];
-    state.events = [...FALLBACK.events];
-  }
-  if (!state.devices.some((device) => device.id === state.selectedId)) {
-    state.selectedId = state.devices[0]?.id || FALLBACK.devices[0].id;
-  }
-  renderBackground();
-  render();
-  window.clearInterval(state.refreshTimer);
-  state.refreshTimer = window.setInterval(() => {
-    void loadSnapshot();
-  }, state.config.refreshMs);
-  state.refreshBusy = false;
-}
-
-const refreshBtn = document.querySelector<HTMLButtonElement>("#refreshBtn");
-if (refreshBtn) {
-  refreshBtn.addEventListener("click", () => {
-    void loadSnapshot();
-  });
-}
-
-window.addEventListener("beforeunload", () => {
-  window.clearInterval(state.refreshTimer);
-});
-
-void loadSnapshot();
->>>>>>> 42767f8 (Initial-ITS-Maps-upload)

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'its-maps-cache-v2';
+const CACHE_NAME = 'its-maps-cache-v5';
 const OFFLINE_URLS = [
   '/',
   '/index.html',
@@ -22,6 +22,20 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
+  const url = new URL(event.request.url);
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
+  if (
+    url.pathname === '/app.json'
+    || url.pathname.endsWith('/app-update.json')
+    || url.pathname === '/apk.json'
+    || url.pathname.startsWith('/apk/')
+    || url.pathname === '/.well-known/assetlinks.json'
+    || url.hostname.endsWith('firebasedatabase.app')
+    || url.hostname.endsWith('firebaseio.com')
+  ) {
+    event.respondWith(fetch(event.request, { cache: 'no-store' }));
+    return;
+  }
 
   if (event.request.mode === 'navigate') {
     event.respondWith(
@@ -38,13 +52,13 @@ self.addEventListener('fetch', (event) => {
 
   event.respondWith(
     fetch(event.request).then((response) => {
-        try {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
-        } catch (e) {
-          // ignore opaque responses and other failures
-        }
-        return response;
-      }).catch(() => caches.match(event.request).then((cached) => cached || caches.match('/index.html')))
+      try {
+        const copy = response.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy).catch(() => undefined));
+      } catch (e) {
+        // ignore opaque responses and other failures
+      }
+      return response;
+    }).catch(() => caches.match(event.request).then((cached) => cached || caches.match('/index.html')))
   );
 });
