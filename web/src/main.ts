@@ -250,10 +250,7 @@ const APP_VERSION_CODE = 1;
 const APP_PUBLIC_URL = "https://itstelkom.web.app/";
 const ANDROID_DEEP_LINK_SCHEME = "its";
 const APP_UPDATE_MANIFEST_URL = "./app-update.json";
-const APP_UPDATE_DATABASE_URLS = [
-  `${FIREBASE_ROOT_URL}/app.json`,
-  `${FIREBASE_ROOT_URL}/apk.json`,
-];
+const APP_UPDATE_DATABASE_URL = `${FIREBASE_ROOT_URL}/apk.json`;
 const APP_DOWNLOAD_FALLBACK_URL = `${APP_PUBLIC_URL}apk/its-latest.apk`;
 const APP_STARTED_AT = Date.now();
 
@@ -4630,7 +4627,7 @@ function openAppInstaller(update: AppUpdateInfo, automatic = false): void {
 }
 
 async function fetchAppUpdateInfo(): Promise<AppUpdateInfo | null> {
-  const sources = [...APP_UPDATE_DATABASE_URLS, APP_UPDATE_MANIFEST_URL];
+  const sources = [APP_UPDATE_DATABASE_URL, APP_UPDATE_MANIFEST_URL];
   for (const url of sources) {
     try {
       const res = await fetch(url, { cache: "no-store" });
