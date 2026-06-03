@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_alert_full_data_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="0dp"
+    android:clipToPadding="false">
+
+    <ImageView
+        android:id="@+id/widget_alert_full_data_canvas"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:contentDescription="Alert dan Full Data ITS realtime"
+        android:scaleType="centerCrop"
+        android:adjustViewBounds="false" />
+
+    <TextView
+        android:id="@+id/widget_alert_full_data_button_data"
+        android:layout_width="44dp"
+        android:layout_height="38dp"
+        android:layout_marginStart="6dp"
+        android:layout_marginTop="34dp"
+        android:background="@android:color/transparent"
+        android:text="" />
+
+    <TextView
+        android:id="@+id/widget_alert_full_data_button_monitor"
+        android:layout_width="44dp"
+        android:layout_height="38dp"
+        android:layout_marginStart="6dp"
+        android:layout_marginTop="75dp"
+        android:background="@android:color/transparent"
+        android:text="" />
+
+    <TextView
+        android:id="@+id/widget_alert_full_data_button_notice"
+        android:layout_width="44dp"
+        android:layout_height="38dp"
+        android:layout_marginStart="6dp"
+        android:layout_marginTop="116dp"
+        android:background="@android:color/transparent"
+        android:text="" />
+
+    <TextView
+        android:id="@+id/widget_alert_full_data_prev"
+        android:layout_width="130dp"
+        android:layout_height="134dp"
+        android:layout_marginStart="52dp"
+        android:layout_marginTop="24dp"
+        android:background="@android:color/transparent"
+        android:text="" />
+
+    <TextView
+        android:id="@+id/widget_alert_full_data_next"
+        android:layout_width="150dp"
+        android:layout_height="134dp"
+        android:layout_marginStart="182dp"
+        android:layout_marginTop="24dp"
+        android:background="@android:color/transparent"
+        android:text="" />
+</FrameLayout>

@@ -1,8 +1,9 @@
-<<<<<<< HEAD
-import L from "leaflet";
+﻿import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "leaflet-rotate";
 import "maplibre-gl/dist/maplibre-gl.css";
+import { App as CapacitorApp } from "@capacitor/app";
+import { Capacitor } from "@capacitor/core";
 import "./style.css";
 
 // ─── Type augmentation untuk leaflet-rotate ─────────────────────
@@ -23,6 +24,8 @@ declare module "leaflet" {
 
 type DeviceStatus = "online" | "offline" | "degraded";
 type CameraMode = "webrtc" | "mjpeg";
+type AiEngineMode = "browser-yolo" | "raspberry-yolo" | "grove-vision-ai";
+type CameraSourceMode = "raspberry-webrtc" | "raspberry-hls" | "grove-vision-ai";
 type VehicleBreakdown = {
   car: number;
   motorcycle: number;
@@ -30,6 +33,13 @@ type VehicleBreakdown = {
   truck: number;
   bicycle: number;
   total: number;
+};
+type TrafficCameraDataset = {
+  snapshot1Url?: string;
+  snapshot2Url?: string;
+  updatedAt?: number;
+  source?: string;
+  path?: string;
 };
 type YoloDetection = {
   label: string;
@@ -40,23 +50,69 @@ type YoloDetection = {
   width: number;
   height: number;
 };
-=======
-import "./style.css";
-
-type BackendMode = "github-json" | "demo";
-type DeviceStatus = "online" | "offline" | "degraded";
-type EventSeverity = "info" | "good" | "warn" | "danger";
->>>>>>> 42767f8 (Initial-ITS-Maps-upload)
+type ControllerUpdateInfo = {
+  status?: "running" | "complete" | "error";
+  stage?: string;
+  message?: string;
+  updatedAt?: number;
+  source?: string;
+};
+type DeviceRuntimeConfig = {
+  aiEngine?: AiEngineMode;
+  cameraSource?: CameraSourceMode;
+  groveVisionAi?: {
+    enabled?: boolean;
+    transport?: "uart" | "i2c" | "wifi";
+    host?: string;
+    port?: number;
+    serialPath?: string;
+    model?: string;
+  };
+  updatedAt?: number;
+  requestedBy?: string;
+};
+type AppUpdateInfo = {
+  appId?: string;
+  appName?: string;
+  ownerName?: string;
+  institution?: string;
+  versionCode?: number;
+  versionName?: string;
+  apkUrl?: string;
+  downloadUrl?: string;
+  latestUrl?: string;
+  logoUrl?: string;
+  releaseNotes?: string[];
+  updatedAt?: string;
+  force?: boolean;
+  autoDownload?: boolean;
+  minSupportedVersionCode?: number;
+  fileName?: string;
+  sizeBytes?: number;
+  sha256?: string;
+  deepLinks?: Record<string, string>;
+};
+type RelatedApplication = {
+  platform?: string;
+  id?: string;
+  url?: string;
+  version?: string;
+};
+type NavigatorWithRelatedApps = Navigator & {
+  getInstalledRelatedApps?: () => Promise<RelatedApplication[]>;
+};
 
 type DeviceRecord = {
   id: string;
   label: string;
-<<<<<<< HEAD
   status: DeviceStatus;
   lastSeen: number;
   lastSeenText?: string;
   note?: string;
   cameraUrl?: string;
+  cameraHlsUrl?: string;
+  cameraThumbnailUrl?: string;
+  cameraDataset?: TrafficCameraDataset;
   cameraMode?: CameraMode;
   webrtcEnabled?: boolean;
   webrtcPath?: string;
@@ -81,54 +137,44 @@ type DeviceRecord = {
   objectCount?: number;
   detections?: YoloDetection[];
   trafficSource?: string;
+  trafficLevel?: "lancar" | "sedang" | "padat";
   gpioBackend?: string;
   gpioReady?: boolean;
   gpioNote?: string;
+  update?: ControllerUpdateInfo;
+  runtimeConfig?: DeviceRuntimeConfig;
   position: { lat: number; lng: number };
 };
 
 type SnapshotDevice = Partial<Omit<DeviceRecord, "position" | "lastSeen">> & {
   lastSeen?: number;
   position?: Partial<DeviceRecord["position"]> & { x?: number; y?: number };
-=======
-  district: string;
-  ip?: string;
-  status: DeviceStatus;
-  vehicles: number;
-  congestion: number;
-  speedKph: number;
-  camera: string;
-  note?: string;
-  lastSeen: number;
-  position: { x: number; y: number };
-};
-
-type EventRecord = {
-  id: string;
-  time: number;
-  label: string;
-  detail: string;
-  severity: EventSeverity;
-  deviceId?: string;
->>>>>>> 42767f8 (Initial-ITS-Maps-upload)
 };
 
 type Snapshot = {
   updatedAt?: number;
   source?: string;
-<<<<<<< HEAD
   devices?: SnapshotDevice[] | Record<string, SnapshotDevice>;
 };
 type AppConfig = { snapshotUrl?: string; refreshMs?: number };
 type WebRtcStatus = "idle" | "connecting" | "live" | "failed";
+type WhepOfferData = {
+  iceUfrag: string;
+  icePwd: string;
+  medias: { mid: string; mLine: string }[];
+};
 type WebRtcRuntime = {
   pc: RTCPeerConnection | null;
   deviceId: string;
   signalPath: string;
   sessionId: string;
+  whepUrl: string;
+  whepSessionUrl: string;
+  whepOfferData: WhepOfferData | null;
   stream: MediaStream | null;
   pollTimer: number;
   heartbeatTimer: number;
+  restartTimer: number;
   candidateSeq: number;
   seenCameraCandidates: Set<string>;
   pendingCandidates: RTCIceCandidateInit[];
@@ -143,8 +189,38 @@ type WebRtcSessionRecord = {
   streamerStatus?: string;
   streamerError?: string;
 };
+type BrowserYoloRuntime = {
+  key: string;
+  stopped: boolean;
+  busy: boolean;
+  timer: number;
+  lastStartedAt: number;
+  lastPublishedAt: number;
+  lastThumbnailAt: number;
+  fps: number;
+  tracked: BrowserYoloTrackedDetection[];
+  lastDetections: YoloDetection[];
+  lastDatasetAt: number;
+  datasetSnapshot1Url: string;
+  datasetSnapshot2Url: string;
+};
+type BrowserYoloFrameMeta = {
+  inputSize: number;
+  frameWidth: number;
+  frameHeight: number;
+  scale: number;
+  padX: number;
+  padY: number;
+};
+type BrowserYoloTrackedDetection = YoloDetection & {
+  seen: number;
+  missed: number;
+  lastSeenAt: number;
+};
 type BaseMapMode = "street" | "3d" | "satellite";
+type TransportLayerMode = "traffic" | "rail";
 type TrafficColor = "red" | "yellow" | "green";
+type NoticeKind = "info" | "success" | "warning" | "error";
 type TrafficState = {
   color: TrafficColor;
   duration: number;
@@ -155,7 +231,19 @@ type TrafficState = {
   updatedAt: number;
 };
 
-type PoiKind = "hospital" | "mall" | "campus" | "parking" | "park" | "worship" | "school" | "office" | "restaurant" | "monument" | "terminal" | "station" | "shelter" | "cemetery" | "transport" | "other";
+type PoiKind =
+  | "mosque" | "church" | "church_catholic" | "temple_hindu" | "temple_buddha" | "temple_chinese" | "synagogue" | "chapel" | "pesantren"
+  | "school" | "kindergarten" | "campus" | "library" | "course"
+  | "hospital" | "clinic" | "pharmacy" | "dentist" | "veterinary" | "posyandu"
+  | "restaurant" | "cafe" | "fast_food" | "food_court" | "bakery" | "street_food" | "bar"
+  | "mall" | "supermarket" | "minimarket" | "market" | "shop"
+  | "station" | "airport" | "port" | "terminal" | "shelter" | "transport"
+  | "parking" | "fuel" | "ev_charging"
+  | "bank" | "atm" | "post_office" | "office_govt" | "office_corp" | "police" | "fire_station"
+  | "hotel" | "hostel" | "villa" | "guesthouse"
+  | "park" | "sports" | "playground" | "stadium"
+  | "monument" | "museum" | "beach" | "mountain" | "waterfall" | "cinema" | "zoo" | "theme_park"
+  | "cemetery" | "toilet" | "tower" | "warehouse" | "laundry" | "salon" | "other";
 
 type PoiRecord = {
   id: string;
@@ -166,6 +254,47 @@ type PoiRecord = {
   imageUrl: string;
   rating: string;
   icon: string;
+  lat: number;
+  lng: number;
+  priority?: number;
+  minZoom?: number;
+  named?: boolean;
+  iconKey?: string;
+  iconUrl?: string;
+  customIcon?: boolean;
+};
+
+type RoadLabelRecord = {
+  id: string;
+  title: string;
+  lat: number;
+  lng: number;
+  priority: number;
+  kind: "road" | "place" | "area" | "building" | "station" | "direction" | "pedestrian";
+  bearing?: number;
+};
+
+type MapLicenseEntry = {
+  title: string;
+  href: string;
+  role: string;
+  license: string;
+  licenseHref?: string;
+  note: string;
+};
+type MapLicenseGroup = {
+  title: string;
+  entries: MapLicenseEntry[];
+};
+type RailTrackRecord = {
+  id: string;
+  name: string;
+  color: string;
+  points: Array<{ lat: number; lng: number }>;
+};
+type RailStationLabelRecord = {
+  id: string;
+  name: string;
   lat: number;
   lng: number;
 };
@@ -192,11 +321,271 @@ const WEBRTC_ANSWER_TIMEOUT_MS = 18_000;
 const WEBRTC_ICE_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
 ];
+const HLS_JS_URL = "https://cdn.jsdelivr.net/npm/hls.js@1.5.20/dist/hls.min.js";
+const ORT_JS_URL = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/ort.min.js";
+const ORT_WASM_BASE_URL = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/";
+const BROWSER_YOLO_MODEL_URL = "/artifacts/yolo26n.onnx";
+const BROWSER_YOLO_INPUT_SIZE = 640;
+const BROWSER_YOLO_CONFIDENCE = 0.05;
+const BROWSER_YOLO_NMS = 0.45;
+const BROWSER_YOLO_MAX_DETECTIONS = 24;
+const BROWSER_YOLO_SAMPLE_MS = 850;
+const BROWSER_YOLO_PUBLISH_MS = 2200;
+const BROWSER_YOLO_THUMBNAIL_MS = 10_000;
+const BROWSER_YOLO_DATASET_MS = 10_000;
+const BROWSER_YOLO_DATASET_ROOT = "trafficObjectDetectionDataset/devices";
+const TRAFFIC_WIDGET_FALLBACK_IMAGE_URL = "/bwits.png";
+const BROWSER_YOLO_LANCAR_MAX = 5;
+const BROWSER_YOLO_SEDANG_MAX = 10;
+const HLS_LIVE_TARGET_OFFSET_SECONDS = 1.8;
+const HLS_LIVE_AUTO_SYNC_SECONDS = 12;
+const HLS_AUTO_SYNC_COOLDOWN_MS = 5_000;
+const WHEP_FRAME_FALLBACK_MS = 9_000;
+const CAMERA_CONTROLS_HIDE_MS = 2_600;
+const BROWSER_YOLO_CLASSES = new Set(["person", "bicycle", "car", "motorcycle", "bus", "truck", "traffic light"]);
+const BROWSER_YOLO_VEHICLE_CLASSES = new Set(["bicycle", "car", "motorcycle", "bus", "truck"]);
+const BROWSER_YOLO_CLASS_CONFIDENCE: Record<string, number> = {
+  person: 0.18,
+  bicycle: 0.045,
+  car: 0.035,
+  motorcycle: 0.04,
+  bus: 0.045,
+  truck: 0.035,
+  "traffic light": 0.32,
+};
+const COCO_LABELS = [
+  "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat",
+  "traffic light", "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat",
+  "dog", "horse", "sheep", "cow", "elephant", "bear", "zebra", "giraffe", "backpack",
+  "umbrella", "handbag", "tie", "suitcase", "frisbee", "skis", "snowboard", "sports ball",
+  "kite", "baseball bat", "baseball glove", "skateboard", "surfboard", "tennis racket",
+  "bottle", "wine glass", "cup", "fork", "knife", "spoon", "bowl", "banana", "apple",
+  "sandwich", "orange", "broccoli", "carrot", "hot dog", "pizza", "donut", "cake",
+  "chair", "couch", "potted plant", "bed", "dining table", "toilet", "tv", "laptop",
+  "mouse", "remote", "keyboard", "cell phone", "microwave", "oven", "toaster", "sink",
+  "refrigerator", "book", "clock", "vase", "scissors", "teddy bear", "hair drier",
+  "toothbrush",
+];
 
 const BEARING_STEP = 90;
 const BEARING_SNAP = 5;
 const MAPLIBRE_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
 const MAPLIBRE_3D_PITCH = 52;
+const OVERPASS_ENDPOINTS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://z.overpass-api.de/api/interpreter",
+];
+const OVERPASS_FETCH_TIMEOUT_MS = 18000;
+const POI_QUERY_MAX_RADIUS_M = 3500;
+const ROAD_QUERY_MAX_RADIUS_M = 4200;
+const RAIL_QUERY_MAX_RADIUS_M = 24000;
+const APP_NAME = "ITS";
+const APP_PACKAGE_ID = "id.ac.telkomuniversity.its";
+const APP_OWNER_NAME = "Hanifa Septhi Larasati";
+const APP_INSTITUTION = "Telkom University";
+const APP_VERSION = "1.0.0";
+const APP_VERSION_CODE = 1;
+const APP_PUBLIC_URL = "https://itstelkom.web.app/";
+const ANDROID_DEEP_LINK_SCHEME = "its";
+const APP_UPDATE_MANIFEST_URL = "./app-update.json";
+const APP_UPDATE_DATABASE_URLS = [
+  `${FIREBASE_ROOT_URL}/app.json`,
+  `${FIREBASE_ROOT_URL}/apk.json`,
+];
+const APP_DOWNLOAD_FALLBACK_URL = `${APP_PUBLIC_URL}apk/its-latest.apk`;
+const APP_STARTED_AT = Date.now();
+
+const CUSTOM_POI_ICON_URLS = {
+  alunAlunBandung: new URL("./poi/alunalunbandung.png", import.meta.url).href,
+  gedungSate: new URL("./poi/gedungsate.png", import.meta.url).href,
+  monas: new URL("./poi/monas.png", import.meta.url).href,
+  monumenPrjb: new URL("./poi/monumenPRJB.png", import.meta.url).href,
+  museumKaa: new URL("./poi/musium kaa.png", import.meta.url).href,
+  tamanMini: new URL("./poi/tamanminiindonesia.png", import.meta.url).href,
+};
+
+const CUSTOM_POI_SEEDS: Array<PoiRecord & { iconUrl: string; customIcon: true }> = [
+  {
+    id: "custom-poi-alun-alun-bandung",
+    kind: "park",
+    title: "Alun-Alun Bandung",
+    description: "Ruang publik utama Kota Bandung di sekitar Masjid Raya Bandung.",
+    address: "Jl. Asia Afrika, Kota Bandung",
+    imageUrl: CUSTOM_POI_ICON_URLS.alunAlunBandung,
+    rating: "4.7",
+    icon: "",
+    iconUrl: CUSTOM_POI_ICON_URLS.alunAlunBandung,
+    customIcon: true,
+    priority: 6,
+    minZoom: 16,
+    named: true,
+    lat: -6.92172,
+    lng: 107.60718,
+  },
+  {
+    id: "custom-poi-gedung-sate",
+    kind: "monument",
+    title: "Gedung Sate",
+    description: "Landmark pemerintahan dan ikon arsitektur Kota Bandung.",
+    address: "Jl. Diponegoro, Kota Bandung",
+    imageUrl: CUSTOM_POI_ICON_URLS.gedungSate,
+    rating: "4.8",
+    icon: "",
+    iconUrl: CUSTOM_POI_ICON_URLS.gedungSate,
+    customIcon: true,
+    priority: 6,
+    minZoom: 16,
+    named: true,
+    lat: -6.90248,
+    lng: 107.61872,
+  },
+  {
+    id: "custom-poi-monas",
+    kind: "monument",
+    title: "Monas",
+    description: "Monumen Nasional dan titik orientasi utama pusat Jakarta.",
+    address: "Gambir, Jakarta Pusat",
+    imageUrl: CUSTOM_POI_ICON_URLS.monas,
+    rating: "4.8",
+    icon: "",
+    iconUrl: CUSTOM_POI_ICON_URLS.monas,
+    customIcon: true,
+    priority: 6,
+    minZoom: 16,
+    named: true,
+    lat: -6.17539,
+    lng: 106.82715,
+  },
+  {
+    id: "custom-poi-monumen-prjb",
+    kind: "monument",
+    title: "Monumen Perjuangan Rakyat Jawa Barat",
+    description: "Monumen perjuangan rakyat Jawa Barat di kawasan Dipatiukur Bandung.",
+    address: "Jl. Dipati Ukur, Kota Bandung",
+    imageUrl: CUSTOM_POI_ICON_URLS.monumenPrjb,
+    rating: "4.6",
+    icon: "",
+    iconUrl: CUSTOM_POI_ICON_URLS.monumenPrjb,
+    customIcon: true,
+    priority: 5,
+    minZoom: 16,
+    named: true,
+    lat: -6.89366,
+    lng: 107.61742,
+  },
+  {
+    id: "custom-poi-museum-kaa",
+    kind: "museum",
+    title: "Museum Konferensi Asia Afrika",
+    description: "Museum sejarah Konferensi Asia Afrika di koridor Asia Afrika Bandung.",
+    address: "Jl. Asia Afrika, Kota Bandung",
+    imageUrl: CUSTOM_POI_ICON_URLS.museumKaa,
+    rating: "4.7",
+    icon: "",
+    iconUrl: CUSTOM_POI_ICON_URLS.museumKaa,
+    customIcon: true,
+    priority: 6,
+    minZoom: 16,
+    named: true,
+    lat: -6.92175,
+    lng: 107.60996,
+  },
+  {
+    id: "custom-poi-tmii",
+    kind: "theme_park",
+    title: "Taman Mini Indonesia Indah",
+    description: "Kawasan wisata budaya dan edukasi di Jakarta Timur.",
+    address: "Cipayung, Jakarta Timur",
+    imageUrl: CUSTOM_POI_ICON_URLS.tamanMini,
+    rating: "4.7",
+    icon: "",
+    iconUrl: CUSTOM_POI_ICON_URLS.tamanMini,
+    customIcon: true,
+    priority: 6,
+    minZoom: 16,
+    named: true,
+    lat: -6.30245,
+    lng: 106.89516,
+  },
+];
+
+const MAP_LICENSE_GROUPS: MapLicenseGroup[] = [
+  {
+    title: "Basemap dan Data",
+    entries: [
+      {
+        title: "CARTO Basemaps",
+        href: "https://carto.com/basemaps",
+        role: "Mode 2D",
+        license: "CARTO attribution + OpenStreetMap contributors",
+        licenseHref: "https://carto.com/attribution/",
+        note: "Tile 2D memakai CARTO Voyager dengan data berbasis OpenStreetMap.",
+      },
+      {
+        title: "OpenStreetMap",
+        href: "https://www.openstreetmap.org/copyright",
+        role: "Data jalan, bangunan, POI, rel, dan label",
+        license: "Open Database License (ODbL)",
+        licenseHref: "https://opendatacommons.org/licenses/odbl/1-0/",
+        note: "Data dinamis diambil lewat Overpass dan tetap mengikuti ketentuan atribusi OSM.",
+      },
+      {
+        title: "Esri World Imagery",
+        href: "https://www.esri.com/en-us/arcgis/products/arcgis-living-atlas-of-the-world/overview",
+        role: "Mode Satelit",
+        license: "Esri imagery attribution",
+        licenseHref: "https://support.esri.com/en-us/knowledge-base/what-is-the-correct-way-to-cite-an-arcgis-online-basema-000012040",
+        note: "Citra satelit mengikuti atribusi penyedia World Imagery.",
+      },
+      {
+        title: "OpenFreeMap",
+        href: "https://openfreemap.org/",
+        role: "Mode 3D / vector",
+        license: "OpenFreeMap terms + OSM attribution",
+        licenseHref: "https://openfreemap.org/tos/",
+        note: "Style 3D dirender dengan MapLibre dari endpoint OpenFreeMap.",
+      },
+    ],
+  },
+  {
+    title: "Library dan Layanan",
+    entries: [
+      {
+        title: "Leaflet",
+        href: "https://leafletjs.com/",
+        role: "Renderer peta 2D",
+        license: "BSD-2-Clause",
+        licenseHref: "https://github.com/Leaflet/Leaflet/blob/main/LICENSE",
+        note: "Dipakai untuk marker, layer, popup, dan kontrol peta.",
+      },
+      {
+        title: "MapLibre GL JS",
+        href: "https://maplibre.org/projects/gl-js/",
+        role: "Renderer 3D/vector",
+        license: "BSD-3-Clause",
+        licenseHref: "https://github.com/maplibre/maplibre-gl-js/blob/main/LICENSE.txt",
+        note: "Dipakai untuk mode 3D dan layer vector.",
+      },
+      {
+        title: "Overpass API",
+        href: "https://overpass-api.de/",
+        role: "Query POI, bangunan, stasiun, rel, dan label",
+        license: "OpenStreetMap data under ODbL",
+        licenseHref: "https://osmfoundation.org/wiki/Attribution_Guidelines",
+        note: "Dipakai untuk memperkaya POI dan label fasilitas publik di area viewport.",
+      },
+      {
+        title: "OSRM",
+        href: "https://project-osrm.org/",
+        role: "Routing menuju POI",
+        license: "BSD license",
+        licenseHref: "https://github.com/Project-OSRM/osrm-backend/blob/master/LICENSE.TXT",
+        note: "Dipakai untuk estimasi rute saat memilih tujuan POI.",
+      },
+    ],
+  },
+];
 
 // ─── DOM bootstrap ──────────────────────────────────────────────
 
@@ -224,6 +613,39 @@ const map = L.map(mapRoot, {
   rotateControl: false,
 });
 
+const initialUrlParams = new URLSearchParams(window.location.search);
+const initialLat = Number(initialUrlParams.get("lat"));
+const initialLng = Number(initialUrlParams.get("lng"));
+const initialZoom = Number(initialUrlParams.get("z"));
+if (Number.isFinite(initialLat) && Number.isFinite(initialLng)) {
+  map.setView([initialLat, initialLng], Number.isFinite(initialZoom) ? clamp(initialZoom, 3, 20) : DEFAULT_ZOOM, { animate: false });
+}
+
+map.createPane("customPoiPane");
+const customPoiPane = map.getPane("customPoiPane");
+if (customPoiPane) {
+  customPoiPane.style.zIndex = "650";
+  customPoiPane.style.pointerEvents = "auto";
+}
+map.createPane("trafficMarkerPane");
+const trafficMarkerPane = map.getPane("trafficMarkerPane");
+if (trafficMarkerPane) {
+  trafficMarkerPane.style.zIndex = "760";
+  trafficMarkerPane.style.pointerEvents = "auto";
+}
+map.createPane("customLabelPane");
+const customLabelPane = map.getPane("customLabelPane");
+if (customLabelPane) {
+  customLabelPane.style.zIndex = "630";
+  customLabelPane.style.pointerEvents = "none";
+}
+map.createPane("railPane");
+const railPane = map.getPane("railPane");
+if (railPane) {
+  railPane.style.zIndex = "625";
+  railPane.style.pointerEvents = "auto";
+}
+
 // ─── State ──────────────────────────────────────────────────────
 
 const state = {
@@ -234,13 +656,26 @@ const state = {
   refreshBusy: false,
   hasCentered: false,
   baseMode: "street" as BaseMapMode,
+  transportLayer: "traffic" as TransportLayerMode,
   compassNeedle: null as SVGGElement | null,
   compassBtn: null as HTMLButtonElement | null,
-  cameraPreview: null as HTMLDivElement | null,
   cameraButton: null as HTMLButtonElement | null,
+  cameraPreview: null as HTMLDivElement | null,
+  lastCameraRecoveryAt: 0,
   markers: new Map<string, L.Marker>(),
   poiMarkers: new Map<string, L.Marker>(),
   poiData: new Map<string, PoiRecord>(),
+  roadLabelMarkers: new Map<string, L.Marker>(),
+  roadLabelData: new Map<string, RoadLabelRecord>(),
+  railLayer: null as L.LayerGroup | null,
+  railRouteLayers: new Map<string, L.Polyline>(),
+  railStationMarkers: new Map<string, L.CircleMarker>(),
+  railLabelMarkers: new Map<string, L.Marker>(),
+  railLegendControl: null as L.Control | null,
+  railLegendEl: null as HTMLDivElement | null,
+  railOsmTracks: [] as RailTrackRecord[],
+  railOsmStations: [] as RailStationLabelRecord[],
+  railFetchSeq: 0,
   trafficById: new Map<string, TrafficState>(),
   roadNameById: new Map<string, string>(),
   maplibreMap: null as any,
@@ -257,17 +692,30 @@ const state = {
   trafficRefreshTimer: 0,
   offlineReported: new Set<string>(),
   overpassLayer: null as L.LayerGroup | null,
+  poiFetchSeq: 0,
+  roadFetchSeq: 0,
   modeControl: null as L.Control | null,
   routeRequestSeq: 0,
   prevPositionById: new Map<string, L.LatLng>(),
+  lastUpdateNoticeKey: "",
+  lastAppUpdateKey: "",
+  lastAppAutoDownloadKey: "",
+  androidAppDetected: null as boolean | null,
+  relatedAppsChecked: false,
+  pendingDeepLinkUrl: "",
+  notificationPromptShown: false,
   webrtc: {
     pc: null,
     deviceId: "",
     signalPath: "",
     sessionId: "",
+    whepUrl: "",
+    whepSessionUrl: "",
+    whepOfferData: null,
     stream: null,
     pollTimer: 0,
     heartbeatTimer: 0,
+    restartTimer: 0,
     candidateSeq: 0,
     seenCameraCandidates: new Set<string>(),
     pendingCandidates: [],
@@ -278,11 +726,35 @@ const state = {
   } as WebRtcRuntime,
 };
 
+const hlsInstances = new WeakMap<HTMLVideoElement, any>();
+const browserYoloRuntimes = new WeakMap<HTMLElement, BrowserYoloRuntime>();
+const cameraControlTimers = new WeakMap<HTMLElement, number>();
+const cameraControlHideTimers = new WeakMap<HTMLElement, number>();
+const cameraAmbientTimers = new WeakMap<HTMLElement, number>();
+const trafficObjectCarouselTimers = new WeakMap<HTMLElement, number>();
+let hlsScriptPromise: Promise<void> | null = null;
+let ortScriptPromise: Promise<void> | null = null;
+let browserYoloSessionPromise: Promise<any> | null = null;
+let webRtcStartPromise: Promise<void> | null = null;
+let cameraFullscreenEventsReady = false;
+let webRtcStartKey = "";
+const browserYoloWorkCanvas = document.createElement("canvas");
+const browserYoloThumbnailCanvas = document.createElement("canvas");
+
 // ─── Tile layers ────────────────────────────────────────────────
 
-const streetLayer = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+const streetLayer = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png", {
+  subdomains: "abcd",
   maxZoom: 20,
-  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  attribution: "",
+}).addTo(map);
+
+const streetLabelLayer = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png", {
+  subdomains: "abcd",
+  maxZoom: 20,
+  attribution: "",
+  pane: "overlayPane",
+  opacity: 0.95,
 }).addTo(map);
 
 const satelliteLayer = L.tileLayer(
@@ -291,11 +763,11 @@ const satelliteLayer = L.tileLayer(
 );
 
 if (map.attributionControl) {
-  try { map.attributionControl.setPrefix("ITS Maps"); } catch { /* ignore */ }
+  try { map.attributionControl.setPrefix('ITS Maps | <a href="?route=licenses" rel="noopener">Lisensi Peta</a>'); } catch { /* ignore */ }
 }
 
 // Add Overpass vector layer for clickable features (kept separate from POI markers)
-state.overpassLayer = L.layerGroup().addTo(map);
+state.overpassLayer = L.layerGroup([], { pane: "customPoiPane" }).addTo(map);
 
 // ─── Scale Control ──────────────────────────────────────────────
 // Custom scale ruler yang dinamis sesuai zoom level
@@ -324,11 +796,13 @@ new ScaleControl().addTo(map);
 
 // ─── POI Layer ─────────────────────────────────────────────────────
 
-const POI_LIBRARY: Record<PoiKind, {
+type PoiLibraryEntry = {
   rating: string;
   imageUrl: string;
   description: string;
-}> = {
+};
+
+const BASE_POI_LIBRARY: Record<string, PoiLibraryEntry> = {
   hospital: {
     rating: "4.7",
     imageUrl: "https://images.unsplash.com/photo-1516549655169-df83a0774514?auto=format&fit=crop&w=900&q=80",
@@ -368,6 +842,21 @@ const POI_LIBRARY: Record<PoiKind, {
     rating: "4.1",
     imageUrl: "https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=900&q=80",
     description: "Bangunan kantor, administrasi, dan fasilitas kerja.",
+  },
+  government: {
+    rating: "4.1",
+    imageUrl: "https://images.unsplash.com/photo-1529107386315-e1a2ed48a620?auto=format&fit=crop&w=900&q=80",
+    description: "Kantor pemerintahan dan layanan publik.",
+  },
+  bank: {
+    rating: "4.1",
+    imageUrl: "https://images.unsplash.com/photo-1541354329998-f4d9a9f9297f?auto=format&fit=crop&w=900&q=80",
+    description: "Layanan perbankan, ATM, dan fasilitas keuangan.",
+  },
+  hotel: {
+    rating: "4.2",
+    imageUrl: "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=900&q=80",
+    description: "Hotel, penginapan, atau akomodasi di sekitar lokasi.",
   },
   restaurant: {
     rating: "4.3",
@@ -411,67 +900,843 @@ const POI_LIBRARY: Record<PoiKind, {
   },
 };
 
-const POI_VISUALS: Record<PoiKind, { icon: string; color: string }> = {
-  hospital: { icon: "🏥", color: "#ef4444" },
-  mall: { icon: "🏬", color: "#8b5cf6" },
-  campus: { icon: "🎓", color: "#0ea5e9" },
-  parking: { icon: "🅿️", color: "#64748b" },
-  park: { icon: "🌳", color: "#22c55e" },
-  worship: { icon: "🕌", color: "#f59e0b" },
+const POI_LIBRARY = new Proxy(BASE_POI_LIBRARY, {
+  get(target, prop: string) {
+    return target[prop] || target.other;
+  },
+}) as Record<PoiKind, PoiLibraryEntry>;
+
+/* Granular POI visuals, labels, classifier, and zoom priority. */
+// =============================================================================
+// poi.ts — Full POI classification, visuals, priority & zoom
+// Supports granular sub-kind icons (e.g. mosque ≠ church ≠ temple ≠ vihara)
+// =============================================================================
+
+// ---------------------------------------------------------------------------
+// 1. TYPES
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// 2. SVG PATH HELPERS
+// ---------------------------------------------------------------------------
+
+function poiSvg(path: string, extra = ""): string {
+  return `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" ${extra}><path d="${path}"/></svg>`;
+}
+
+function poiSvgMulti(paths: string[], extra = ""): string {
+  const inner = paths.map((p) => `<path d="${p}"/>`).join("");
+  return `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" ${extra}>${inner}</svg>`;
+}
+
+// ---------------------------------------------------------------------------
+// 3. EMOJI VISUALS (runtime UI / map markers)
+// ---------------------------------------------------------------------------
+
+export const POI_VISUALS: Record<PoiKind, { icon: string; color: string }> = {
+  // Ibadah — setiap agama/jenis punya emoji & warna berbeda
+  mosque: { icon: "🕌", color: "#16a34a" },
+  church: { icon: "⛪", color: "#7c3aed" },
+  church_catholic: { icon: "✝️", color: "#6d28d9" },
+  temple_hindu: { icon: "🛕", color: "#dc2626" },
+  temple_buddha: { icon: "🏯", color: "#d97706" },
+  temple_chinese: { icon: "🏮", color: "#b91c1c" },
+  synagogue: { icon: "✡️", color: "#1d4ed8" },
+  chapel: { icon: "⛪", color: "#8b5cf6" },
+  pesantren: { icon: "📚", color: "#15803d" },
+  // Pendidikan
   school: { icon: "🏫", color: "#2563eb" },
-  office: { icon: "🏢", color: "#14b8a6" },
+  kindergarten: { icon: "🧒", color: "#f59e0b" },
+  campus: { icon: "🎓", color: "#0ea5e9" },
+  library: { icon: "📚", color: "#6366f1" },
+  course: { icon: "📝", color: "#8b5cf6" },
+  // Kesehatan
+  hospital: { icon: "🏥", color: "#ef4444" },
+  clinic: { icon: "🩺", color: "#f87171" },
+  pharmacy: { icon: "💊", color: "#10b981" },
+  dentist: { icon: "🦷", color: "#06b6d4" },
+  veterinary: { icon: "🐾", color: "#84cc16" },
+  posyandu: { icon: "👶", color: "#fb923c" },
+  // Kuliner
   restaurant: { icon: "🍽️", color: "#fb7185" },
-  terminal: { icon: "🚌", color: "#0f766e" },
+  cafe: { icon: "☕", color: "#92400e" },
+  fast_food: { icon: "🍔", color: "#f97316" },
+  food_court: { icon: "🥘", color: "#e11d48" },
+  bakery: { icon: "🥐", color: "#d97706" },
+  street_food: { icon: "🍢", color: "#c2410c" },
+  bar: { icon: "🍺", color: "#78350f" },
+  // Belanja
+  mall: { icon: "🏬", color: "#8b5cf6" },
+  supermarket: { icon: "🛒", color: "#7c3aed" },
+  minimarket: { icon: "🏪", color: "#6d28d9" },
+  market: { icon: "🛍️", color: "#a855f7" },
+  shop: { icon: "🏪", color: "#9333ea" },
+  // Transportasi
   station: { icon: "🚉", color: "#1d4ed8" },
+  airport: { icon: "✈️", color: "#0369a1" },
+  port: { icon: "⚓", color: "#0c4a6e" },
+  terminal: { icon: "🚌", color: "#0f766e" },
   shelter: { icon: "🚏", color: "#0ea5e9" },
-  cemetery: { icon: "⚰️", color: "#64748b" },
   transport: { icon: "🚍", color: "#0284c7" },
+  // Parkir & SPBU
+  parking: { icon: "🅿️", color: "#64748b" },
+  fuel: { icon: "⛽", color: "#dc2626" },
+  ev_charging: { icon: "🔋", color: "#16a34a" },
+  // Kantor & Bank
+  bank: { icon: "🏦", color: "#1e40af" },
+  atm: { icon: "💳", color: "#2563eb" },
+  post_office: { icon: "📮", color: "#b45309" },
+  office_govt: { icon: "🏛️", color: "#475569" },
+  office_corp: { icon: "🏢", color: "#14b8a6" },
+  police: { icon: "👮", color: "#1e3a5f" },
+  fire_station: { icon: "🚒", color: "#dc2626" },
+  // Hotel & Penginapan
+  hotel: { icon: "🏨", color: "#0891b2" },
+  hostel: { icon: "🛏️", color: "#0e7490" },
+  villa: { icon: "🏡", color: "#16a34a" },
+  guesthouse: { icon: "🏠", color: "#65a30d" },
+  // Taman & Olahraga
+  park: { icon: "🌳", color: "#22c55e" },
+  sports: { icon: "⚽", color: "#16a34a" },
+  playground: { icon: "🎠", color: "#f59e0b" },
+  stadium: { icon: "🏟️", color: "#0284c7" },
+  // Wisata & Hiburan
   monument: { icon: "🗿", color: "#a16207" },
+  museum: { icon: "🏛️", color: "#78350f" },
+  beach: { icon: "🏖️", color: "#0891b2" },
+  mountain: { icon: "⛰️", color: "#4d7c0f" },
+  waterfall: { icon: "💧", color: "#0284c7" },
+  cinema: { icon: "🎬", color: "#7c3aed" },
+  zoo: { icon: "🦁", color: "#92400e" },
+  theme_park: { icon: "🎡", color: "#db2777" },
+  // Makam
+  cemetery: { icon: "⚰️", color: "#64748b" },
+  // Utilitas
+  toilet: { icon: "🚻", color: "#0369a1" },
+  tower: { icon: "📡", color: "#6b7280" },
+  warehouse: { icon: "🏭", color: "#9ca3af" },
+  laundry: { icon: "🧺", color: "#38bdf8" },
+  salon: { icon: "💇", color: "#f472b6" },
+  // Fallback
   other: { icon: "📍", color: "#475569" },
 };
 
-function classifyPoiKind(tags: Record<string, string>): PoiKind {
-  const amenity = tags.amenity;
-  const tourism = tags.tourism;
-  if (amenity === "hospital") return "hospital";
-  if (amenity === "place_of_worship" || tags.religion) return "worship";
-  if (amenity === "school" || amenity === "kindergarten" || tags.education === "school") return "school";
-  if (amenity === "university" || amenity === "college" || tourism === "university") return "campus";
-  if (amenity === "restaurant" || amenity === "cafe" || amenity === "fast_food") return "restaurant";
-  if (amenity === "parking" || tags.parking) return "parking";
-  if (amenity === "bus_station" || amenity === "ferry_terminal" || amenity === "terminal" || tags.public_transport === "station") return "station";
-  if (amenity === "bus_stop" || tags.highway === "bus_stop") return "shelter";
-  if (amenity === "grave_yard" || tags.landuse === "cemetery") return "cemetery";
-  if (amenity === "public_transport" || tags.public_transport) return "transport";
-  if (amenity === "office" || tags.office) return "office";
-  if (tags.shop) return "mall";
-  if (tags.historic === "monument" || tourism === "attraction" || tags.building === "monument") return "monument";
-  if (tags.leisure === "park") return "park";
+// ---------------------------------------------------------------------------
+// 4. SVG VISUALS (untuk map rendering — path berbeda per kind)
+// ---------------------------------------------------------------------------
+
+export const POI_SVG_VISUALS: Record<PoiKind, { icon: string; color: string }> = {
+  // --- IBADAH ---
+  // Masjid: kubah + menara
+  mosque: {
+    icon: poiSvgMulti([
+      "M12 2C10.9 2 10 2.9 10 4c0 .7.4 1.4 1 1.7V7H9l-1 2H6v2h1v8h10v-8h1V9h-2l-1-2h-2V5.7c.6-.3 1-1 1-1.7 0-1.1-.9-2-2-2z",
+      "M9 9h6v1H9zm0 3h6v1H9z",
+    ]),
+    color: "#16a34a",
+  },
+  // Gereja Protestan: salib
+  church: {
+    icon: poiSvg("M11 2h2v7h7v2h-7v11h-2V11H4V9h7V2z"),
+    color: "#7c3aed",
+  },
+  // Gereja Katolik: salib gothic
+  church_catholic: {
+    icon: poiSvgMulti([
+      "M11 2h2v5h5v2h-5v13h-2V9H6V7h5V2z",
+      "M8 6h8v1H8z",
+    ]),
+    color: "#6d28d9",
+  },
+  // Pura Hindu: gapura meru
+  temple_hindu: {
+    icon: poiSvg("M12 2l2 3h2l1 2-1 1v1l1 2H3l1-2 1-1-1-1 1-2h2l2-3zm-6 9h12v10H6V11zm2 2v6h2v-6H8zm4 0v6h2v-6h-2z"),
+    color: "#dc2626",
+  },
+  // Vihara / Pagoda Buddha
+  temple_buddha: {
+    icon: poiSvg("M12 2l3 3h1l1 2h-1l1 2h-1l1 3H7l1-3H7l1-2H7l1-2h1l3-3zM6 12h12v1H6zm1 2h10v7H7v-7zm2 2v3h2v-3H9zm4 0v3h2v-3h-2z"),
+    color: "#d97706",
+  },
+  // Klenteng Tionghoa: atap melengkung
+  temple_chinese: {
+    icon: poiSvg("M12 2L4 7h1v1H4v1h16V8h-1V7h1L12 2zm-7 8h14v11H5V10zm2 2v7h3v-7H7zm5 0v7h3v-7h-3z"),
+    color: "#b91c1c",
+  },
+  // Synagogue: Bintang Daud
+  synagogue: {
+    icon: poiSvg("M12 4l2.6 4.5H9.4L12 4zm0 16l-2.6-4.5h5.2L12 20zM5.1 8.5h5.2L7.7 13 5.1 8.5zm8.7 0h5.2L16.3 13l-2.5-4.5zM5.1 15.5L7.7 11l2.6 4.5H5.1zm8.7 0h5.2L16.3 11l-2.5 4.5z"),
+    color: "#1d4ed8",
+  },
+  // Kapel: bangunan kecil + salib kecil
+  chapel: {
+    icon: poiSvg("M12 3l-8 5v13h16V8l-8-5zm-1 3h2v3h3v1h-3v8h-2v-8H8V9h3V6z"),
+    color: "#8b5cf6",
+  },
+  // Pesantren: bangunan + buku
+  pesantren: {
+    icon: poiSvgMulti([
+      "M3 21V8l9-5 9 5v13H3z",
+      "M9 11h6v2H9zm0 3h6v2H9z",
+    ]),
+    color: "#15803d",
+  },
+
+  // --- PENDIDIKAN ---
+  school: {
+    icon: poiSvg("M3 10l9-5 9 5-9 5-9-5zm3 3.2 6 3.2 6-3.2V18c-1.4 1.1-3.4 1.7-6 1.7S7.4 19.1 6 18v-4.8z"),
+    color: "#2563eb",
+  },
+  kindergarten: {
+    icon: poiSvg("M12 2a5 5 0 0 1 5 5c0 1.5-.7 2.9-1.7 3.8L17 21H7l1.7-10.2A5 5 0 0 1 7 7a5 5 0 0 1 5-5zm-2 8h4l-1 7h-2l-1-7z"),
+    color: "#f59e0b",
+  },
+  campus: {
+    icon: poiSvg("M2 8l10-5 10 5-10 5L2 8zm4 3.2 6 3 6-3V17c-1.6 1.2-3.6 1.8-6 1.8S7.6 18.2 6 17v-5.8z"),
+    color: "#0ea5e9",
+  },
+  library: {
+    icon: poiSvg("M4 2h4v20H4V2zm6 0h4v20h-4V2zm6 0h4v20h-4V2zM5 4v2h2V4H5zm0 4v2h2V8H5zm6-4v2h2V4h-2zm0 4v2h2V8h-2zm6-4v2h2V4h-2zm0 4v2h2V8h-2z"),
+    color: "#6366f1",
+  },
+  course: {
+    icon: poiSvg("M4 4h16v2H4V4zm0 4h10v2H4V8zm0 4h10v2H4v-2zm0 4h7v2H4v-2zm12-4l5 4-5 4v-3h-4v-2h4v-3z"),
+    color: "#8b5cf6",
+  },
+
+  // --- KESEHATAN ---
+  hospital: {
+    icon: poiSvg("M4 21h16V8l-8-5-8 5v13zm6-10V8h4v3h3v4h-3v3h-4v-3H7v-4h3z"),
+    color: "#ef4444",
+  },
+  clinic: {
+    icon: poiSvg("M12 2a7 7 0 0 1 7 7c0 4-3 7-7 9-4-2-7-5-7-9a7 7 0 0 1 7-7zm-1 4v3H8v2h3v3h2v-3h3V9h-3V6h-2z"),
+    color: "#f87171",
+  },
+  pharmacy: {
+    icon: poiSvg("M11 2h2v4h4v2h-4v4h-2V8H7V6h4V2zm-7 10h16v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-9zm2 2v5h4v-5H6zm6 0v2h2v-2h-2zm0 3v2h2v-2h-2z"),
+    color: "#10b981",
+  },
+  dentist: {
+    icon: poiSvg("M12 2C9.2 2 7 4.2 7 7c0 1.8.9 3.4 2.2 4.4L8 22h2l2-7 2 7h2l-1.2-10.6C16.1 10.4 17 8.8 17 7c0-2.8-2.2-5-5-5z"),
+    color: "#06b6d4",
+  },
+  veterinary: {
+    icon: poiSvg("M4.5 9.5a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm15 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4zM9 6a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm6 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4zM12 9c-3.3 0-6 2.7-6 6 0 2.1 1 3.9 2.6 5h6.8c1.6-1.1 2.6-2.9 2.6-5 0-3.3-2.7-6-6-6z"),
+    color: "#84cc16",
+  },
+  posyandu: {
+    icon: poiSvg("M12 2a3 3 0 1 1 0 6 3 3 0 0 1 0-6zm0 8c3.3 0 6 1.3 6 3v1H6v-1c0-1.7 2.7-3 6-3zm-5 6h10l-1 6H8l-1-6z"),
+    color: "#fb923c",
+  },
+
+  // --- KULINER ---
+  restaurant: {
+    icon: poiSvg("M7 3h2v8H7V3zm-3 0h2v8H4V3zm4 10c-2.2 0-4-1.8-4-4h6c0 2.2-1.8 4-4 4zm-1 1h2v7H7v-7zm9-11h2v18h-2v-7h-2V7c0-2.2 1-4 2-4z"),
+    color: "#fb7185",
+  },
+  cafe: {
+    icon: poiSvg("M2 21h18v-2H2v2zm2-5h14a2 2 0 0 0 2-2v-3H2v3a2 2 0 0 0 2 2zm16-9h-2V5h2a2 2 0 0 1 2 2 2 2 0 0 1-2 2zm-4-5H4v7h12V7l-2-5z"),
+    color: "#92400e",
+  },
+  fast_food: {
+    icon: poiSvg("M2 14h20v2H2v-2zm1-4h18l-1 3H4l-1-3zm4-5c0-1.7 2.2-3 5-3s5 1.3 5 3H7zm2 2h6v1H9v-1z"),
+    color: "#f97316",
+  },
+  food_court: {
+    icon: poiSvg("M2 21h20v-2H2v2zm2-4h16V5H4v12zm2-10h3v2H6V7zm5 0h3v2h-3V7zm5 0h2v2h-2V7zM6 11h3v2H6v-2zm5 0h3v2h-3v-2zm5 0h2v2h-2v-2z"),
+    color: "#e11d48",
+  },
+  bakery: {
+    icon: poiSvg("M12 2C9.2 2 7 4.2 7 7H5v13h14V7h-2c0-2.8-2.2-5-5-5zm0 2c1.7 0 3 1.3 3 3H9c0-1.7 1.3-3 3-3zM7 10h10v8H7v-8zm2 2v4h2v-4H9zm4 0v4h2v-4h-2z"),
+    color: "#d97706",
+  },
+  street_food: {
+    icon: poiSvg("M12 2l1.5 4H17l-2.8 2.1 1 3.4L12 9.5l-3.2 2L9.8 8.1 7 6h3.5L12 2zm-5 12h10l-1 8H8l-1-8zm2 2v4h2v-4H9zm4 0v4h2v-4h-2z"),
+    color: "#c2410c",
+  },
+  bar: {
+    icon: poiSvg("M7 3h10l1 5H6L7 3zm-1 6h12l-1 3H8l-1-3zm1 4h10v9a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1v-9zm2 2v5h2v-5H9zm4 0v5h2v-5h-2z"),
+    color: "#78350f",
+  },
+
+  // --- BELANJA ---
+  mall: {
+    icon: poiSvg("M5 9h14l-1 12H6L5 9zm1-2 2-4h8l2 4H6zm3 5v6h2v-6H9zm4 0v6h2v-6h-2z"),
+    color: "#8b5cf6",
+  },
+  supermarket: {
+    icon: poiSvg("M2 3h2l.5 2H21l-2 9H6L4.5 5H2V3zm4 14a2 2 0 1 1 0 4 2 2 0 0 1 0-4zm12 0a2 2 0 1 1 0 4 2 2 0 0 1 0-4zM6 7l1 6h10l1.5-6H6z"),
+    color: "#7c3aed",
+  },
+  minimarket: {
+    icon: poiSvg("M3 4h18v2l-2 13H5L3 6V4zm3 3 1.5 9h9L18 7H6zm2 2h8v2H8V9zm0 3h6v2H8v-2z"),
+    color: "#6d28d9",
+  },
+  market: {
+    icon: poiSvg("M3 5h18v3H3V5zm2 4h14l-1 11H6L5 9zm3 2v7h2v-7H8zm4 0v7h2v-7h-2z"),
+    color: "#a855f7",
+  },
+  shop: {
+    icon: poiSvg("M2 7h20v2l-2 12H4L2 9V7zm4 4v7h2v-7H6zm4 0v7h2v-7h-2zm4 0v7h2v-7h-2z"),
+    color: "#9333ea",
+  },
+
+  // --- TRANSPORTASI ---
+  station: {
+    icon: poiSvg("M6 3h12a3 3 0 0 1 3 3v8a4 4 0 0 1-4 4l2 3h-2.5l-1.5-3H9l-1.5 3H5l2-3a4 4 0 0 1-4-4V6a3 3 0 0 1 3-3zm1 3v4h10V6H7zm1 9a1.3 1.3 0 1 0 0-2.6A1.3 1.3 0 0 0 8 15zm8 0a1.3 1.3 0 1 0 0-2.6A1.3 1.3 0 0 0 16 15z"),
+    color: "#1d4ed8",
+  },
+  airport: {
+    icon: poiSvg("M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"),
+    color: "#0369a1",
+  },
+  port: {
+    icon: poiSvg("M12 2a2 2 0 1 1 0 4 2 2 0 0 1 0-4zm1 5v6l4 2-1 2-4-2-4 2-1-2 4-2V7h2zm-6 9 1-1h8l1 1-1 4H7l-1-4z"),
+    color: "#0c4a6e",
+  },
+  terminal: {
+    icon: poiSvg("M5 5h14a2 2 0 0 1 2 2v8a3 3 0 0 1-3 3l1 3h-2l-1-3H8l-1 3H5l1-3a3 3 0 0 1-3-3V7a2 2 0 0 1 2-2zm1 3v5h12V8H6zm2 8a1.2 1.2 0 1 0 0-2.4A1.2 1.2 0 0 0 8 16zm8 0a1.2 1.2 0 1 0 0-2.4A1.2 1.2 0 0 0 16 16z"),
+    color: "#0f766e",
+  },
+  shelter: {
+    icon: poiSvg("M4 5h16v3H4V5zm2 4h12v9h2v3H4v-3h2V9zm3 2v5h6v-5H9z"),
+    color: "#0ea5e9",
+  },
+  transport: {
+    icon: poiSvg("M4 7a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v9a2 2 0 0 1-2 2l1 3h-2l-1-3H8l-1 3H5l1-3a2 2 0 0 1-2-2V7zm3 1v5h10V8H7z"),
+    color: "#0284c7",
+  },
+
+  // --- PARKIR & SPBU ---
+  parking: {
+    icon: `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="3" width="18" height="18" rx="3"/><text x="12" y="17" text-anchor="middle" font-size="14" font-weight="900" fill="white">P</text></svg>`,
+    color: "#64748b",
+  },
+  fuel: {
+    icon: poiSvg("M3 3h12v18H3V3zm2 2v14h8V5H5zm9 2h2l2 2v8a1 1 0 0 1-2 0v-4h-2V7zm-4 2h4v2H10V9zm0 4h4v2H10v-2z"),
+    color: "#dc2626",
+  },
+  ev_charging: {
+    icon: poiSvg("M7 4h4V2h2v2h4v6h-2v9a1 1 0 0 1-2 0v-4h-4v4a1 1 0 0 1-2 0V10H5V4h2zm1 2v4h6V6H8zm3 5 2 3h-2v3l-2-3h2v-3z"),
+    color: "#16a34a",
+  },
+
+  // --- KANTOR & BANK ---
+  bank: {
+    icon: poiSvg("M2 10l10-7 10 7v1H2v-1zm2 2h2v7H4v-7zm4 0h2v7H8v-7zm4 0h2v7h-2v-7zm4 0h2v7h-2v-7zM2 20h20v2H2v-2z"),
+    color: "#1e40af",
+  },
+  atm: {
+    icon: poiSvg("M2 5h20v14H2V5zm2 2v10h16V7H4zm2 2h12v2H6V9zm0 4h5v2H6v-2zm7 0h5v2h-5v-2z"),
+    color: "#2563eb",
+  },
+  post_office: {
+    icon: poiSvg("M2 4h20v16H2V4zm2 2v1.5l8 5 8-5V6H4zm0 4v8h16v-8l-8 5-8-5z"),
+    color: "#b45309",
+  },
+  office_govt: {
+    icon: poiSvg("M2 21V9l10-6 10 6v12H2zm4-2h3v-5H9v5zm3 0h2v-5h-2v5zm3 0h3v-5h-3v5zM12 5.5 5 9.5v1h14v-1L12 5.5z"),
+    color: "#475569",
+  },
+  office_corp: {
+    icon: poiSvg("M5 21V4h14v17h-4v-4h-6v4H5zm4-14v2h2V7H9zm4 0v2h2V7h-2zm-4 4v2h2v-2H9zm4 0v2h2v-2h-2z"),
+    color: "#14b8a6",
+  },
+  police: {
+    icon: poiSvg("M12 1l8 3v6c0 5-3.5 9.7-8 11C7.5 19.7 4 15 4 10V4l8-3zm-1 10V7h2v4h2l-3 4-3-4h2z"),
+    color: "#1e3a5f",
+  },
+  fire_station: {
+    icon: poiSvg("M4 20h16v-8l-8-9-8 9v8zm2-2v-5h4v5H6zm6 0v-5h4v5h-4zm-4-7 4-4.5 4 4.5H8z"),
+    color: "#dc2626",
+  },
+
+  // --- HOTEL ---
+  hotel: {
+    icon: poiSvg("M7 21V9l5-6 5 6v12H7zm2-2h2v-4H9v4zm4 0h2v-4h-2v4zm-4-7h2v-2H9v2zm4 0h2v-2h-2v2z"),
+    color: "#0891b2",
+  },
+  hostel: {
+    icon: poiSvg("M2 8h20v13H2V8zm2 2v9h16v-9H4zm1 2h14v2H5v-2zm0 4h8v2H5v-2zM6 2h12v5H6V2zm2 2v1h8V4H8z"),
+    color: "#0e7490",
+  },
+  villa: {
+    icon: poiSvg("M3 21V10l9-7 9 7v11H3zm5-2h3v-4H8v4zm5 0h3v-4h-3v4zm-5-7h3V9H8v3zm5 0h3V9h-3v3z"),
+    color: "#16a34a",
+  },
+  guesthouse: {
+    icon: poiSvg("M2 21V10l10-8 10 8v11h-6v-6H8v6H2zm4-4h2v-2H6v2zm10 0h2v-2h-2v2z"),
+    color: "#65a30d",
+  },
+
+  // --- TAMAN & OLAHRAGA ---
+  park: {
+    icon: poiSvg("M12 3c2.2 0 4 1.8 4 4 1.7.4 3 1.9 3 3.7 0 2.1-1.7 3.8-3.8 3.8H14V21h-4v-6.5H8.8A3.8 3.8 0 0 1 5 10.7C5 8.9 6.3 7.4 8 7c0-2.2 1.8-4 4-4z"),
+    color: "#22c55e",
+  },
+  sports: {
+    icon: poiSvg("M12 2a10 10 0 1 1 0 20A10 10 0 0 1 2 12zm-2 5-3 3 3 3 1-1-2-2 2-2-1-1zm4 0-1 1 2 2-2 2 1 1 3-3-3-3zm-2 9a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"),
+    color: "#16a34a",
+  },
+  playground: {
+    icon: poiSvg("M7 2l2 5H7l1 3H5L3 7h2l2-5zm10 0 2 5h-2l1 3h-3l-1-3h-2l2-5h3zm-8 12a3 3 0 1 1 0 6 3 3 0 0 1 0-6zm6 0a3 3 0 1 1 0 6 3 3 0 0 1 0-6z"),
+    color: "#f59e0b",
+  },
+  stadium: {
+    icon: poiSvg("M2 9h20v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9zm4 2v6h12v-6H6zm0-4h12V5H6v2zm3 6h6v2H9v-2z"),
+    color: "#0284c7",
+  },
+
+  // --- WISATA & HIBURAN ---
+  monument: {
+    icon: poiSvg("M12 3 7 8h10l-5-5zM8 10h8l2 11H6l2-11zm3 2v6h2v-6h-2z"),
+    color: "#a16207",
+  },
+  museum: {
+    icon: poiSvg("M2 21V9l10-6 10 6v12H2zm4-2h3v-6H6v6zm5 0h2v-6h-2v6zm4 0h3v-6h-3v6zM12 5.5 4.8 9.7h14.4L12 5.5z"),
+    color: "#78350f",
+  },
+  beach: {
+    icon: poiSvg("M13 7a3 3 0 0 1 3 3H10a3 3 0 0 1 3-3zm-8 9 3-2 2 1 2-1 2 1 2-1 3 2v2H5v-2zm0-3 2 1 4-4 2 1 4-3v2l-4 3-2-1-4 4-2-1v-2zm15-3a1 1 0 1 1-2 0V5a1 1 0 0 1 2 0v5z"),
+    color: "#0891b2",
+  },
+  mountain: {
+    icon: poiSvg("M8.5 5l-7 13h17l-7-13-3 6zm-1 11 4-7.3 4 7.3H7.5zm9.5-3 3 6H18l-1-6z"),
+    color: "#4d7c0f",
+  },
+  waterfall: {
+    icon: poiSvg("M7 2h2v6H7V2zm4 0h2v8h-2V2zm4 0h2v6h-2V2zm-8 9h2v2H7v-2zm4 2h2v2h-2v-2zm4-2h2v2h-2v-2zM5 16h14v1c0 2.8-2 5-4.5 5h-5C7 22 5 19.8 5 17v-1z"),
+    color: "#0284c7",
+  },
+  cinema: {
+    icon: poiSvg("M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm2 2v2h2V6H6zm4 0v2h2V6h-2zm4 0v2h2V6h-2zm4 0v2h2V6h-2zm-12 4v2h2v-2H6zm4 0v2h2v-2h-2zm4 0v2h2v-2h-2zm4 0v2h2v-2h-2zM10 8l5 4-5 4V8z"),
+    color: "#7c3aed",
+  },
+  zoo: {
+    icon: poiSvg("M8 3a4 4 0 0 0-4 4c0 .7.2 1.4.5 2H3v2h2v2H3v2h2v6h14v-6h2v-2h-2v-2h2V9h-1.5c.3-.6.5-1.3.5-2a4 4 0 0 0-4-4c-1 0-2 .4-2.7 1A4 4 0 0 0 8 3zm1 9h6v7H9v-7zm-3 2a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm10 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"),
+    color: "#92400e",
+  },
+  theme_park: {
+    icon: poiSvg("M12 2a5 5 0 0 1 5 5c0 2.4-1.7 4.4-4 4.9V21h-2v-9.1C8.7 11.4 7 9.4 7 7a5 5 0 0 1 5-5zm-6 8 3 11H7l-3-11h2zm12 0h2l-3 11h-2l3-11z"),
+    color: "#db2777",
+  },
+
+  // --- MAKAM ---
+  cemetery: {
+    icon: poiSvg("M12 3a5 5 0 0 1 5 5v13H7V8a5 5 0 0 1 5-5zm-1 4v3H8v2h3v5h2v-5h3v-2h-3V7h-2z"),
+    color: "#64748b",
+  },
+
+  // --- UTILITAS ---
+  toilet: {
+    icon: poiSvg("M7 2h3v7H8v7a1 1 0 0 1-2 0V9H4V2h3zm4 0h3v10h-2v6a1 1 0 0 1-2 0V2zm5 0a4 4 0 0 1 4 4v4h-2v8a2 2 0 0 1-4 0v-8h-2V6a4 4 0 0 1 4-4z"),
+    color: "#0369a1",
+  },
+  tower: {
+    icon: poiSvg("M9 2h6l1 5H8L9 2zm-1 6h8l-1 4H10L8 8zm-1 5h10l-2 9H9L7 13zm3 2 1 5h2l1-5h-4z"),
+    color: "#6b7280",
+  },
+  warehouse: {
+    icon: poiSvg("M2 9h20v12H2V9zm2 2v8h16v-8H4zm14-6 2 3H2L4 5h16zm-6 8h4v4h-4v-4z"),
+    color: "#9ca3af",
+  },
+  laundry: {
+    icon: poiSvg("M5 2h14a2 2 0 0 1 2 2v18H3V4a2 2 0 0 1 2-2zm7 4a6 6 0 1 0 0 12A6 6 0 0 0 12 6zm0 2a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm-2 2v4h4v-4h-4z"),
+    color: "#38bdf8",
+  },
+  salon: {
+    icon: poiSvg("M9.5 4a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5zm5 1a2 2 0 1 1 0 4 2 2 0 0 1 0-4zM5 12c0-1.7 2-3 4.5-3S14 10.3 14 12v9H5v-9zm9 2h5v7h-5v-7z"),
+    color: "#f472b6",
+  },
+
+  // --- FALLBACK ---
+  other: {
+    icon: poiSvg("M12 2a7 7 0 0 1 7 7c0 5-7 13-7 13S5 14 5 9a7 7 0 0 1 7-7zm0 9.5A2.5 2.5 0 1 0 12 6a2.5 2.5 0 0 0 0 5.5z"),
+    color: "#475569",
+  },
+};
+
+// ---------------------------------------------------------------------------
+// 5. LABELS
+// ---------------------------------------------------------------------------
+
+export const POI_KIND_LABELS: Record<PoiKind, string> = {
+  mosque: "Masjid", church: "Gereja", church_catholic: "Gereja Katolik",
+  temple_hindu: "Pura", temple_buddha: "Vihara", temple_chinese: "Klenteng",
+  synagogue: "Synagogue", chapel: "Kapel", pesantren: "Pesantren",
+  school: "Sekolah", kindergarten: "TK/PAUD", campus: "Kampus",
+  library: "Perpustakaan", course: "Kursus/Bimbel",
+  hospital: "Rumah Sakit", clinic: "Klinik", pharmacy: "Apotek",
+  dentist: "Klinik Gigi", veterinary: "Klinik Hewan", posyandu: "Posyandu",
+  restaurant: "Restoran", cafe: "Kafe", fast_food: "Fast Food",
+  food_court: "Food Court", bakery: "Bakery", street_food: "Street Food", bar: "Bar",
+  mall: "Mall", supermarket: "Supermarket", minimarket: "Minimarket",
+  market: "Pasar", shop: "Toko",
+  station: "Stasiun", airport: "Bandara", port: "Pelabuhan",
+  terminal: "Terminal Bus", shelter: "Halte", transport: "Transportasi",
+  parking: "Parkir", fuel: "SPBU", ev_charging: "Charger EV",
+  bank: "Bank", atm: "ATM", post_office: "Kantor Pos",
+  office_govt: "Kantor Pemerintah", office_corp: "Kantor", police: "Kepolisian", fire_station: "Pemadam",
+  hotel: "Hotel", hostel: "Hostel", villa: "Villa", guesthouse: "Guest House",
+  park: "Taman", sports: "Olahraga", playground: "Taman Bermain", stadium: "Stadion",
+  monument: "Landmark", museum: "Museum", beach: "Pantai", mountain: "Gunung",
+  waterfall: "Air Terjun", cinema: "Bioskop", zoo: "Kebun Binatang", theme_park: "Taman Hiburan",
+  cemetery: "Makam",
+  toilet: "Toilet Umum", tower: "Menara", warehouse: "Gudang",
+  laundry: "Laundry", salon: "Salon",
+  other: "Lokasi",
+};
+
+// ---------------------------------------------------------------------------
+// 6. CLASSIFY — granular, menggantikan versi lama
+// ---------------------------------------------------------------------------
+
+export function classifyPoiKind(tags: Record<string, string>): PoiKind {
+  const a = tags.amenity ?? "";
+  const t = tags.tourism ?? "";
+  const r = tags.religion ?? "";
+  const denom = (tags.denomination ?? "").toLowerCase();
+  const leisure = tags.leisure ?? "";
+  const historic = tags.historic ?? "";
+  const building = tags.building ?? "";
+  const landuse = tags.landuse ?? "";
+
+  // --- Ibadah (granular per agama/jenis) ---
+  if (a === "place_of_worship" || tags.religion) {
+    if (r === "muslim" || r === "islam") return "mosque";
+    if (r === "hindu") return "temple_hindu";
+    if (r === "buddhist" || r === "buddhism") return "temple_buddha";
+    if (r === "taoist" || denom.includes("chinese") || denom.includes("tionghoa")) return "temple_chinese";
+    if (r === "jewish") return "synagogue";
+    if (r === "christian" || r === "christianity") {
+      if (denom.includes("catholic") || denom.includes("katolik")) return "church_catholic";
+      if (denom.includes("chapel") || a === "chapel") return "chapel";
+      return "church";
+    }
+    return "other";
+  }
+  if (building === "mosque" || building === "masjid") return "mosque";
+  if (building === "church") return "church";
+  if (building === "temple") return "temple_hindu";
+  if (tags.education === "islamic_school" || building === "pesantren") return "pesantren";
+
+  // --- Kesehatan ---
+  if (a === "hospital") return "hospital";
+  if (a === "clinic" || a === "doctors") return "clinic";
+  if (a === "pharmacy" || tags.healthcare === "pharmacy") return "pharmacy";
+  if (a === "dentist") return "dentist";
+  if (a === "veterinary" || tags.healthcare === "veterinary") return "veterinary";
+  if (a === "social_facility" && tags.social_facility === "nursing_home") return "hospital";
+  if (tags.healthcare) return "clinic";
+
+  // --- Pendidikan ---
+  if (a === "kindergarten" || a === "childcare") return "kindergarten";
+  if (a === "school" || tags.education === "school") return "school";
+  if (a === "university" || a === "college" || t === "university") return "campus";
+  if (a === "library") return "library";
+  if (a === "language_school" || a === "driving_school" || a === "music_school") return "course";
+
+  // --- Kuliner ---
+  if (a === "cafe" || a === "coffee_shop") return "cafe";
+  if (a === "fast_food") return "fast_food";
+  if (a === "food_court") return "food_court";
+  if (a === "bakery" || (tags.shop === "bakery")) return "bakery";
+  if (a === "bar" || a === "pub" || a === "nightclub") return "bar";
+  if (a === "restaurant") return "restaurant";
+  if (a === "food_kiosk" || a === "street_vendor") return "street_food";
+
+  // --- Keuangan / Kantor ---
+  if (a === "bank") return "bank";
+  if (a === "atm" || a === "bureau_de_change") return "atm";
+  if (a === "post_office") return "post_office";
+  if (a === "police") return "police";
+  if (a === "fire_station") return "fire_station";
+  if (a === "townhall" || a === "government" || building === "government") return "office_govt";
+  if (a === "office" || tags.office) return "office_corp";
+
+  // --- Transportasi ---
+  if (a === "aerodrome" || t === "aerodrome" || building === "aerodrome") return "airport";
+  if (a === "ferry_terminal") return "port";
+  if (a === "bus_station" || tags.public_transport === "station" || tags.railway === "station") return "station";
+  if (a === "bus_stop" || tags.highway === "bus_stop" || tags.public_transport === "platform") return "shelter";
+  if (tags.railway === "halt" || tags.railway === "tram_stop") return "transport";
+  if (a === "public_transport" || tags.public_transport) return "transport";
+
+  // --- Parkir & SPBU ---
+  if (a === "fuel") return "fuel";
+  if (a === "charging_station" || a === "ev_charging") return "ev_charging";
+  if (a === "parking" || tags.parking || a === "motorcycle_parking") return "parking";
+  if (a === "car_wash") return "transport";
+
+  // --- Belanja ---
+  if (building === "mall" || building === "shopping_centre") return "mall";
+  if (tags.shop === "supermarket") return "supermarket";
+  if (tags.shop === "convenience") return "minimarket";
+  if (a === "marketplace" || tags.shop === "market") return "market";
+  if (tags.shop) return "shop";
+
+  // --- Hotel ---
+  if (t === "hotel") return "hotel";
+  if (t === "hostel") return "hostel";
+  if (t === "guest_house") return "guesthouse";
+  if (t === "villa" || t === "chalet") return "villa";
+  if (building === "hotel" || a === "hotel") return "hotel";
+
+  // --- Wisata / Landmark ---
+  if (t === "museum") return "museum";
+  if (t === "attraction" || historic === "monument" || historic === "memorial") return "monument";
+  if (t === "beach" || tags.natural === "beach") return "beach";
+  if (tags.natural === "peak" || tags.natural === "mountain") return "mountain";
+  if (tags.waterway === "waterfall" || tags.natural === "waterfall") return "waterfall";
+  if (a === "cinema" || t === "cinema") return "cinema";
+  if (t === "zoo" || a === "zoo") return "zoo";
+  if (t === "theme_park" || t === "amusement_park") return "theme_park";
+  if (historic) return "monument";
+
+  // --- Taman & Olahraga ---
+  if (leisure === "park" || leisure === "garden") return "park";
+  if (leisure === "playground") return "playground";
+  if (leisure === "stadium") return "stadium";
+  if (leisure === "sports_centre" || leisure === "pitch" || leisure === "track") return "sports";
+
+  // --- Makam ---
+  if (a === "grave_yard" || landuse === "cemetery" || tags.cemetery) return "cemetery";
+
+  // --- Utilitas ---
+  if (a === "toilets") return "toilet";
+  if (tags.man_made === "tower" || tags.man_made === "mast") return "tower";
+  if (landuse === "industrial" || building === "warehouse") return "warehouse";
+  if (tags.shop === "laundry" || a === "laundry") return "laundry";
+  if (tags.shop === "hairdresser" || tags.shop === "beauty") return "salon";
+
   return "other";
 }
 
-function poiVisual(kind: PoiKind): { icon: string; color: string } {
-  return POI_VISUALS[kind] || POI_VISUALS.other;
+// ---------------------------------------------------------------------------
+// 7. PRIORITY & ZOOM
+// ---------------------------------------------------------------------------
+
+export function poiPriority(kind: PoiKind, tags: Record<string, string> = {}): number {
+  const named = Boolean(tags.name ?? tags.official_name ?? tags.brand ?? tags.operator);
+
+  if (kind === "hospital" || kind === "airport" || kind === "station" || kind === "port") return 5;
+  if (kind === "campus" || kind === "mosque" || kind === "monument" || kind === "museum") return 4;
+  if (kind === "church" || kind === "church_catholic" || kind === "temple_hindu" ||
+    kind === "temple_buddha" || kind === "temple_chinese" || kind === "synagogue") return 4;
+  if (kind === "park" || kind === "stadium" || kind === "zoo" || kind === "theme_park") return 4;
+  if (kind === "school" || kind === "mall" || kind === "supermarket" || kind === "terminal") return named ? 4 : 3;
+  if (kind === "hotel" || kind === "villa" || kind === "bank" || kind === "police") return 3;
+  if (kind === "clinic" || kind === "pharmacy" || kind === "restaurant" || kind === "cafe") return named ? 3 : 2;
+  if (kind === "shelter" || kind === "parking" || kind === "fuel" || kind === "atm") return named ? 3 : 1;
+  if (named) return 2;
+  return 1;
 }
 
-function poiMarkerSizeByZoom(): number {
-  const zoom = map.getZoom();
-  return clamp(12 + (zoom - 13) * 1.15, 12, 24);
+export function poiMinZoom(kind: PoiKind, priority: number): number {
+  if (priority >= 5) return 15;
+  if (priority >= 4) return 16;
+  if (kind === "school" || kind === "mall" || kind === "supermarket" || kind === "terminal" || kind === "bank" || kind === "hotel") return 16;
+  if (kind === "clinic" || kind === "pharmacy" || kind === "restaurant" || kind === "cafe" || kind === "fuel" || kind === "atm") return 17;
+  if (kind === "shelter" || kind === "parking" || kind === "fast_food" || kind === "bakery" || kind === "shop" || kind === "minimarket") return 17;
+  if (priority >= 3) return 16;
+  return 17;
+}
+
+// ---------------------------------------------------------------------------
+// 8. MARKER SIZE (by zoom)
+// ---------------------------------------------------------------------------
+
+// Gunakan: poiMarkerSize(map.getZoom())
+export function poiMarkerSize(zoom: number): number {
+  return clamp(13 + (zoom - 15) * 1.7, 12, 24);
+}
+
+function customPoiMarkerSize(zoom: number): number {
+  return clamp(20 + (zoom - 16) * 2, 18, 32);
+}
+
+// ---------------------------------------------------------------------------
+// 9. PUBLIC GETTER
+// ---------------------------------------------------------------------------
+
+export function poiVisual(kind: PoiKind): { icon: string; color: string } {
+  return POI_SVG_VISUALS[kind] ?? POI_SVG_VISUALS.other;
+}
+
+export function poiEmoji(kind: PoiKind): { icon: string; color: string } {
+  return POI_VISUALS[kind] ?? POI_VISUALS.other;
+}
+
+function cleanPoiTitle(tags: Record<string, string>, kind: PoiKind): { title: string; named: boolean } {
+  const raw = tags.name || tags.official_name || tags["name:id"] || tags.brand || tags.operator;
+  const title = String(raw || "").trim();
+  if (title && !/^(poi|yes)$/i.test(title)) return { title, named: true };
+  return { title: POI_KIND_LABELS[kind], named: false };
+}
+
+function poiDisplayMinZoom(poi: PoiRecord): number {
+  const base = poi.minZoom ?? poiMinZoom(poi.kind, poi.priority ?? 1);
+  if (poi.customIcon) return Math.max(base, 16);
+  return poi.named === false ? Math.max(base, 17) : base;
+}
+
+function poiVisibleLimit(zoom: number): number {
+  if (zoom < 14) return 0;
+  if (zoom < 15) return 12;
+  if (zoom < 16) return 45;
+  if (zoom < 17) return 180;
+  return 900;
+}
+
+function visiblePoisForZoom(pois: PoiRecord[], zoom = map.getZoom()): PoiRecord[] {
+  if (zoom < 14) return [];
+  const limit = poiVisibleLimit(zoom);
+  return dedupePoiRecords(pois)
+    .filter((poi) => zoom >= poiDisplayMinZoom(poi))
+    .sort((a, b) => (b.priority ?? 1) - (a.priority ?? 1) || Number(b.named) - Number(a.named) || a.title.localeCompare(b.title))
+    .slice(0, limit);
+}
+
+function normalizedPoiTitle(title: string): string {
+  return title.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function isLowValueNamelessPoi(poi: PoiRecord): boolean {
+  if (poi.named) return false;
+  return poi.priority !== undefined && poi.priority <= 1 && poi.kind === "other";
+}
+
+function dedupePoiRecords(pois: PoiRecord[]): PoiRecord[] {
+  const sorted = [...pois]
+    .filter((poi) => poi.lat && poi.lng && !Number.isNaN(poi.lat) && !Number.isNaN(poi.lng))
+    .filter((poi) => !isLowValueNamelessPoi(poi))
+    .sort((a, b) => (b.priority ?? 1) - (a.priority ?? 1) || Number(b.named) - Number(a.named));
+  const result: PoiRecord[] = [];
+  sorted.forEach((poi) => {
+    const title = normalizedPoiTitle(poi.title);
+    const duplicate = result.some((existing) => {
+      if (existing.kind !== poi.kind) return false;
+      const sameTitle = normalizedPoiTitle(existing.title) === title;
+      const distance = L.latLng(existing.lat, existing.lng).distanceTo([poi.lat, poi.lng]);
+      if (sameTitle && distance < 120) return true;
+      if (!poi.named && !existing.named && distance < 95) return true;
+      return false;
+    });
+    if (!duplicate) result.push(poi);
+  });
+  return result;
+}
+
+function withCustomPois(pois: PoiRecord[]): PoiRecord[] {
+  const customByTitle = new Set(CUSTOM_POI_SEEDS.map((poi) => normalizedPoiTitle(poi.title)));
+  const filtered = pois.filter((poi) => {
+    if (!customByTitle.has(normalizedPoiTitle(poi.title))) return true;
+    return !CUSTOM_POI_SEEDS.some((custom) => L.latLng(custom.lat, custom.lng).distanceTo([poi.lat, poi.lng]) < 180);
+  });
+  return dedupePoiRecords([...CUSTOM_POI_SEEDS, ...filtered]);
+}
+
+function renderPoiMarkers(pois?: PoiRecord[]): void {
+  if (pois) {
+    const nextData = new Map<string, PoiRecord>();
+    withCustomPois(pois).forEach((poi) => nextData.set(poi.id, poi));
+    state.poiData = nextData;
+  }
+
+  const visiblePois = visiblePoisForZoom([...state.poiData.values()]);
+  updateMapLibrePoiLayer(visiblePois);
+
+  if (state.baseMode === "3d") {
+    state.poiMarkers.forEach((marker) => {
+      try { marker.remove(); } catch { /* ignore */ }
+    });
+    state.poiMarkers.clear();
+    state.overpassLayer?.clearLayers();
+    updateTabletCategoryView();
+    return;
+  }
+
+  if (!state.overpassLayer) state.overpassLayer = L.layerGroup([], { pane: "customPoiPane" }).addTo(map);
+  const size = poiMarkerSize(map.getZoom());
+  const visibleIds = new Set(visiblePois.map((poi) => poi.id));
+
+  state.poiMarkers.forEach((marker, id) => {
+    if (!visibleIds.has(id)) {
+      try { marker.remove(); } catch { /* ignore */ }
+      state.poiMarkers.delete(id);
+    }
+  });
+
+  visiblePois.forEach((poi) => {
+    const icon = makePoiIcon(poi, size);
+    const existing = state.poiMarkers.get(poi.id);
+    if (existing) {
+      existing.setLatLng([poi.lat, poi.lng]);
+      existing.setIcon(icon);
+      existing.off("click");
+      existing.on("click", (ev: L.LeafletMouseEvent) => {
+        L.DomEvent.stop(ev);
+        handlePoiClick(poi);
+      });
+      return;
+    }
+
+    const marker = L.marker([poi.lat, poi.lng], {
+      icon,
+      pane: "customPoiPane",
+      interactive: true,
+      riseOnHover: true,
+      zIndexOffset: 450 + (poi.priority ?? 1),
+    }).addTo(state.overpassLayer as L.LayerGroup);
+    // Ensure the generated Leaflet marker element exposes an accessible name
+    try {
+      const el = (marker as any).getElement?.() as HTMLElement | null;
+      if (el) {
+        // Outer wrapper used by Leaflet may already have role/tabindex; ensure aria-label is present
+        el.setAttribute("aria-label", poi.title || `POI ${poi.id}`);
+        el.setAttribute("role", el.getAttribute("role") || "button");
+        el.setAttribute("tabindex", el.getAttribute("tabindex") || "0");
+        // Keyboard activation for Enter / Space
+        el.addEventListener("keydown", (ev: KeyboardEvent) => {
+          if (ev.key === "Enter" || ev.key === " ") {
+            ev.preventDefault();
+            marker.fire("click");
+          }
+        });
+      }
+    } catch { /* ignore DOM access errors on some renderers */ }
+    (marker.options as any).poiId = poi.id;
+    marker.on("click", (ev: L.LeafletMouseEvent) => {
+      L.DomEvent.stop(ev);
+      handlePoiClick(poi);
+    });
+    state.poiMarkers.set(poi.id, marker);
+  });
+  updateTabletCategoryView();
 }
 
 function makePoiIcon(poi: PoiRecord, size: number): L.DivIcon {
   const visual = poiVisual(poi.kind);
+  const markerSize = poi.customIcon ? customPoiMarkerSize(map.getZoom()) : size;
+  const glyph = poi.iconUrl
+    ? `<img class="poi-custom-image" src="${escapeHtml(poi.iconUrl)}" alt="" loading="lazy">`
+    : visual.icon;
   return L.divIcon({
-    className: "poi-marker-icon",
-    html: `<div class="poi-marker poi-kind-${poi.kind}" title="${escapeHtml(poi.title)}" style="--poi-accent:${visual.color}; --poi-size:${size}px;">
-      <span class="poi-marker-glyph">${visual.icon}</span>
+    className: `poi-marker-icon ${poi.customIcon ? "poi-marker-icon-custom" : ""}`,
+    html: `<div class="poi-marker poi-kind-${poi.kind} ${poi.customIcon ? "poi-marker-custom" : ""} no-label" title="${escapeHtml(poi.title)}" style="--poi-accent:${visual.color}; --poi-size:${markerSize}px;">
+      <span class="poi-marker-glyph">${glyph}</span>
+      <span class="poi-marker-label">${escapeHtml(poi.title)}</span>
     </div>`,
-    iconSize: [size, size],
-    iconAnchor: [Math.round(size / 2), Math.round(size / 2)],
+    iconSize: [markerSize + 8, markerSize + 8],
+    iconAnchor: [Math.round((markerSize + 8) / 2), Math.round((markerSize + 8) / 2)],
   });
 }
 
 function renderPoiModal(poi: PoiRecord): string {
+  const poiIcon = poi.iconUrl
+    ? `<img class="poi-icon-large-img" src="${escapeHtml(poi.iconUrl)}" alt="">`
+    : poi.icon;
   return `
     <div class="modal-header poi-modal-header">
       <button class="modal-close" data-action="close">×</button>
@@ -490,7 +1755,7 @@ function renderPoiModal(poi: PoiRecord): string {
         </div>
       </div>
       <div class="poi-summary">
-        <div class="poi-icon-large">${poi.icon}</div>
+        <div class="poi-icon-large">${poiIcon}</div>
         <div>
           <div class="poi-title">${escapeHtml(poi.title)}</div>
           <div class="poi-address">${escapeHtml(poi.address)}</div>
@@ -502,6 +1767,118 @@ function renderPoiModal(poi: PoiRecord): string {
       <div class="info-row"><span class="label">Kategori</span><span class="value">${escapeHtml(poi.kind)}</span></div>
       <div class="info-row"><span class="label">Koordinat</span><span class="value">${poi.lat.toFixed(6)}, ${poi.lng.toFixed(6)}</span></div>
     </div>`;
+}
+
+type DeepLinkParams = Record<string, string | number | boolean | undefined | null>;
+
+function applyParams(url: URL, params: DeepLinkParams): URL {
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === "") return;
+    url.searchParams.set(key, String(value));
+  });
+  return url;
+}
+
+function appWebUrl(params: DeepLinkParams = {}): string {
+  const url = new URL(APP_PUBLIC_URL);
+  return applyParams(url, params).toString();
+}
+
+function appDeepLink(route = "map", params: DeepLinkParams = {}): string {
+  const safeRoute = route.replace(/[^a-z0-9-]/gi, "") || "map";
+  const url = new URL(`${ANDROID_DEEP_LINK_SCHEME}://${safeRoute}`);
+  return applyParams(url, params).toString();
+}
+
+function mapLicenseHtml(): string {
+  return MAP_LICENSE_GROUPS.map((group) => `
+    <section class="map-license-section">
+      <h2>${escapeHtml(group.title)}</h2>
+      <div class="map-license-grid">
+        ${group.entries.map((entry) => `
+          <article class="map-license-card">
+            <a href="${escapeHtml(entry.href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(entry.title)}</a>
+            <div class="map-license-role">${escapeHtml(entry.role)}</div>
+            <p>${escapeHtml(entry.note)}</p>
+            <div class="map-license-line">
+              <span>Lisensi</span>
+              ${entry.licenseHref
+                ? `<a href="${escapeHtml(entry.licenseHref)}" target="_blank" rel="noopener noreferrer">${escapeHtml(entry.license)}</a>`
+                : `<b>${escapeHtml(entry.license)}</b>`}
+            </div>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+  `).join("");
+}
+
+function openMapLicensePage(): void {
+  if (document.getElementById("map-license-modal")) return;
+  const overlay = document.createElement("div");
+  overlay.id = "map-license-modal";
+  overlay.className = "map-license-modal";
+  overlay.innerHTML = `
+    <div class="map-license-backdrop"></div>
+    <div class="map-license-panel" role="dialog" aria-modal="true" aria-labelledby="map-license-title">
+      <header class="map-license-header">
+        <div>
+          <span class="map-license-kicker">Attribution</span>
+          <h1 id="map-license-title">Lisensi Peta</h1>
+        </div>
+        <button type="button" class="map-license-close" aria-label="Tutup">x</button>
+      </header>
+      <div class="map-license-body">
+        ${mapLicenseHtml()}
+      </div>
+    </div>
+  `;
+  const close = () => {
+    overlay.classList.remove("open");
+    setTimeout(() => overlay.remove(), 160);
+  };
+  overlay.querySelector(".map-license-backdrop")?.addEventListener("click", close);
+  overlay.querySelector(".map-license-close")?.addEventListener("click", close);
+  document.body.appendChild(overlay);
+  requestAnimationFrame(() => overlay.classList.add("open"));
+}
+
+function currentMapDeepLink(params: DeepLinkParams = {}): string {
+  const center = map.getCenter();
+  return appDeepLink("map", {
+    lat: center.lat.toFixed(7),
+    lng: center.lng.toFixed(7),
+    z: Math.round(map.getZoom() || DEFAULT_ZOOM),
+    ...params,
+  });
+}
+
+function appPoiUrl(poi: PoiRecord): string {
+  return appWebUrl({
+    lat: poi.lat.toFixed(7),
+    lng: poi.lng.toFixed(7),
+    z: Math.max(DEFAULT_ZOOM, Math.round(map.getZoom() || DEFAULT_ZOOM)),
+    poi: poi.id,
+  });
+}
+
+function appPoiDeepLink(poi: PoiRecord): string {
+  return appDeepLink("poi", {
+    lat: poi.lat.toFixed(7),
+    lng: poi.lng.toFixed(7),
+    z: Math.max(DEFAULT_ZOOM, Math.round(map.getZoom() || DEFAULT_ZOOM)),
+    poi: poi.id,
+  });
+}
+
+function appDeviceDeepLink(device: DeviceRecord): string {
+  return appDeepLink("map", {
+    focus: "device",
+    device: device.id,
+    lat: device.position.lat.toFixed(7),
+    lng: device.position.lng.toFixed(7),
+    z: DEFAULT_ZOOM,
+  });
 }
 
 function openPoiModal(poi: PoiRecord): void {
@@ -525,12 +1902,14 @@ function openPoiModal(poi: PoiRecord): void {
   const shareBtn = sheet.querySelector<HTMLButtonElement>(".btn-share");
   const startBtn = sheet.querySelector<HTMLButtonElement>(".btn-start");
   shareBtn?.addEventListener("click", async () => {
-    const url = `https://www.openstreetmap.org/?mlat=${poi.lat}&mlon=${poi.lng}#map=${DEFAULT_ZOOM}/${poi.lat}/${poi.lng}`;
+    const url = appPoiUrl(poi);
+    const deepLink = appPoiDeepLink(poi);
+    const shareText = `${poi.description || poi.title}\nBuka di app ${APP_NAME}: ${deepLink}`;
     try {
       if ((navigator as any).share) {
-        await (navigator as any).share({ title: poi.title, text: poi.description || poi.title, url });
+        await (navigator as any).share({ title: poi.title, text: shareText, url });
       } else {
-        await navigator.clipboard.writeText(url);
+        await navigator.clipboard.writeText(`${url}\n${deepLink}`);
         alert("Link lokasi disalin ke clipboard");
       }
     } catch (err) { console.warn(err); }
@@ -543,10 +1922,12 @@ function openPoiModal(poi: PoiRecord): void {
     }
   });
 
-  // populate image from Unsplash (fallback) and compute distance/ETA via OSRM
+  // keep the curated category image unless OSM provides a valid image.
   const heroImg = sheet.querySelector<HTMLImageElement>(".poi-hero-image");
   if (heroImg) {
-    heroImg.src = `https://source.unsplash.com/featured/?${encodeURIComponent(poi.title)}`;
+    heroImg.onerror = () => {
+      heroImg.src = POI_LIBRARY[poi.kind].imageUrl;
+    };
   }
 
   const distanceEl = sheet.querySelector<HTMLElement>("[data-field=poi-distance]");
@@ -988,7 +2369,7 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
             const grd = ctx.createLinearGradient(0, 0, canvasEl.width, canvasEl.height);
             grd.addColorStop(0, 'rgba(59,130,246,0.08)');
             grd.addColorStop(0.5, 'rgba(16,185,129,0.04)');
-            grd.addColorStop(1, 'rgba(236,72,153,0.06)');
+            grd.addColorStop(1, 'rgba(245,158,11,0.06)');
             ctx.fillStyle = grd;
             ctx.fillRect(0, 0, canvasEl.width, canvasEl.height);
           }
@@ -1040,7 +2421,10 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
           }
           if (!pipMapInstance && currentPos) {
             pipMapInstance = L.map(pipMapElDiv).setView([currentPos.lat, currentPos.lng], 17);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OSM' }).addTo(pipMapInstance);
+            L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png", {
+              subdomains: "abcd",
+              attribution: "",
+            }).addTo(pipMapInstance);
             L.marker([currentPos.lat, currentPos.lng], { icon: L.icon({ iconUrl: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSI4IiBmaWxsPSIjZmY0NDQ0Ii8+PC9zdmc+', iconSize: [24, 24] }) }).addTo(pipMapInstance);
             L.marker([currentTarget.lat, currentTarget.lng], { icon: L.icon({ iconUrl: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48cmVjdCB4PSI0IiB5PSI0IiB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIGZpbGw9IiMxMGI5ODEiIHJ4PSIyIi8+PC9zdmc+', iconSize: [24, 24] }) }).addTo(pipMapInstance);
           }
@@ -1092,7 +2476,12 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
 
 function syncPoiMarkers(anchor: L.LatLngExpression): void {
   const center = L.latLng(anchor);
-  const radiusMeters = 400; // search radius for nearby POIs
+  const zoom = map.getZoom();
+  if (zoom < 9) {
+    renderPoiMarkers([]);
+    return;
+  }
+  const radiusMeters = zoom < 12 ? 5000 : zoom < 14 ? 2600 : zoom < 16 ? 1400 : 850;
 
   // Build a small bbox around center (approximate degrees)
   const lat = center.lat;
@@ -1100,59 +2489,18 @@ function syncPoiMarkers(anchor: L.LatLngExpression): void {
   const latDelta = radiusMeters / 111320; // ~ meters to degrees
   const lngDelta = Math.abs(radiusMeters / (111320 * Math.cos((lat * Math.PI) / 180)));
   const bounds = L.latLngBounds([lat - latDelta, lng - lngDelta], [lat + latDelta, lng + lngDelta]);
+  const seq = ++state.poiFetchSeq;
   void fetchOverpassFeaturesForBounds(bounds).then((pois) => {
+    if (seq !== state.poiFetchSeq) return;
     let finalPois = pois;
     // If Overpass returned no POIs for this area, always fall back to local sample POIs
     // so the UI remains usable offline or when the API times out.
     if (!pois || pois.length === 0) {
-      // fallback local POIs
-      const c = center;
-      finalPois = [
-        { id: 'local-school-1', kind: 'campus', title: 'SD Negeri 1', description: '', address: '', imageUrl: POI_LIBRARY.campus.imageUrl, rating: POI_LIBRARY.campus.rating, icon: poiVisual('campus').icon, lat: c.lat + 0.0012, lng: c.lng + 0.0012 },
-        { id: 'local-mall-1', kind: 'mall', title: 'Pusat Perbelanjaan', description: '', address: '', imageUrl: POI_LIBRARY.mall.imageUrl, rating: POI_LIBRARY.mall.rating, icon: poiVisual('mall').icon, lat: c.lat - 0.0014, lng: c.lng + 0.0018 },
-        { id: 'local-hospital-1', kind: 'hospital', title: 'Klinik Sehat', description: '', address: '', imageUrl: POI_LIBRARY.hospital.imageUrl, rating: POI_LIBRARY.hospital.rating, icon: poiVisual('hospital').icon, lat: c.lat + 0.0020, lng: c.lng - 0.0010 },
-        { id: 'local-parking-1', kind: 'parking', title: 'Parkir Umum', description: '', address: '', imageUrl: POI_LIBRARY.parking.imageUrl, rating: POI_LIBRARY.parking.rating, icon: poiVisual('parking').icon, lat: c.lat - 0.0018, lng: c.lng - 0.0015 },
-      ];
+      if (state.poiData.size > 0) return;
+      finalPois = fallbackPoiRecords(center, "local");
     }
 
-    const keep = new Set<string>();
-    const iconSize = poiMarkerSizeByZoom();
-    finalPois.forEach((poi) => {
-      keep.add(poi.id);
-      state.poiData.set(poi.id, poi);
-      const existing = state.poiMarkers.get(poi.id);
-      const icon = makePoiIcon(poi, iconSize);
-      if (!existing) {
-        const marker = L.marker([poi.lat, poi.lng], {
-          icon,
-          interactive: true,
-          riseOnHover: true,
-          zIndexOffset: 500,
-        }).addTo(map);
-        (marker.options as any).poiId = poi.id;
-        marker.on("click", () => handlePoiClick(poi));
-        const el = marker.getElement() as HTMLElement | null;
-        if (el) el.style.display = '';
-        state.poiMarkers.set(poi.id, marker);
-        return;
-      }
-      existing.setLatLng([poi.lat, poi.lng]);
-      existing.setIcon(icon);
-      existing.off("click");
-      existing.on("click", () => handlePoiClick(poi));
-      const el2 = existing.getElement() as HTMLElement | null;
-      if (el2) el2.style.display = '';
-    });
-
-    // Remove stale POI markers
-    for (const [id, marker] of state.poiMarkers.entries()) {
-      id;
-      if (!keep.has(id)) {
-        map.removeLayer(marker);
-        state.poiMarkers.delete(id);
-        state.poiData.delete(id);
-      }
-    }
+    renderPoiMarkers(finalPois);
   }).catch(() => { /* ignore */ });
 }
 
@@ -1166,11 +2514,690 @@ function buildOverpassBBoxString(bounds: L.LatLngBounds): string {
   return `${s},${w},${n},${e}`;
 }
 
+function limitPoiQueryBounds(bounds: L.LatLngBounds): L.LatLngBounds {
+  const center = bounds.getCenter();
+  const diagonal = bounds.getSouthWest().distanceTo(bounds.getNorthEast());
+  if (diagonal <= POI_QUERY_MAX_RADIUS_M * 2) return bounds;
+  const latDelta = POI_QUERY_MAX_RADIUS_M / 111320;
+  const lngDelta = Math.abs(POI_QUERY_MAX_RADIUS_M / (111320 * Math.cos((center.lat * Math.PI) / 180)));
+  return L.latLngBounds(
+    [center.lat - latDelta, center.lng - lngDelta],
+    [center.lat + latDelta, center.lng + lngDelta],
+  );
+}
+
+function limitRoadQueryBounds(bounds: L.LatLngBounds): L.LatLngBounds {
+  const center = bounds.getCenter();
+  const diagonal = bounds.getSouthWest().distanceTo(bounds.getNorthEast());
+  if (diagonal <= ROAD_QUERY_MAX_RADIUS_M * 2) return bounds;
+  const latDelta = ROAD_QUERY_MAX_RADIUS_M / 111320;
+  const lngDelta = Math.abs(ROAD_QUERY_MAX_RADIUS_M / (111320 * Math.cos((center.lat * Math.PI) / 180)));
+  return L.latLngBounds(
+    [center.lat - latDelta, center.lng - lngDelta],
+    [center.lat + latDelta, center.lng + lngDelta],
+  );
+}
+
+function limitRailQueryBounds(bounds: L.LatLngBounds): L.LatLngBounds {
+  const center = bounds.getCenter();
+  const diagonal = bounds.getSouthWest().distanceTo(bounds.getNorthEast());
+  if (diagonal <= RAIL_QUERY_MAX_RADIUS_M * 2) return bounds;
+  const latDelta = RAIL_QUERY_MAX_RADIUS_M / 111320;
+  const lngDelta = Math.abs(RAIL_QUERY_MAX_RADIUS_M / (111320 * Math.cos((center.lat * Math.PI) / 180)));
+  return L.latLngBounds(
+    [center.lat - latDelta, center.lng - lngDelta],
+    [center.lat + latDelta, center.lng + lngDelta],
+  );
+}
+
+function fallbackPoiRecords(center: L.LatLng, prefix = "fallback"): PoiRecord[] {
+  const entries: Array<[PoiKind, string, number, number]> = [
+    ["mosque", "Tempat Ibadah", 0.0060, -0.0042],
+    ["school", "Sekolah Terdekat", -0.0046, 0.0052],
+    ["hospital", "Klinik Terdekat", 0.0037, 0.0047],
+    ["mall", "Pusat Belanja", -0.0062, -0.0038],
+    ["park", "Taman Kota", 0.0055, 0.0060],
+    ["parking", "Parkir Umum", -0.0035, -0.0061],
+    ["restaurant", "Kuliner Sekitar", 0.0018, -0.0050],
+    ["office_corp", "Kantor Layanan", -0.0056, 0.0014],
+    ["station", "Transit Publik", 0.0070, 0.0018],
+  ];
+  return entries.map(([kind, title, latOffset, lngOffset], index) => {
+    const priority = poiPriority(kind, { name: title });
+    return {
+      id: `${prefix}-${kind}-${index}`,
+      kind,
+      title,
+      description: POI_LIBRARY[kind].description,
+      address: "Fallback custom POI saat server OSM lambat",
+      imageUrl: POI_LIBRARY[kind].imageUrl,
+      rating: POI_LIBRARY[kind].rating,
+      icon: poiVisual(kind).icon,
+      priority,
+      minZoom: 9,
+      named: true,
+      lat: center.lat + latOffset,
+      lng: center.lng + lngOffset,
+    };
+  });
+}
+
+async function postOverpassQuery(q: string): Promise<any> {
+  let lastError: unknown = null;
+  for (const endpoint of OVERPASS_ENDPOINTS) {
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), OVERPASS_FETCH_TIMEOUT_MS);
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: q,
+        signal: controller.signal,
+      });
+      if (!res.ok) throw new Error(`Overpass HTTP ${res.status}`);
+      return await res.json();
+    } catch (err) {
+      lastError = err;
+      console.warn(`Overpass fetch failed at ${endpoint}:`, err);
+    } finally {
+      window.clearTimeout(timer);
+    }
+  }
+  throw lastError || new Error("Overpass unavailable");
+}
+
+function roadPriority(tags: Record<string, string>): number {
+  if (tags.railway === "station" || tags.public_transport === "station") return 8;
+  if (tags.railway === "halt" || tags.railway === "tram_stop" || tags.public_transport === "platform") return 7;
+  if (tags.amenity === "school" || tags.amenity === "hospital" || tags.amenity === "university" || tags.tourism === "museum") return 6;
+  if (tags.place) return tags.place === "city" || tags.place === "town" ? 8 : 6;
+  if (tags.building) return tags.name ? 4 : 3;
+  if (tags.landuse || tags.leisure || tags.natural) return 4;
+  const highway = tags.highway || "";
+  if (highway === "motorway" || highway === "trunk") return 6;
+  if (highway === "primary" || highway === "secondary") return 5;
+  if (highway === "tertiary") return 4;
+  if (highway === "residential" || highway === "unclassified") return 3;
+  return 2;
+}
+
+function mapLabelKind(tags: Record<string, string>): RoadLabelRecord["kind"] {
+  if (tags.railway === "station" || tags.railway === "halt" || tags.railway === "tram_stop" || tags.public_transport) return "station";
+  if (tags.highway) return "road";
+  if (tags.place) return "place";
+  if (tags.building) return "building";
+  return "area";
+}
+
+function makeRoadLabelIcon(road: RoadLabelRecord): L.DivIcon {
+  if (road.kind === "direction") {
+    const bearing = Number.isFinite(road.bearing) ? road.bearing : 0;
+    return L.divIcon({
+      className: "road-label-icon road-direction-icon",
+      html: `<div class="road-direction-marker" title="${escapeHtml(road.title)}" style="--road-bearing:${bearing}deg"><span>&#9654;</span></div>`,
+      iconSize: [28, 28],
+      iconAnchor: [14, 14],
+    });
+  }
+  if (road.kind === "pedestrian") {
+    return L.divIcon({
+      className: "road-label-icon pedestrian-label-icon",
+      html: `<div class="pedestrian-marker" title="${escapeHtml(road.title)}"><span>P</span></div>`,
+      iconSize: [24, 24],
+      iconAnchor: [12, 12],
+    });
+  }
+  return L.divIcon({
+    className: `road-label-icon map-label-icon map-label-${road.kind}`,
+    html: `<div class="road-label map-label map-label-${road.kind}" title="${escapeHtml(road.title)}"><span>${escapeHtml(road.title)}</span></div>`,
+    iconSize: [140, 24],
+    iconAnchor: [70, 12],
+  });
+}
+
+function bearingBetween(a: { lat: number; lon?: number; lng?: number }, b: { lat: number; lon?: number; lng?: number }): number {
+  const lng1 = ((a.lon ?? a.lng ?? 0) * Math.PI) / 180;
+  const lng2 = ((b.lon ?? b.lng ?? 0) * Math.PI) / 180;
+  const lat1 = (a.lat * Math.PI) / 180;
+  const lat2 = (b.lat * Math.PI) / 180;
+  const y = Math.sin(lng2 - lng1) * Math.cos(lat2);
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(lng2 - lng1);
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+
+function roadGeometrySamples(geometry: Array<{ lat: number; lon: number }>, spacingMeters: number, maxSamples: number): Array<{ lat: number; lng: number; bearing: number }> {
+  const samples: Array<{ lat: number; lng: number; bearing: number }> = [];
+  let carried = 0;
+  for (let i = 1; i < geometry.length && samples.length < maxSamples; i += 1) {
+    const prev = geometry[i - 1];
+    const next = geometry[i];
+    const segmentMeters = L.latLng(prev.lat, prev.lon).distanceTo([next.lat, next.lon]);
+    if (!segmentMeters) continue;
+    carried += segmentMeters;
+    if (carried < spacingMeters) continue;
+    carried = 0;
+    samples.push({
+      lat: (prev.lat + next.lat) / 2,
+      lng: (prev.lon + next.lon) / 2,
+      bearing: bearingBetween(prev, next),
+    });
+  }
+  return samples;
+}
+
+function renderRoadLabels(labels?: RoadLabelRecord[]): void {
+  if (labels) {
+    state.roadLabelData.clear();
+    labels.forEach((label) => state.roadLabelData.set(label.id, label));
+  }
+
+  const zoom = map.getZoom();
+  const maxLabels = zoom < 11 ? 18 : zoom < 13 ? 40 : zoom < 15 ? 90 : 180;
+  const visible = [...state.roadLabelData.values()]
+    .sort((a, b) => b.priority - a.priority || a.title.localeCompare(b.title))
+    .slice(0, maxLabels);
+  const visibleIds = new Set(visible.map((label) => label.id));
+
+  state.roadLabelMarkers.forEach((marker, id) => {
+    if (!visibleIds.has(id)) {
+      try { marker.remove(); } catch { /* ignore */ }
+      state.roadLabelMarkers.delete(id);
+    }
+  });
+
+  visible.forEach((label) => {
+    const icon = makeRoadLabelIcon(label);
+    const existing = state.roadLabelMarkers.get(label.id);
+    if (existing) {
+      existing.setLatLng([label.lat, label.lng]);
+      existing.setIcon(icon);
+      return;
+    }
+    const marker = L.marker([label.lat, label.lng], {
+      pane: "customLabelPane",
+      icon,
+      interactive: false,
+      keyboard: false,
+      zIndexOffset: 320 + label.priority,
+    }).addTo(map);
+    state.roadLabelMarkers.set(label.id, marker);
+  });
+}
+
+async function fetchRoadLabelsForBounds(bounds: L.LatLngBounds): Promise<RoadLabelRecord[]> {
+  const safeBounds = limitRoadQueryBounds(bounds);
+  const bbox = buildOverpassBBoxString(safeBounds);
+  const q = `
+    [out:json][timeout:10];
+    (
+      way["highway"]["name"](${bbox});
+      relation["highway"]["name"](${bbox});
+      way["highway"]["oneway"](${bbox});
+      way["highway"~"footway|pedestrian|crossing|path"](${bbox});
+      node["place"]["name"](${bbox});
+      way["landuse"]["name"](${bbox});
+      relation["landuse"]["name"](${bbox});
+      way["leisure"]["name"](${bbox});
+      relation["leisure"]["name"](${bbox});
+      way["natural"]["name"](${bbox});
+      relation["natural"]["name"](${bbox});
+      way["building"]["name"](${bbox});
+      relation["building"]["name"](${bbox});
+      node["amenity"]["name"](${bbox});
+      way["amenity"]["name"](${bbox});
+      node["shop"]["name"](${bbox});
+      way["shop"]["name"](${bbox});
+      node["tourism"]["name"](${bbox});
+      way["tourism"]["name"](${bbox});
+      relation["tourism"]["name"](${bbox});
+      node["railway"~"^(station|halt|tram_stop|platform)$"]["name"](${bbox});
+      way["railway"~"^(station|halt|tram_stop|platform)$"]["name"](${bbox});
+      relation["railway"~"^(station|halt|tram_stop|platform)$"]["name"](${bbox});
+      node["public_transport"~"^(station|platform|stop_position)$"]["name"](${bbox});
+      way["public_transport"~"^(station|platform|stop_position)$"]["name"](${bbox});
+      relation["public_transport"~"^(station|platform|stop_position)$"]["name"](${bbox});
+      node["healthcare"]["name"](${bbox});
+      way["healthcare"]["name"](${bbox});
+      relation["healthcare"]["name"](${bbox});
+      node["office"]["name"](${bbox});
+      way["office"]["name"](${bbox});
+      relation["office"]["name"](${bbox});
+    );
+    out center geom tags 1800;
+  `;
+
+  try {
+    const data = await postOverpassQuery(q);
+    const elements = Array.isArray(data.elements) ? data.elements : [];
+    const deduped = new Map<string, RoadLabelRecord>();
+    elements.forEach((el: any) => {
+      const tags = el.tags || {};
+      const highway = tags.highway || "";
+      const isPedestrianWay = highway === "footway" || highway === "pedestrian" || highway === "crossing" || highway === "path";
+      const title = tags.name || tags.ref || (isPedestrianWay ? "Pejalan kaki" : "");
+      const lat = (el.center && el.center.lat) || el.lat || 0;
+      const lng = (el.center && el.center.lon) || el.lon || 0;
+      if (!title || !lat || !lng) return;
+      const label: RoadLabelRecord = {
+        id: `label-${el.type}-${el.id}`,
+        title,
+        lat,
+        lng,
+        priority: roadPriority(tags),
+        kind: mapLabelKind(tags),
+      };
+      const key = `${title.toLowerCase()}@${lat.toFixed(4)},${lng.toFixed(4)}`;
+      if (!deduped.has(key)) deduped.set(key, label);
+      const geometry = Array.isArray(el.geometry) ? el.geometry : [];
+      if (el.type === "way" && geometry.length > 1 && highway) {
+        if (isPedestrianWay) {
+          roadGeometrySamples(geometry, 280, 2).forEach((sample, index) => {
+            deduped.set(`ped-${el.id}-${index}`, {
+              id: `ped-${el.id}-${index}`,
+              title: "Pejalan kaki",
+              lat: sample.lat,
+              lng: sample.lng,
+              priority: 2,
+              kind: "pedestrian",
+              bearing: sample.bearing,
+            });
+          });
+        } else if (tags.oneway === "yes" || tags.oneway === "1" || tags.junction === "roundabout") {
+          roadGeometrySamples(geometry, 320, 4).forEach((sample, index) => {
+            deduped.set(`dir-${el.id}-${index}`, {
+              id: `dir-${el.id}-${index}`,
+              title: tags.junction === "roundabout" ? "Arah bundaran" : `Arah ${title}`,
+              lat: sample.lat,
+              lng: sample.lng,
+              priority: 5,
+              kind: "direction",
+              bearing: sample.bearing,
+            });
+          });
+        }
+      }
+    });
+    return [...deduped.values()];
+  } catch (err) {
+    console.warn("Road label fetch failed:", err);
+    return [];
+  }
+}
+
+let lastRoadFetchBounds: L.LatLngBounds | null = null;
+void fetchRoadLabelsForBounds;
+void lastRoadFetchBounds;
+
+async function refreshRoadLabelLayer(): Promise<void> {
+  const bounds = map.getBounds();
+  if (lastRoadFetchBounds && lastRoadFetchBounds.contains(bounds.getSouthWest()) && lastRoadFetchBounds.contains(bounds.getNorthEast())) {
+    renderRoadLabels();
+    return;
+  }
+  lastRoadFetchBounds = bounds.pad(0.18);
+  const seq = ++state.roadFetchSeq;
+  const labels = await fetchRoadLabelsForBounds(bounds);
+  if (seq !== state.roadFetchSeq) return;
+  if (!labels.length && state.roadLabelData.size > 0) {
+    renderRoadLabels();
+    return;
+  }
+  renderRoadLabels(labels);
+}
+
+function railTrackLatLngs(track: RailTrackRecord): L.LatLngExpression[] {
+  return track.points.map((point) => [point.lat, point.lng]);
+}
+
+function cleanRailTrackName(tags: Record<string, string>): string {
+  const raw = tags.name || tags.official_name || tags.ref || tags.operator || "";
+  const name = String(raw).trim();
+  if (name && !/^(yes|rail)$/i.test(name)) return name;
+  const railway = tags.railway || "";
+  if (railway === "light_rail") return "Lintasan LRT";
+  if (railway === "subway") return "Lintasan MRT";
+  if (railway === "monorail") return "Lintasan Monorel";
+  return "Jalur Kereta Api";
+}
+
+function railTrackColor(tags: Record<string, string>): string {
+  const railway = tags.railway || "";
+  const name = `${tags.name || ""} ${tags.operator || ""}`.toLowerCase();
+  if (railway === "light_rail") return "#7c3aed";
+  if (railway === "subway") return "#0ea5e9";
+  if (railway === "monorail") return "#db2777";
+  if (name.includes("bandara") || name.includes("airport")) return "#0284c7";
+  if (name.includes("commuter") || name.includes("krl")) return "#ef4444";
+  return "#475569";
+}
+
+function makeRailLabelIcon(track: RailTrackRecord, bearing: number): L.DivIcon {
+  const normalized = normBearing(bearing);
+  const readableBearing = normalized > 90 && normalized < 270 ? normalized + 180 : normalized;
+  return L.divIcon({
+    className: "rail-label-icon",
+    html: `<div class="rail-route-label" title="${escapeHtml(track.name)}" style="--rail-color:${track.color}; --rail-bearing:${readableBearing}deg"><span>${escapeHtml(track.name)}</span></div>`,
+    iconSize: [190, 22],
+    iconAnchor: [95, 11],
+  });
+}
+
+function railTrackLabelSamples(track: RailTrackRecord): Array<{ lat: number; lng: number; bearing: number }> {
+  const geometry = track.points.map((point) => ({ lat: point.lat, lon: point.lng }));
+  const samples = roadGeometrySamples(geometry, 7000, 2);
+  if (samples.length > 0) return samples;
+  if (track.points.length < 2) return [];
+  const middleIndex = Math.max(1, Math.floor(track.points.length / 2));
+  const prev = track.points[middleIndex - 1];
+  const next = track.points[middleIndex] ?? track.points[track.points.length - 1];
+  return [{
+    lat: (prev.lat + next.lat) / 2,
+    lng: (prev.lng + next.lng) / 2,
+    bearing: bearingBetween({ lat: prev.lat, lng: prev.lng }, { lat: next.lat, lng: next.lng }),
+  }];
+}
+
+async function fetchRailOsmForBounds(bounds: L.LatLngBounds): Promise<{ tracks: RailTrackRecord[]; stations: RailStationLabelRecord[] }> {
+  const safeBounds = limitRailQueryBounds(bounds);
+  const bbox = buildOverpassBBoxString(safeBounds);
+  const q = `
+    [out:json][timeout:14];
+    (
+      way["railway"~"^(rail|light_rail|subway|monorail)$"](${bbox});
+      node["railway"~"^(station|halt|tram_stop|platform)$"]["name"](${bbox});
+      way["railway"~"^(station|halt|tram_stop|platform)$"]["name"](${bbox});
+      relation["railway"~"^(station|halt|tram_stop|platform)$"]["name"](${bbox});
+      node["public_transport"~"^(station|platform|stop_position)$"]["name"](${bbox});
+      way["public_transport"~"^(station|platform|stop_position)$"]["name"](${bbox});
+      relation["public_transport"~"^(station|platform|stop_position)$"]["name"](${bbox});
+    );
+    out center geom tags 9000;
+  `;
+
+  try {
+    const data = await postOverpassQuery(q);
+    const elements = Array.isArray(data.elements) ? data.elements : [];
+    const tracks = new Map<string, RailTrackRecord>();
+    const stations = new Map<string, RailStationLabelRecord>();
+
+    elements.forEach((el: any) => {
+      const tags = el.tags || {};
+      if (el.type === "way" && Array.isArray(el.geometry) && el.geometry.length > 1 && tags.railway && !["station", "halt", "tram_stop", "platform"].includes(tags.railway)) {
+        const points = el.geometry
+          .map((point: any) => ({ lat: Number(point.lat), lng: Number(point.lon) }))
+          .filter((point: { lat: number; lng: number }) => Number.isFinite(point.lat) && Number.isFinite(point.lng));
+        if (points.length < 2) return;
+        tracks.set(`osm-rail-${el.id}`, {
+          id: `osm-rail-${el.id}`,
+          name: cleanRailTrackName(tags),
+          color: railTrackColor(tags),
+          points,
+        });
+        return;
+      }
+
+      const name = String(tags.name || tags.official_name || tags["name:id"] || "").trim();
+      const lat = Number(el.lat || el.center?.lat);
+      const lng = Number(el.lon || el.center?.lon);
+      if (!name || !Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      const key = `${name.toLowerCase()}@${lat.toFixed(4)},${lng.toFixed(4)}`;
+      stations.set(key, {
+        id: `osm-station-${el.type}-${el.id}`,
+        name,
+        lat,
+        lng,
+      });
+    });
+
+    return { tracks: [...tracks.values()], stations: [...stations.values()] };
+  } catch (err) {
+    console.warn("Rail OSM fetch failed:", err);
+    return { tracks: [], stations: [] };
+  }
+}
+
+let lastRailFetchBounds: L.LatLngBounds | null = null;
+
+function clearRailLayer(): void {
+  state.railLayer?.clearLayers();
+  state.railRouteLayers.clear();
+  state.railStationMarkers.clear();
+  state.railLabelMarkers.forEach((marker) => {
+    try { marker.remove(); } catch { /* ignore */ }
+  });
+  state.railLabelMarkers.clear();
+  clearRailLegend();
+}
+
+function ensureRailLayer(): L.LayerGroup {
+  if (!state.railLayer) {
+    state.railLayer = L.layerGroup([], { pane: "railPane" }).addTo(map);
+  }
+  return state.railLayer;
+}
+
+function setRailRouteHighlight(routeKey = ""): void {
+  state.railRouteLayers.forEach((line, id) => {
+    const trackName = String((line as any).railTrackName || "");
+    const active = routeKey === id || routeKey === `name:${trackName}`;
+    const dimmed = Boolean(routeKey) && !active;
+    const baseWeight = Number((line as any).railBaseWeight) || 3.2;
+    const baseOpacity = Number((line as any).railBaseOpacity) || 0.62;
+    line.setStyle({
+      weight: active ? baseWeight + 2.1 : baseWeight,
+      opacity: dimmed ? 0.22 : active ? 0.96 : baseOpacity,
+    });
+  });
+}
+
+function clearRailLegend(): void {
+  if (state.railLegendControl) {
+    try { map.removeControl(state.railLegendControl); } catch { /* ignore */ }
+  }
+  state.railLegendControl = null;
+  state.railLegendEl = null;
+}
+
+function renderRailLegend(): void {
+  if (state.transportLayer !== "rail" || state.railOsmTracks.length === 0) {
+    clearRailLegend();
+    return;
+  }
+
+  const entries = new Map<string, { name: string; color: string; count: number; points: Array<{ lat: number; lng: number }> }>();
+  state.railOsmTracks.forEach((track) => {
+    const key = `${track.name}::${track.color}`;
+    const existing = entries.get(key);
+    if (existing) {
+      existing.count += 1;
+      existing.points.push(...track.points);
+      return;
+    }
+    entries.set(key, {
+      name: track.name,
+      color: track.color,
+      count: 1,
+      points: [...track.points],
+    });
+  });
+
+  const items = [...entries.values()]
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+    .slice(0, 18);
+
+  if (!state.railLegendControl) {
+    const control = new L.Control({ position: "bottomleft" });
+    control.onAdd = () => {
+      const el = L.DomUtil.create("div", "rail-legend-control");
+      L.DomEvent.disableClickPropagation(el);
+      L.DomEvent.disableScrollPropagation(el);
+      state.railLegendEl = el;
+      return el;
+    };
+    state.railLegendControl = control;
+    control.addTo(map);
+  }
+
+  const el = state.railLegendEl;
+  if (!el) return;
+  el.innerHTML = `
+    <div class="rail-legend-head">
+      <strong>Legend Jalur Kereta</strong>
+    </div>
+    <div class="rail-legend-list">
+      ${items.map((item) => `
+        <button class="rail-legend-item" type="button" data-rail-name="${escapeHtml(item.name)}" style="--rail-color:${item.color}">
+          <span class="rail-legend-swatch" aria-hidden="true"></span>
+          <span class="rail-legend-copy">
+            <b>${escapeHtml(item.name)}</b>
+            <small>${item.count > 1 ? `${item.count} segmen` : "1 segmen"}</small>
+          </span>
+        </button>
+      `).join("")}
+    </div>
+  `;
+
+  el.querySelectorAll<HTMLButtonElement>(".rail-legend-item").forEach((btn) => {
+    const name = btn.dataset.railName || "";
+    const key = `name:${name}`;
+    btn.addEventListener("mouseenter", () => setRailRouteHighlight(key));
+    btn.addEventListener("mouseleave", () => setRailRouteHighlight(""));
+    btn.addEventListener("focus", () => setRailRouteHighlight(key));
+    btn.addEventListener("blur", () => setRailRouteHighlight(""));
+    btn.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      setRailRouteHighlight(key);
+      const entry = items.find((item) => item.name === name);
+      if (entry && entry.points.length > 1) {
+        const bounds = L.latLngBounds(entry.points.map((point) => [point.lat, point.lng] as L.LatLngTuple));
+        if (bounds.isValid()) map.fitBounds(bounds.pad(0.16), { maxZoom: 16, animate: true });
+      }
+      window.setTimeout(() => setRailRouteHighlight(""), 1400);
+    });
+  });
+}
+
+function renderRailLayer(): void {
+  if (state.transportLayer !== "rail") {
+    clearRailLayer();
+    return;
+  }
+  const layer = ensureRailLayer();
+  clearRailLayer();
+
+  state.railOsmTracks.forEach((track) => {
+    const line = L.polyline(railTrackLatLngs(track), {
+      pane: "railPane",
+      color: track.color,
+      weight: 3.7,
+      opacity: 0.72,
+      lineCap: "round",
+      lineJoin: "round",
+      interactive: true,
+      className: "rail-route-line rail-route-line-osm",
+    } as L.PolylineOptions).addTo(layer);
+    (line as any).railBaseWeight = 3.7;
+    (line as any).railBaseOpacity = 0.72;
+    (line as any).railTrackName = track.name;
+    const highlightKey = `name:${track.name}`;
+    line.on("mouseover", () => setRailRouteHighlight(highlightKey));
+    line.on("mouseout", () => setRailRouteHighlight(""));
+    line.on("click", (ev: L.LeafletMouseEvent) => {
+      L.DomEvent.stop(ev);
+      L.popup({ className: "rail-route-popup", maxWidth: 280 })
+        .setLatLng(ev.latlng)
+        .setContent(`<div class="rail-popup"><strong>${escapeHtml(track.name)}</strong><p>Geometri rel dari OpenStreetMap/Overpass.</p></div>`)
+        .openOn(map);
+      setRailRouteHighlight("");
+    });
+    state.railRouteLayers.set(track.id, line);
+
+    railTrackLabelSamples(track).forEach((sample, index) => {
+      const marker = L.marker([sample.lat, sample.lng], {
+        pane: "customLabelPane",
+        icon: makeRailLabelIcon(track, sample.bearing),
+        interactive: false,
+        keyboard: false,
+        zIndexOffset: 340,
+      }).addTo(map);
+      state.railLabelMarkers.set(`${track.id}-${index}`, marker);
+    });
+  });
+
+  state.railOsmStations.forEach((station) => {
+    const marker = L.circleMarker([station.lat, station.lng], {
+      pane: "railPane",
+      radius: 3.6,
+      color: "#334155",
+      weight: 1.4,
+      fillColor: "#ffffff",
+      fillOpacity: 0.94,
+      opacity: 0.9,
+      interactive: true,
+    }).addTo(layer);
+    marker.bindTooltip(station.name, {
+      permanent: true,
+      direction: "top",
+      offset: [0, -5],
+      opacity: 0.92,
+      className: "rail-station-tooltip rail-station-label",
+    });
+    state.railStationMarkers.set(station.id, marker);
+  });
+
+  renderRailLegend();
+}
+
+async function refreshRailOsmLayer(): Promise<void> {
+  if (state.transportLayer !== "rail") return;
+  const bounds = map.getBounds();
+  if (lastRailFetchBounds && lastRailFetchBounds.contains(bounds.getSouthWest()) && lastRailFetchBounds.contains(bounds.getNorthEast())) {
+    renderRailLayer();
+    return;
+  }
+  lastRailFetchBounds = bounds.pad(0.22);
+  const seq = ++state.railFetchSeq;
+  const result = await fetchRailOsmForBounds(bounds);
+  if (seq !== state.railFetchSeq) return;
+  state.railOsmTracks = result.tracks;
+  state.railOsmStations = result.stations;
+  renderRailLayer();
+}
+
+function setTransportLayer(layer: TransportLayerMode): void {
+  state.transportLayer = layer;
+  if (layer !== "rail") {
+    state.railFetchSeq += 1;
+    clearRailLayer();
+  } else {
+    renderRailLayer();
+    void refreshRailOsmLayer();
+  }
+  syncLayerControls();
+}
+
+function syncLayerControls(): void {
+  document.querySelectorAll<HTMLElement>("[data-mode]").forEach((el) => {
+    const mode = el.dataset.mode as BaseMapMode | undefined;
+    if (!mode) return;
+    el.classList.toggle("active", state.baseMode === mode);
+    el.setAttribute("aria-pressed", String(state.baseMode === mode));
+  });
+  document.querySelectorAll<HTMLElement>("[data-transport]").forEach((el) => {
+    const transport = el.dataset.transport as TransportLayerMode | undefined;
+    if (!transport) return;
+    el.classList.toggle("active", state.transportLayer === transport);
+    el.setAttribute("aria-pressed", String(state.transportLayer === transport));
+  });
+}
+
 async function fetchOverpassFeaturesForBounds(bounds: L.LatLngBounds): Promise<PoiRecord[]> {
-  const bbox = buildOverpassBBoxString(bounds);
+  const safeBounds = limitPoiQueryBounds(bounds);
+  const bbox = buildOverpassBBoxString(safeBounds);
   // Query common POI tags; return nodes + ways + relations with center
   const q = `
-    [out:json][timeout:15];
+    [out:json][timeout:12];
     (
       node["amenity"](${bbox});
       way["amenity"](${bbox});
@@ -1181,25 +3208,47 @@ async function fetchOverpassFeaturesForBounds(bounds: L.LatLngBounds): Promise<P
       node["tourism"](${bbox});
       way["tourism"](${bbox});
       relation["tourism"](${bbox});
+      node["leisure"](${bbox});
+      way["leisure"](${bbox});
+      relation["leisure"](${bbox});
+      node["historic"](${bbox});
+      way["historic"](${bbox});
+      relation["historic"](${bbox});
+      node["office"](${bbox});
+      way["office"](${bbox});
+      relation["office"](${bbox});
+      node["public_transport"](${bbox});
+      way["public_transport"](${bbox});
+      relation["public_transport"](${bbox});
+      node["railway"](${bbox});
+      way["railway"](${bbox});
+      relation["railway"](${bbox});
+      node["highway"="bus_stop"](${bbox});
+      way["highway"="bus_stop"](${bbox});
+      node["healthcare"](${bbox});
+      way["healthcare"](${bbox});
+      relation["healthcare"](${bbox});
+      node["landuse"="cemetery"](${bbox});
+      way["landuse"="cemetery"](${bbox});
+      relation["landuse"="cemetery"](${bbox});
     );
-    out center tags;
+    out center tags 1800;
   `;
 
   try {
-    const res = await fetch("https://overpass-api.de/api/interpreter", {
-      method: "POST",
-      headers: { "Content-Type": "text/plain" },
-      body: q,
-    });
-    if (!res.ok) throw new Error(`Overpass HTTP ${res.status}`);
-    const data = await res.json();
+    const data = await postOverpassQuery(q);
     const elements = Array.isArray(data.elements) ? data.elements : [];
     const pois: PoiRecord[] = elements.map((el: any) => {
       const tags = el.tags || {};
-      const name = tags.name || tags.official_name || tags['brand'] || tags['operator'] || tags.amenity || tags.shop || tags.tourism || `${tags.amenity || tags.shop || 'POI'}`;
+      const railway = tags.railway || "";
+      if (railway && !["station", "halt", "tram_stop", "subway_entrance", "platform"].includes(railway) && !tags.public_transport) {
+        return null;
+      }
       const lat = el.type === 'node' ? el.lat : (el.center && el.center.lat) || el.lat || 0;
       const lng = el.type === 'node' ? el.lon : (el.center && el.center.lon) || el.lon || 0;
       const kind = classifyPoiKind(tags);
+      const priority = poiPriority(kind, tags);
+      const { title, named } = cleanPoiTitle(tags, kind);
       const imageUrl = tags.image || tags['image:source'] || POI_LIBRARY[kind].imageUrl;
       const description = tags.description || tags['note'] || POI_LIBRARY[kind].description;
       const addressParts = [] as string[];
@@ -1210,16 +3259,19 @@ async function fetchOverpassFeaturesForBounds(bounds: L.LatLngBounds): Promise<P
       return {
         id: `overpass-${el.type}-${el.id}`,
         kind,
-        title: name || `POI ${el.id}`,
+        title,
         description: description || '',
         address: address || '',
         imageUrl: imageUrl || POI_LIBRARY[kind].imageUrl,
         rating: POI_LIBRARY[kind].rating,
         icon: poiVisual(kind).icon,
+        priority,
+        minZoom: poiMinZoom(kind, priority),
+        named,
         lat, lng,
       };
-    }).filter((p: PoiRecord) => p.lat && p.lng && !Number.isNaN(p.lat) && !Number.isNaN(p.lng));
-    return pois;
+    }).filter((p: PoiRecord | null): p is PoiRecord => Boolean(p && p.lat && p.lng && !Number.isNaN(p.lat) && !Number.isNaN(p.lng)));
+    return dedupePoiRecords(pois);
   } catch (err) {
     console.warn("Overpass fetch failed:", err);
     return [];
@@ -1231,7 +3283,7 @@ let lastOverpassFetchBounds: L.LatLngBounds | null = null;
 // Helper: Update MapLibre POI layer with GeoJSON features
 function updateMapLibrePoiLayer(pois: PoiRecord[]): void {
   const maplibreMap = state.maplibreMap;
-  if (!maplibreMap || state.baseMode !== "3d") return;
+  if (!maplibreMap) return;
 
   try {
     const features = pois.map(poi => ({
@@ -1240,7 +3292,10 @@ function updateMapLibrePoiLayer(pois: PoiRecord[]): void {
         id: poi.id,
         title: poi.title,
         kind: poi.kind,
-        "icon-emoji": poi.icon // Use emoji from POI record
+        priority: poi.priority ?? 1,
+        minZoom: poi.minZoom ?? poiMinZoom(poi.kind, poi.priority ?? 1),
+        "icon-emoji": POI_KIND_LABELS[poi.kind].slice(0, 1),
+        color: poiVisual(poi.kind).color,
       },
       geometry: { type: "Point", coordinates: [poi.lng, poi.lat] }
     }));
@@ -1257,46 +3312,27 @@ function updateMapLibrePoiLayer(pois: PoiRecord[]): void {
 async function refreshOverpassLayer(): Promise<void> {
   const bounds = map.getBounds();
   // Avoid refetch if bounds similar
-  if (lastOverpassFetchBounds && lastOverpassFetchBounds.contains(bounds.getSouthWest()) && lastOverpassFetchBounds.contains(bounds.getNorthEast())) return;
+  if (lastOverpassFetchBounds && lastOverpassFetchBounds.contains(bounds.getSouthWest()) && lastOverpassFetchBounds.contains(bounds.getNorthEast())) {
+    renderPoiMarkers();
+    return;
+  }
   lastOverpassFetchBounds = bounds.pad(0.2);
+  const seq = ++state.poiFetchSeq;
   const pois = await fetchOverpassFeaturesForBounds(bounds);
+  if (seq !== state.poiFetchSeq) return;
 
   // If Overpass returned empty and we have no POI data yet, provide a local fallback
   let finalPois = pois;
   if (!pois || pois.length === 0) {
+    if (state.poiData.size > 0) {
+      renderPoiMarkers();
+      return;
+    }
     console.warn("Overpass empty — using local POI fallback for UI testing.");
-    const c = map.getCenter();
-    finalPois = [
-      { id: 'local-school-1', kind: 'campus', title: 'SD Negeri 1', description: '', address: '', imageUrl: POI_LIBRARY.campus.imageUrl, rating: POI_LIBRARY.campus.rating, icon: poiVisual('campus').icon, lat: c.lat + 0.0012, lng: c.lng + 0.0012 },
-      { id: 'local-worship-1', kind: 'worship', title: 'Masjid Al Furqan', description: '', address: '', imageUrl: POI_LIBRARY.worship.imageUrl, rating: POI_LIBRARY.worship.rating, icon: poiVisual('worship').icon, lat: c.lat - 0.0010, lng: c.lng - 0.0016 },
-      { id: 'local-mall-1', kind: 'mall', title: 'Pusat Perbelanjaan', description: '', address: '', imageUrl: POI_LIBRARY.mall.imageUrl, rating: POI_LIBRARY.mall.rating, icon: poiVisual('mall').icon, lat: c.lat - 0.0014, lng: c.lng + 0.0018 },
-      { id: 'local-hospital-1', kind: 'hospital', title: 'Klinik Sehat', description: '', address: '', imageUrl: POI_LIBRARY.hospital.imageUrl, rating: POI_LIBRARY.hospital.rating, icon: poiVisual('hospital').icon, lat: c.lat + 0.0020, lng: c.lng - 0.0010 },
-      { id: 'local-parking-1', kind: 'parking', title: 'Parkir Umum', description: '', address: '', imageUrl: POI_LIBRARY.parking.imageUrl, rating: POI_LIBRARY.parking.rating, icon: poiVisual('parking').icon, lat: c.lat - 0.0018, lng: c.lng - 0.0015 },
-    ];
+    finalPois = fallbackPoiRecords(map.getCenter(), "local");
   }
 
-  // Update MapLibre POI layer (for 3D)
-  updateMapLibrePoiLayer(finalPois);
-
-  if (!state.overpassLayer) state.overpassLayer = L.layerGroup().addTo(map);
-  state.overpassLayer.clearLayers();
-  finalPois.forEach((poi) => {
-    const marker = L.marker([poi.lat, poi.lng], {
-      icon: makePoiIcon(poi, poiMarkerSizeByZoom()),
-      interactive: true,
-      riseOnHover: true,
-      zIndexOffset: 450,
-    }).addTo(state.overpassLayer as L.LayerGroup);
-    (marker.options as any).poiId = poi.id;
-    marker.on('click', () => handlePoiClick(poi));
-    const el = marker.getElement() as HTMLElement | null;
-    if (el) el.style.display = '';
-    // track poi data/marker so other features can use them
-    state.poiData.set(poi.id, poi);
-    state.poiMarkers.set(poi.id, marker);
-  });
-
-  updateTabletCategoryView();
+  renderPoiMarkers(finalPois);
 }
 
 // When user clicks on raster tile, query a small radius for nearby features and open modal
@@ -1372,11 +3408,9 @@ map.on('click', async (ev: L.LeafletMouseEvent) => {
 });
 
 map.on('moveend', () => {
-  if (state.baseMode === '3d') {
-    if (state.overpassLayer) state.overpassLayer.clearLayers();
-    return;
-  }
   void refreshOverpassLayer();
+  void refreshRoadLabelLayer();
+  if (state.transportLayer === "rail") void refreshRailOsmLayer();
 });
 
 // ─── Helpers ────────────────────────────────────────────────────
@@ -1387,12 +3421,73 @@ function isDeviceStatus(v: unknown): v is DeviceStatus {
 function isCameraMode(v: unknown): v is CameraMode {
   return v === "webrtc" || v === "mjpeg";
 }
+function isAiEngineMode(v: unknown): v is AiEngineMode {
+  return v === "browser-yolo" || v === "raspberry-yolo" || v === "grove-vision-ai";
+}
+function isCameraSourceMode(v: unknown): v is CameraSourceMode {
+  return v === "raspberry-webrtc" || v === "raspberry-hls" || v === "grove-vision-ai";
+}
 function isTrafficColor(v: unknown): v is TrafficColor {
   return v === "red" || v === "yellow" || v === "green";
 }
 function clamp(v: number, min: number, max: number) { return Math.min(max, Math.max(min, v)); }
 function finiteNumber(v: unknown): number | undefined {
   return typeof v === "number" && Number.isFinite(v) ? v : undefined;
+}
+function normalizeUpdateInfo(rawRecord: Record<string, unknown>): ControllerUpdateInfo | undefined {
+  const nested = rawRecord.update && typeof rawRecord.update === "object"
+    ? rawRecord.update as Record<string, unknown>
+    : {};
+  const status = typeof nested.status === "string" ? nested.status
+    : typeof rawRecord.updateStatus === "string" ? rawRecord.updateStatus
+      : undefined;
+  const stage = typeof nested.stage === "string" ? nested.stage
+    : typeof rawRecord.updateStage === "string" ? rawRecord.updateStage
+      : undefined;
+  const message = typeof nested.message === "string" ? nested.message
+    : typeof rawRecord.updateMessage === "string" ? rawRecord.updateMessage
+      : undefined;
+  const updatedAt = finiteNumber(nested.updatedAt) ?? finiteNumber(rawRecord.updateUpdatedAt);
+  const source = typeof nested.source === "string" ? nested.source
+    : typeof rawRecord.updateSource === "string" ? rawRecord.updateSource
+      : undefined;
+
+  if (!status && !stage && !message && !updatedAt) return undefined;
+  return {
+    status: status === "running" || status === "complete" || status === "error" ? status : undefined,
+    stage: stage?.trim() || undefined,
+    message: message?.trim() || undefined,
+    updatedAt,
+    source: source?.trim() || undefined,
+  };
+}
+function normalizeRuntimeConfig(v: unknown): DeviceRuntimeConfig | undefined {
+  if (!v || typeof v !== "object") return undefined;
+  const raw = v as Record<string, unknown>;
+  const groveRaw = raw.groveVisionAi && typeof raw.groveVisionAi === "object"
+    ? raw.groveVisionAi as Record<string, unknown>
+    : {};
+  const transport = groveRaw.transport === "uart" || groveRaw.transport === "i2c" || groveRaw.transport === "wifi"
+    ? groveRaw.transport
+    : undefined;
+  const config: DeviceRuntimeConfig = {
+    aiEngine: isAiEngineMode(raw.aiEngine) ? raw.aiEngine : undefined,
+    cameraSource: isCameraSourceMode(raw.cameraSource) ? raw.cameraSource : undefined,
+    updatedAt: finiteNumber(raw.updatedAt),
+    requestedBy: typeof raw.requestedBy === "string" ? raw.requestedBy.trim() || undefined : undefined,
+  };
+  if (Object.keys(groveRaw).length) {
+    config.groveVisionAi = {
+      enabled: typeof groveRaw.enabled === "boolean" ? groveRaw.enabled : undefined,
+      transport,
+      host: typeof groveRaw.host === "string" ? groveRaw.host.trim() || undefined : undefined,
+      port: finiteNumber(groveRaw.port),
+      serialPath: typeof groveRaw.serialPath === "string" ? groveRaw.serialPath.trim() || undefined : undefined,
+      model: typeof groveRaw.model === "string" ? groveRaw.model.trim() || undefined : undefined,
+    };
+  }
+  if (!config.aiEngine && !config.cameraSource && !config.groveVisionAi && !config.updatedAt) return undefined;
+  return config;
 }
 function normalizeVehicleBreakdown(v: unknown): VehicleBreakdown | undefined {
   if (!v || typeof v !== "object") return undefined;
@@ -1436,6 +3531,83 @@ function normalizeDetections(v: unknown): YoloDetection[] {
     return [{ label, confidence, vehicle, x, y, width, height }];
   }).sort((a, b) => b.confidence - a.confidence).slice(0, 80);
 }
+
+function vehicleBreakdownFromDetections(detections: YoloDetection[]): VehicleBreakdown {
+  const breakdown: VehicleBreakdown = { car: 0, motorcycle: 0, bus: 0, truck: 0, bicycle: 0, total: 0 };
+  detections.forEach((det) => {
+    const label = det.label.trim().toLowerCase();
+    if (!VEHICLE_LABELS.has(label)) return;
+    if (label === "car") breakdown.car += 1;
+    else if (label === "motorcycle") breakdown.motorcycle += 1;
+    else if (label === "bus") breakdown.bus += 1;
+    else if (label === "truck") breakdown.truck += 1;
+    else if (label === "bicycle") breakdown.bicycle += 1;
+  });
+  breakdown.total = breakdown.car + breakdown.motorcycle + breakdown.bus + breakdown.truck + breakdown.bicycle;
+  return breakdown;
+}
+
+function normalizeCameraDataset(v: unknown): TrafficCameraDataset | undefined {
+  if (!v || typeof v !== "object") return undefined;
+  const raw = v as Record<string, unknown>;
+  const snapshot1Url = typeof raw.snapshot1Url === "string"
+    ? raw.snapshot1Url.trim() || undefined
+    : typeof raw.nama1 === "string"
+      ? raw.nama1.trim() || undefined
+      : typeof raw.image1 === "string"
+        ? raw.image1.trim() || undefined
+        : undefined;
+  const snapshot2Url = typeof raw.snapshot2Url === "string"
+    ? raw.snapshot2Url.trim() || undefined
+    : typeof raw.nama2 === "string"
+      ? raw.nama2.trim() || undefined
+      : typeof raw.image2 === "string"
+        ? raw.image2.trim() || undefined
+        : undefined;
+  const updatedAt = finiteNumber(raw.updatedAt);
+  const source = typeof raw.source === "string" ? raw.source.trim() || undefined : undefined;
+  const path = typeof raw.path === "string" ? raw.path.trim() || undefined : undefined;
+  if (!snapshot1Url && !snapshot2Url && !updatedAt) return undefined;
+  return { snapshot1Url, snapshot2Url, updatedAt, source, path };
+}
+
+function trafficLevelForVehicleCount(count: number): "lancar" | "sedang" | "padat" {
+  const safe = Math.max(0, Math.round(count));
+  if (safe <= BROWSER_YOLO_LANCAR_MAX) return "lancar";
+  if (safe <= BROWSER_YOLO_SEDANG_MAX) return "sedang";
+  return "padat";
+}
+
+function cameraPosterStorageKey(key: string): string {
+  return `its-camera-thumbnail:${key}`;
+}
+
+function readCameraPoster(key: string): string {
+  try {
+    return key ? window.localStorage.getItem(cameraPosterStorageKey(key)) || "" : "";
+  } catch {
+    return "";
+  }
+}
+
+function writeCameraPoster(key: string, poster: string): void {
+  try {
+    if (key && poster) window.localStorage.setItem(cameraPosterStorageKey(key), poster);
+  } catch {
+    // Storage quota can be small on mobile private tabs.
+  }
+}
+
+function makeCameraThumbnail(video: HTMLVideoElement, width = 240, quality = 0.5): string {
+  if (!video.videoWidth || !video.videoHeight) return "";
+  const height = Math.max(120, Math.round(width * (video.videoHeight / video.videoWidth)));
+  browserYoloThumbnailCanvas.width = width;
+  browserYoloThumbnailCanvas.height = height;
+  const ctx = browserYoloThumbnailCanvas.getContext("2d");
+  if (!ctx) return "";
+  ctx.drawImage(video, 0, 0, width, height);
+  return browserYoloThumbnailCanvas.toDataURL("image/jpeg", quality);
+}
 function normalizeEpoch(v: number): number {
   if (!Number.isFinite(v) || v <= 0) return 0;
   return v < 1e11 ? v * 1000 : v;
@@ -1452,6 +3624,12 @@ function formatAge(v: number): string {
   if (ms < 3_600_000) return `${Math.round(ms / 60_000)}m ago`;
   if (ms < 86_400_000) return `${Math.round(ms / 3_600_000)}h ago`;
   return `${Math.round(ms / 86_400_000)}d ago`;
+}
+function formatBytes(v?: number): string {
+  if (!Number.isFinite(v || 0) || !v || v <= 0) return "";
+  if (v < 1024) return `${v} B`;
+  if (v < 1024 * 1024) return `${(v / 1024).toFixed(1)} KB`;
+  return `${(v / (1024 * 1024)).toFixed(1)} MB`;
 }
 function escapeHtml(v: string): string {
   return v.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
@@ -1593,16 +3771,27 @@ function renderDetectionOverlay(device: DeviceRecord | null): string {
   if (!detections.length || frameWidth <= 0 || frameHeight <= 0) return "";
   return `<div class="m-detection-overlay" aria-hidden="true">
     ${detections.slice(0, 12).map((d) => {
-      const left = clamp((d.x / frameWidth) * 100, 0, 100);
-      const top = clamp((d.y / frameHeight) * 100, 0, 100);
-      const width = clamp((d.width / frameWidth) * 100, 1, 100 - left);
-      const height = clamp((d.height / frameHeight) * 100, 1, 100 - top);
-      const label = `${detectionLabel(d.label)} ${(d.confidence * 100).toFixed(0)}%`;
-      return `<span class="m-detection-box${d.vehicle ? " is-vehicle" : ""}${top < 8 ? " is-top-edge" : ""}" style="left:${left}%;top:${top}%;width:${width}%;height:${height}%">
+    const left = clamp((d.x / frameWidth) * 100, 0, 100);
+    const top = clamp((d.y / frameHeight) * 100, 0, 100);
+    const width = clamp((d.width / frameWidth) * 100, 1, 100 - left);
+    const height = clamp((d.height / frameHeight) * 100, 1, 100 - top);
+    const label = `${detectionLabel(d.label)} ${(d.confidence * 100).toFixed(0)}%`;
+    return `<span class="m-detection-box${d.vehicle ? " is-vehicle" : ""}${top < 8 ? " is-top-edge" : ""}" style="left:${left}%;top:${top}%;width:${width}%;height:${height}%">
         <span class="m-detection-label">${escapeHtml(label)}</span>
       </span>`;
-    }).join("")}
+  }).join("")}
   </div>`;
+}
+
+function serverYoloStatusText(device: DeviceRecord | null): string {
+  if (!device) return "Menunggu YOLO Raspberry";
+  const status = device.detectorStatus || "menunggu";
+  const isBrowser = status.toLowerCase().includes("browser-yolo");
+  const name = isBrowser ? "YOLO web" : "YOLO Raspberry";
+  const fps = device.detectorFps && device.detectorFps > 0 ? ` ${device.detectorFps.toFixed(1)} FPS` : "";
+  const objectCount = device.objectCount ?? device.detections?.length ?? 0;
+  const vehicles = device.vehicleBreakdown?.total ?? vehicleBreakdownFromDetections(device.detections || []).total;
+  return `${name}${fps} · ${objectCount} objek · ${vehicles} kendaraan`;
 }
 
 async function resolveRoadName(device: DeviceRecord): Promise<string> {
@@ -1653,10 +3842,19 @@ function normalizeOneDevice(raw: SnapshotDevice): DeviceRecord | null {
   const rawRecord = raw as Record<string, unknown>;
   const rawCameraMode = rawRecord.cameraMode;
   const cameraUrl = raw.cameraUrl?.trim() || undefined;
+  const cameraHlsUrl = typeof rawRecord.cameraHlsUrl === "string"
+    ? rawRecord.cameraHlsUrl.trim() || undefined
+    : typeof rawRecord.hlsUrl === "string"
+      ? rawRecord.hlsUrl.trim() || undefined
+      : undefined;
+  const cameraThumbnailUrl = typeof rawRecord.cameraThumbnailUrl === "string"
+    ? rawRecord.cameraThumbnailUrl.trim() || undefined
+    : undefined;
+  const cameraDataset = normalizeCameraDataset(rawRecord.cameraDataset);
   const webrtcUrl = typeof rawRecord.webrtcUrl === "string" ? rawRecord.webrtcUrl.trim() || undefined : undefined;
   const cameraMode = isCameraMode(rawCameraMode)
     ? rawCameraMode
-    : cameraUrl || webrtcUrl
+    : cameraUrl
       ? "mjpeg"
       : undefined;
   const trafficDuration = finiteNumber(rawRecord.trafficDuration)
@@ -1673,6 +3871,9 @@ function normalizeOneDevice(raw: SnapshotDevice): DeviceRecord | null {
     lastSeenText: raw.lastSeenText?.trim() || undefined,
     note: raw.note?.trim() || undefined,
     cameraUrl,
+    cameraHlsUrl,
+    cameraThumbnailUrl,
+    cameraDataset,
     cameraMode,
     webrtcEnabled: typeof rawRecord.webrtcEnabled === "boolean" ? rawRecord.webrtcEnabled : undefined,
     webrtcPath: typeof rawRecord.webrtcPath === "string" ? rawRecord.webrtcPath.trim() || undefined : undefined,
@@ -1697,9 +3898,14 @@ function normalizeOneDevice(raw: SnapshotDevice): DeviceRecord | null {
     objectCount: Math.max(0, Math.round(finiteNumber(rawRecord.objectCount) ?? detections.length)),
     detections,
     trafficSource: typeof rawRecord.trafficSource === "string" ? rawRecord.trafficSource.trim() || undefined : undefined,
+    trafficLevel: rawRecord.trafficLevel === "lancar" || rawRecord.trafficLevel === "sedang" || rawRecord.trafficLevel === "padat"
+      ? rawRecord.trafficLevel
+      : undefined,
     gpioBackend: typeof rawRecord.gpioBackend === "string" ? rawRecord.gpioBackend.trim() || undefined : undefined,
     gpioReady: typeof rawRecord.gpioReady === "boolean" ? rawRecord.gpioReady : undefined,
     gpioNote: typeof rawRecord.gpioNote === "string" ? rawRecord.gpioNote.trim() || undefined : undefined,
+    update: normalizeUpdateInfo(rawRecord),
+    runtimeConfig: normalizeRuntimeConfig(rawRecord.runtimeConfig),
     position: { lat: clamp(lat, -90, 90), lng: clamp(lng, -180, 180) },
   };
 }
@@ -1795,6 +4001,7 @@ function renderDeviceModal(device: DeviceRecord, traffic: TrafficState): string 
   const detectorSource = escapeHtml(device.detectorCameraSource || "-");
   const gpio = escapeHtml(`${device.gpioBackend || "-"}${device.gpioReady === false ? " / error" : ""}`);
   const gpioNote = escapeHtml(device.gpioNote || "-");
+  const deviceLink = escapeHtml(appDeviceDeepLink(device));
   return `
     <div class="modal-header">
       <button class="modal-close" data-action="close">×</button>
@@ -1812,6 +4019,7 @@ function renderDeviceModal(device: DeviceRecord, traffic: TrafficState): string 
       <div class="modal-tab-pane active" data-tab="system">
         <div class="info-row"><span class="label">Lokasi</span><span class="value" data-field="device-location">${device.position.lat.toFixed(6)}, ${device.position.lng.toFixed(6)}</span></div>
         <div class="info-row"><span class="label">ID Sistem</span><span class="value" data-field="device-id">${escapeHtml(device.id)}</span></div>
+        <div class="info-row"><span class="label">Android Link</span><span class="value">${deviceLink}</span></div>
         <div class="info-row"><span class="label">Status</span><span class="value status-${device.status}" data-field="device-status">${escapeHtml(device.status)}</span></div>
         <div class="info-row"><span class="label">Last Seen</span><span class="value" data-field="device-last-seen">${escapeHtml(device.lastSeenText || formatTime(device.lastSeen))}</span></div>
         <div class="info-row"><span class="label">Age</span><span class="value" data-field="device-age">${formatAge(device.lastSeen)}</span></div>
@@ -1836,10 +4044,13 @@ function renderDeviceModal(device: DeviceRecord, traffic: TrafficState): string 
 
 function closeModal(): void {
   document.querySelectorAll(".modal-wrapper, #m-device-modal, #m-poi-modal").forEach((m) => m.remove());
+  document.body.classList.remove("its-desktop-sidebar-open");
+  mapRoot.classList.remove("desktop-sidebar-open");
   state.activeModalDeviceId = null;
   state.activeModalPoiId = null;
   window.clearInterval(state.trafficRefreshTimer);
   state.trafficRefreshTimer = 0;
+  setTimeout(() => map.invalidateSize(), 260);
 }
 
 function setSheetActiveTab(sheet: HTMLElement, tabName: string): void {
@@ -1862,6 +4073,11 @@ function createSwipeableSheetModal(id: string, sheetClass: string, bodyHtml: str
     <div class="${sheetClass}">${bodyHtml}</div>
   `;
   document.body.appendChild(overlay);
+  if (window.matchMedia("(min-width: 900px)").matches) {
+    document.body.classList.add("its-desktop-sidebar-open");
+    mapRoot.classList.add("desktop-sidebar-open");
+    setTimeout(() => map.invalidateSize(), 60);
+  }
   requestAnimationFrame(() => overlay.classList.add("open"));
   L.DomEvent.disableClickPropagation(overlay);
   L.DomEvent.disableScrollPropagation(overlay);
@@ -1915,6 +4131,8 @@ function refreshOpenDeviceModal(device: DeviceRecord): void {
   sheet.querySelectorAll<HTMLButtonElement>(".modal-tab-btn").forEach((btn) => {
     btn.addEventListener("click", () => setSheetActiveTab(sheet, btn.dataset.tab || "system"));
   });
+  delete sheet.dataset.swipeSetup;
+  setupSheetSwipe(sheet, closeModal);
   setSheetActiveTab(sheet, activeTab);
 }
 
@@ -1935,10 +4153,26 @@ function ensureMarker(device: DeviceRecord): void {
   if (!existing) {
     const m = L.marker(latlng, {
       icon,
+      pane: "trafficMarkerPane",
       interactive: true,
       zIndexOffset: 1000,
       riseOnHover: true,
     }).addTo(map);
+    // Add accessible name and keyboard activation for device markers
+    try {
+      const el = (m as any).getElement?.() as HTMLElement | null;
+      if (el) {
+        el.setAttribute("aria-label", device.label || `Device ${device.id}`);
+        el.setAttribute("role", el.getAttribute("role") || "button");
+        el.setAttribute("tabindex", el.getAttribute("tabindex") || "0");
+        el.addEventListener("keydown", (ev: KeyboardEvent) => {
+          if (ev.key === "Enter" || ev.key === " ") {
+            ev.preventDefault();
+            m.fire("click");
+          }
+        });
+      }
+    } catch { /* ignore DOM access errors */ }
     m.on("click", () => {
       state.device = device;
       renderCameraTile();
@@ -1953,20 +4187,29 @@ function ensureMarker(device: DeviceRecord): void {
   existing.setLatLng(latlng);
   existing.setIcon(icon);
 
-  // compute heading from previous position (if any) and apply rotation/greyscale
-  const prev = state.prevPositionById.get(device.id) || null;
+  // Do not write to the Leaflet marker wrapper transform; Leaflet uses it to position the marker.
   try {
     const el = existing.getElement?.() as HTMLElement | null;
     if (el) {
-      if (prev) {
-        const bearing = computeBearing(prev.lat, prev.lng, latlng.lat, latlng.lng);
-        el.style.transform = `rotate(${bearing}deg)`;
-      } else {
-        el.style.transform = "";
-      }
       el.style.filter = "grayscale(0.35)";
-      el.style.transition = "transform 300ms linear, filter 300ms";
+      el.style.transition = "filter 300ms";
       el.style.pointerEvents = "auto";
+      // Ensure accessible name and keyboard activation remain present after updates
+      try {
+        el.setAttribute("aria-label", device.label || `Device ${device.id}`);
+        el.setAttribute("role", el.getAttribute("role") || "button");
+        el.setAttribute("tabindex", el.getAttribute("tabindex") || "0");
+        // Avoid adding duplicate listeners by using a small guard
+        if (!(el as any).__accessibilityKeybound) {
+          el.addEventListener("keydown", (ev: KeyboardEvent) => {
+            if (ev.key === "Enter" || ev.key === " ") {
+              ev.preventDefault();
+              existing.fire("click");
+            }
+          });
+          (el as any).__accessibilityKeybound = true;
+        }
+      } catch { }
     }
   } catch { /* ignore DOM access errors */ }
 
@@ -1994,23 +4237,8 @@ function rescaleMarkers(): void {
     }));
   }
 
-  const poiSize = poiMarkerSizeByZoom();
-  for (const [id, poi] of state.poiData.entries()) {
-    const marker = state.poiMarkers.get(id);
-    if (!marker) continue;
-    marker.setIcon(makePoiIcon(poi, poiSize));
-  }
-
-  // Rescale MapLibre POI layer text size
-  const maplibreMap = state.maplibreMap;
-  if (maplibreMap && state.baseMode === "3d") {
-    try {
-      const scaledSize = 14 + (map.getZoom() - 13) * 1.2;
-      maplibreMap.setLayoutProperty("poi-symbols", "text-size", Math.min(Math.max(scaledSize, 10), 24));
-    } catch {
-      /* ignore */
-    }
-  }
+  renderPoiMarkers();
+  renderRoadLabels();
 }
 
 function removeMissingMarkers(activeIds: Set<string>): void {
@@ -2138,10 +4366,18 @@ async function ensureMapLibreMap(): Promise<any | null> {
             layout: {
               "text-field": ["get", "icon-emoji"],
               "text-font": ["Open Sans Regular", "Arial Unicode MS Regular"],
-              "text-size": 18,
+              "text-size": [
+                "interpolate",
+                ["linear"],
+                ["zoom"],
+                12, 13,
+                16, 18,
+                19, 20
+              ],
               "text-offset": [0, 0],
-              "text-allow-overlap": true,
-              "text-ignore-placement": true
+              "text-allow-overlap": false,
+              "text-ignore-placement": false,
+              "symbol-sort-key": ["-", ["get", "priority"]]
             },
             paint: {
               "text-opacity": 1
@@ -2152,6 +4388,7 @@ async function ensureMapLibreMap(): Promise<any | null> {
         // Add click handler for POI (allow MapLibre to detect clicks)
         // Note: MapLibre is non-interactive by default, so we detect features via ray casting
         // when Leaflet receives a click and is in 3D mode
+        updateMapLibrePoiLayer(visiblePoisForZoom([...state.poiData.values()]));
       } catch (err) {
         console.warn("Failed to setup POI layer:", err);
       }
@@ -2335,15 +4572,18 @@ async function setBaseMap(mode: BaseMapMode): Promise<void> {
     await removeMapLibreMap();
     if (map.hasLayer(satelliteLayer)) map.removeLayer(satelliteLayer);
     if (!map.hasLayer(streetLayer)) streetLayer.addTo(map);
+    if (!map.hasLayer(streetLabelLayer)) streetLabelLayer.addTo(map);
   } else if (mode === "3d") {
     // Prefer true 3D: render MapLibre GL above the Leaflet map.
     if (map.hasLayer(satelliteLayer)) map.removeLayer(satelliteLayer);
     if (map.hasLayer(streetLayer)) map.removeLayer(streetLayer);
+    if (map.hasLayer(streetLabelLayer)) map.removeLayer(streetLabelLayer);
 
     const gl = await ensureMapLibreMap();
     if (!gl) {
       // fallback: use CSS tilt if MapLibre not available
       if (!map.hasLayer(streetLayer)) streetLayer.addTo(map);
+      if (!map.hasLayer(streetLabelLayer)) streetLabelLayer.addTo(map);
       const wrapper = mapEl.parentElement as HTMLElement | null;
       if (wrapper) wrapper.style.perspective = "800px";
       mapEl.style.transform = "rotateX(45deg) scale(1.4)";
@@ -2361,9 +4601,14 @@ async function setBaseMap(mode: BaseMapMode): Promise<void> {
     await removeMapLibreMap();
     if (map.hasLayer(streetLayer)) map.removeLayer(streetLayer);
     if (!map.hasLayer(satelliteLayer)) satelliteLayer.addTo(map);
+    if (!map.hasLayer(streetLabelLayer)) streetLabelLayer.addTo(map);
   }
 
   state.baseMode = mode;
+  syncLayerControls();
+  renderPoiMarkers();
+  renderRoadLabels();
+  void refreshRoadLabelLayer();
 }
 
 // ─── Camera tile ────────────────────────────────────────────────
@@ -2372,19 +4617,1049 @@ function publicCameraUrl(device: DeviceRecord | null): string {
   return device?.cameraUrl?.trim() || device?.webrtcUrl?.trim() || "";
 }
 
+function publicCameraHlsUrl(device: DeviceRecord | null): string {
+  const explicit = device?.cameraHlsUrl?.trim();
+  if (explicit) return explicit;
+  const url = publicCameraUrl(device);
+  return url ? hlsPlaylistUrl(url) : "";
+}
+
 function isLikelyImageUrl(url: string): boolean {
   return /^data:image/i.test(url) || /\.(mjpg|mjpeg|jpg|jpeg|png|webp)(\?|$)/i.test(url);
+}
+
+function isLikelyHlsUrl(url: string): boolean {
+  return /\.m3u8(\?|$)/i.test(url) || /\/cam\/?(\?|$)/i.test(url);
+}
+
+function hlsPlaylistUrl(url: string): string {
+  const clean = url.trim();
+  if (/\.m3u8(\?|$)/i.test(clean)) return clean;
+  const [base, query = ""] = clean.split("?");
+  const playlist = `${base.replace(/\/?$/, "/")}index.m3u8`;
+  return query ? `${playlist}?${query}` : playlist;
+}
+
+function whepEndpointUrl(url: string): string {
+  const clean = url.trim();
+  if (!clean) return "";
+  try {
+    const parsed = new URL(clean, window.location.href);
+    if (!parsed.pathname.endsWith("/")) parsed.pathname = `${parsed.pathname}/`;
+    const endpoint = new URL("whep", parsed);
+    endpoint.search = parsed.search;
+    return endpoint.toString();
+  } catch {
+    return "";
+  }
+}
+
+function cameraSurfaceKey(device: DeviceRecord | null): string {
+  const url = publicCameraUrl(device);
+  return url ? `camera:${url}` : "";
+}
+
+function loadExternalScript(src: string, test: () => boolean, current?: Promise<void> | null): Promise<void> {
+  if (test()) return Promise.resolve();
+  if (current) return current;
+  return new Promise<void>((resolve, reject) => {
+    const existing = Array.from(document.scripts).find((script) => script.src === src);
+    if (existing) {
+      existing.addEventListener("load", () => resolve(), { once: true });
+      existing.addEventListener("error", () => reject(new Error(`script failed: ${src}`)), { once: true });
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = src;
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error(`script failed: ${src}`));
+    document.head.appendChild(script);
+  });
+}
+
+function loadHlsScript(): Promise<void> {
+  hlsScriptPromise = loadExternalScript(HLS_JS_URL, () => !!(window as any).Hls, hlsScriptPromise);
+  return hlsScriptPromise;
+}
+
+function loadOrtScript(): Promise<void> {
+  ortScriptPromise = loadExternalScript(ORT_JS_URL, () => !!(window as any).ort, ortScriptPromise);
+  return ortScriptPromise;
+}
+
+async function loadBrowserYoloSession(): Promise<any> {
+  if (!browserYoloSessionPromise) {
+    browserYoloSessionPromise = (async () => {
+      await loadOrtScript();
+      const ort = (window as any).ort;
+      ort.env.wasm.wasmPaths = ORT_WASM_BASE_URL;
+      ort.env.wasm.numThreads = 1;
+      return ort.InferenceSession.create(BROWSER_YOLO_MODEL_URL, {
+        executionProviders: ["wasm"],
+        graphOptimizationLevel: "all",
+      });
+    })();
+  }
+  return browserYoloSessionPromise;
+}
+
+function setBrowserYoloStatus(surface: HTMLElement, text: string, kind: "idle" | "live" | "error" = "idle"): void {
+  const status = surface.querySelector<HTMLElement>("[data-browser-yolo-status]");
+  if (!status) return;
+  status.textContent = text;
+  status.dataset.status = kind;
+}
+
+function cameraSurfaceIsFullscreen(surface: HTMLElement): boolean {
+  const fullscreen = document.fullscreenElement as HTMLElement | null;
+  return Boolean(fullscreen && (fullscreen === surface || surface.contains(fullscreen) || fullscreen.contains(surface)));
+}
+
+function fullscreenButtonIcon(active: boolean): string {
+  return active
+    ? `<svg viewBox="0 0 18 18" fill="none" width="18" height="18" aria-hidden="true">
+        <path d="M7 2v5H2M11 2v5h5M16 11h-5v5M7 16v-5H2"
+              stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>`
+    : `<svg viewBox="0 0 18 18" fill="none" width="18" height="18" aria-hidden="true">
+        <path d="M2 7V2h5M11 2h5v5M16 11v5h-5M7 16H2v-5"
+              stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>`;
+}
+
+function updateCameraFullscreenButton(surface: HTMLElement): void {
+  const button = surface.querySelector<HTMLButtonElement>("[data-camera-fullscreen]");
+  if (!button) return;
+  const active = cameraSurfaceIsFullscreen(surface);
+  button.dataset.fullscreenActive = active ? "true" : "false";
+  button.innerHTML = fullscreenButtonIcon(active);
+  button.setAttribute("aria-label", active ? "Keluar fullscreen video" : "Fullscreen video");
+}
+
+function surfaceDetections(surface: HTMLElement): YoloDetection[] {
+  const runtime = browserYoloRuntimes.get(surface);
+  if (runtime?.lastDetections?.length) return runtime.lastDetections;
+  const deviceId = surface.dataset.deviceId || state.device?.id || "";
+  const device = state.devices.find((item) => item.id === deviceId)
+    || (state.device?.id === deviceId ? state.device : null);
+  return device?.detections || [];
+}
+
+function aiStatsFromDetections(detections: YoloDetection[]): {
+  breakdown: VehicleBreakdown;
+  others: number;
+  objectCount: number;
+  otherSummary: string;
+} {
+  const breakdown = vehicleBreakdownFromDetections(detections);
+  const otherCounts = new Map<string, number>();
+  detections.forEach((det) => {
+    const label = det.label.trim().toLowerCase();
+    if (!label || VEHICLE_LABELS.has(label)) return;
+    otherCounts.set(label, (otherCounts.get(label) || 0) + 1);
+  });
+  const otherSummary = Array.from(otherCounts.entries())
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 4)
+    .map(([label, count]) => `${label} ${count}`)
+    .join(" · ");
+  const others = Array.from(otherCounts.values()).reduce((sum, count) => sum + count, 0);
+  return { breakdown, others, objectCount: detections.length, otherSummary: otherSummary || "Belum ada" };
+}
+
+function renderCameraAiPanelContent(surface: HTMLElement): string {
+  const detections = surfaceDetections(surface);
+  const stats = aiStatsFromDetections(detections);
+  const status = surface.querySelector<HTMLElement>("[data-browser-yolo-status]")?.textContent?.trim() || "YOLO web menunggu frame";
+  const item = (label: string, value: number) => `
+    <div class="camera-ai-stat">
+      <span>${escapeHtml(label)}</span>
+      <strong>${value}</strong>
+    </div>`;
+  return `
+    <div class="camera-ai-panel-head">
+      <div>
+        <span>AI YOLO</span>
+        <strong>${escapeHtml(status)}</strong>
+      </div>
+      <button type="button" class="camera-ai-close" data-camera-ai-close aria-label="Tutup panel AI">
+        <svg viewBox="0 0 18 18" width="16" height="16" aria-hidden="true">
+          <path d="M4 4l10 10M14 4 4 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </div>
+    <div class="camera-ai-grid">
+      ${item("Total kendaraan", stats.breakdown.total)}
+      ${item("Mobil", stats.breakdown.car)}
+      ${item("Motor", stats.breakdown.motorcycle)}
+      ${item("Bus", stats.breakdown.bus)}
+      ${item("Truk", stats.breakdown.truck)}
+      ${item("Sepeda", stats.breakdown.bicycle)}
+      ${item("Object lainnya", stats.others)}
+      ${item("Semua object", stats.objectCount)}
+    </div>
+    <div class="camera-ai-other">
+      <span>Object lainnya</span>
+      <strong>${escapeHtml(stats.otherSummary)}</strong>
+    </div>`;
+}
+
+function ensureCameraAiPanel(surface: HTMLElement): HTMLElement {
+  let panel = surface.querySelector<HTMLElement>("[data-camera-ai-panel]");
+  if (!panel) {
+    panel = document.createElement("section");
+    panel.className = "camera-ai-panel";
+    panel.dataset.cameraAiPanel = "true";
+    panel.setAttribute("aria-label", "Informasi AI YOLO");
+    surface.appendChild(panel);
+  }
+  return panel;
+}
+
+function updateCameraAiPanel(surface: HTMLElement): void {
+  const panel = ensureCameraAiPanel(surface);
+  panel.innerHTML = renderCameraAiPanelContent(surface);
+  panel.querySelector<HTMLButtonElement>("[data-camera-ai-close]")?.addEventListener("click", () => {
+    setCameraAiPanelOpen(surface, false);
+  });
+}
+
+function setCameraAiPanelOpen(surface: HTMLElement, open: boolean): void {
+  updateCameraAiPanel(surface);
+  surface.dataset.aiPanelOpen = open ? "true" : "false";
+  showCameraControls(surface, open);
+}
+
+function setupCameraAiPanel(surface: HTMLElement): void {
+  if (surface.dataset.aiPanelReady === "true") return;
+  surface.dataset.aiPanelReady = "true";
+  updateCameraAiPanel(surface);
+  surface.querySelector<HTMLButtonElement>("[data-camera-ai]")?.addEventListener("click", () => {
+    setCameraAiPanelOpen(surface, surface.dataset.aiPanelOpen !== "true");
+  });
+
+  const panel = ensureCameraAiPanel(surface);
+  let startX = 0;
+  let startY = 0;
+  let dragging = false;
+  panel.addEventListener("pointerdown", (event) => {
+    startX = event.clientX;
+    startY = event.clientY;
+    dragging = true;
+    panel.setPointerCapture?.(event.pointerId);
+  });
+  panel.addEventListener("pointerup", (event) => {
+    if (!dragging) return;
+    dragging = false;
+    const dx = event.clientX - startX;
+    const dy = Math.abs(event.clientY - startY);
+    if (dx > 70 && dx > dy * 1.2) setCameraAiPanelOpen(surface, false);
+  });
+  panel.addEventListener("pointercancel", () => {
+    dragging = false;
+  });
+}
+
+function setupCameraAmbient(surface: HTMLElement, video: HTMLVideoElement): void {
+  if (cameraAmbientTimers.has(surface)) return;
+  const sampler = document.createElement("canvas");
+  sampler.width = 8;
+  sampler.height = 8;
+  const ctx = sampler.getContext("2d", { willReadFrequently: true });
+  const sample = () => {
+    if (!surface.isConnected) {
+      const timer = cameraAmbientTimers.get(surface);
+      if (timer) window.clearInterval(timer);
+      cameraAmbientTimers.delete(surface);
+      return;
+    }
+    if (!ctx || video.readyState < 2 || video.videoWidth <= 0 || video.videoHeight <= 0) return;
+    try {
+      ctx.drawImage(video, 0, 0, sampler.width, sampler.height);
+      const data = ctx.getImageData(0, 0, sampler.width, sampler.height).data;
+      let r = 0; let g = 0; let b = 0;
+      const count = data.length / 4;
+      for (let i = 0; i < data.length; i += 4) {
+        r += data[i];
+        g += data[i + 1];
+        b += data[i + 2];
+      }
+      r = Math.round(r / count);
+      g = Math.round(g / count);
+      b = Math.round(b / count);
+      surface.style.setProperty("--camera-ambient-color", `rgba(${r}, ${g}, ${b}, 0.42)`);
+      surface.style.setProperty("--camera-ambient-soft", `rgba(${r}, ${g}, ${b}, 0.22)`);
+    } catch {
+      const timer = cameraAmbientTimers.get(surface);
+      if (timer) window.clearInterval(timer);
+      cameraAmbientTimers.delete(surface);
+    }
+  };
+  sample();
+  const timer = window.setInterval(sample, 1200);
+  cameraAmbientTimers.set(surface, timer);
+}
+
+function videoLiveEdge(video: HTMLVideoElement): number {
+  const ranges = video.seekable;
+  if (ranges.length > 0) return ranges.end(ranges.length - 1);
+  return Number.isFinite(video.duration) ? video.duration : video.currentTime;
+}
+
+function videoBehindLiveSeconds(video: HTMLVideoElement): number {
+  const edge = videoLiveEdge(video);
+  if (!Number.isFinite(edge) || edge <= 0) return 0;
+  return Math.max(0, edge - video.currentTime);
+}
+
+function jumpVideoToLive(video: HTMLVideoElement, targetOffsetSeconds = HLS_LIVE_TARGET_OFFSET_SECONDS): void {
+  const edge = videoLiveEdge(video);
+  if (!Number.isFinite(edge) || edge <= 0) return;
+  try {
+    video.currentTime = Math.max(0, edge - targetOffsetSeconds);
+  } catch {
+    // Some native HLS implementations reject seeks while loading.
+  }
+  void video.play().catch(() => { /* user gesture may be required */ });
+}
+
+function updateCameraCustomControls(surface: HTMLElement): void {
+  const video = surface.querySelector<HTMLVideoElement>("video[data-camera-video]");
+  if (!video) return;
+  const playButton = surface.querySelector<HTMLButtonElement>("[data-camera-play]");
+  const buffer = surface.querySelector<HTMLElement>("[data-camera-buffer]");
+  const lag = videoBehindLiveSeconds(video);
+  const isBuffering = video.readyState < 3 && !video.paused;
+
+  surface.dataset.videoState = video.paused ? "paused" : isBuffering ? "buffering" : "live";
+  surface.dataset.liveLag = lag > 1.8 ? "behind" : "live";
+
+  if (playButton) {
+    playButton.innerHTML = video.paused
+      ? `<svg viewBox="0 0 18 18" width="16" height="16" aria-hidden="true"><path d="M5 3.5v11l10-5.5-10-5.5z" fill="currentColor"/></svg>`
+      : `<svg viewBox="0 0 18 18" width="16" height="16" aria-hidden="true"><path d="M4 3h4v12H4V3zm6 0h4v12h-4V3z" fill="currentColor"/></svg>`;
+    playButton.setAttribute("aria-label", video.paused ? "Putar video" : "Jeda video");
+  }
+  if (buffer) buffer.textContent = isBuffering ? "Menyambung live..." : "";
+  updateCameraFullscreenButton(surface);
+}
+
+function showCameraControls(surface: HTMLElement, hold = false): void {
+  surface.dataset.controlsVisible = "true";
+  const existing = cameraControlHideTimers.get(surface);
+  if (existing) window.clearTimeout(existing);
+  if (hold) return;
+  const timer = window.setTimeout(() => {
+    const video = surface.querySelector<HTMLVideoElement>("video[data-camera-video]");
+    if (!surface.matches(":hover") && !video?.paused) surface.dataset.controlsVisible = "false";
+    cameraControlHideTimers.delete(surface);
+  }, CAMERA_CONTROLS_HIDE_MS);
+  cameraControlHideTimers.set(surface, timer);
+}
+
+function keepVideoNearLive(video: HTMLVideoElement): void {
+  if (video.paused || video.readyState < 3) return;
+  const lag = videoBehindLiveSeconds(video);
+  if (lag <= HLS_LIVE_AUTO_SYNC_SECONDS) return;
+  const lastJumpAt = Number(video.dataset.lastLiveJumpAt || 0);
+  if (Date.now() - lastJumpAt < HLS_AUTO_SYNC_COOLDOWN_MS) return;
+  video.dataset.lastLiveJumpAt = String(Date.now());
+  jumpVideoToLive(video);
+}
+
+function setupCameraCustomControls(surface: HTMLElement): void {
+  if (surface.dataset.controlsReady === "true") return;
+  surface.dataset.controlsReady = "true";
+  const video = surface.querySelector<HTMLVideoElement>("video[data-camera-video]");
+  if (!video) return;
+  showCameraControls(surface);
+  setupCameraAiPanel(surface);
+  setupCameraAmbient(surface, video);
+
+  surface.querySelector<HTMLButtonElement>("[data-camera-play]")?.addEventListener("click", () => {
+    if (video.paused) void video.play().catch(() => { /* ignore */ });
+    else video.pause();
+    updateCameraCustomControls(surface);
+    showCameraControls(surface, video.paused);
+  });
+  surface.querySelector<HTMLButtonElement>("[data-camera-live]")?.addEventListener("click", () => {
+    jumpVideoToLive(video);
+    updateCameraCustomControls(surface);
+  });
+
+  ["pointermove", "pointerdown", "touchstart", "mousemove", "focusin"].forEach((eventName) => {
+    surface.addEventListener(eventName, () => showCameraControls(surface), { passive: true });
+  });
+  surface.addEventListener("mouseleave", () => {
+    if (!video.paused) showCameraControls(surface);
+  });
+
+  ["loadedmetadata", "loadeddata", "play", "pause", "playing", "waiting", "stalled", "timeupdate"].forEach((eventName) => {
+    video.addEventListener(eventName, () => updateCameraCustomControls(surface));
+  });
+  video.addEventListener("pause", () => showCameraControls(surface, true));
+  video.addEventListener("play", () => showCameraControls(surface));
+
+  const existingTimer = cameraControlTimers.get(surface);
+  if (existingTimer) window.clearInterval(existingTimer);
+  const timer = window.setInterval(() => {
+    if (!surface.isConnected) {
+      window.clearInterval(timer);
+      cameraControlTimers.delete(surface);
+      return;
+    }
+    keepVideoNearLive(video);
+    updateCameraCustomControls(surface);
+  }, 1500);
+  cameraControlTimers.set(surface, timer);
+  updateCameraCustomControls(surface);
+  updateCameraAiPanel(surface);
+}
+
+function setupHlsVideo(video: HTMLVideoElement): void {
+  const playlist = video.dataset.hlsSrc || "";
+  if (!playlist || video.dataset.hlsReady === playlist) return;
+  video.dataset.hlsReady = playlist;
+  video.crossOrigin = "anonymous";
+  video.muted = true;
+  video.playsInline = true;
+  video.autoplay = true;
+  video.preload = "auto";
+
+  const old = hlsInstances.get(video);
+  if (old) {
+    try { old.destroy(); } catch { /* ignore */ }
+    hlsInstances.delete(video);
+  }
+
+  const startNative = () => {
+    video.src = playlist;
+    video.load();
+    video.addEventListener("loadedmetadata", () => jumpVideoToLive(video), { once: true });
+    void video.play().catch(() => { /* user gesture may be required */ });
+  };
+
+  if (video.canPlayType("application/vnd.apple.mpegurl")) {
+    startNative();
+    return;
+  }
+
+  void loadHlsScript().then(() => {
+    const Hls = (window as any).Hls;
+    if (!Hls?.isSupported?.()) {
+      startNative();
+      return;
+    }
+    const hls = new Hls({
+      lowLatencyMode: false,
+      backBufferLength: 6,
+      liveBackBufferLength: 6,
+      maxBufferLength: 12,
+      maxMaxBufferLength: 20,
+      liveSyncDurationCount: 3,
+      liveMaxLatencyDurationCount: 8,
+      maxLiveSyncPlaybackRate: 1.1,
+      startPosition: -1,
+    });
+    hlsInstances.set(video, hls);
+    hls.loadSource(playlist);
+    hls.attachMedia(video);
+    hls.on(Hls.Events.MANIFEST_PARSED, () => {
+      jumpVideoToLive(video);
+      void video.play().catch(() => { /* user gesture may be required */ });
+    });
+    hls.on(Hls.Events.LEVEL_LOADED, () => keepVideoNearLive(video));
+    hls.on(Hls.Events.FRAG_BUFFERED, () => keepVideoNearLive(video));
+    hls.on(Hls.Events.ERROR, (_event: unknown, data: { fatal?: boolean; type?: string }) => {
+      if (!data?.fatal) {
+        keepVideoNearLive(video);
+        return;
+      }
+      if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
+      else if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad(-1);
+      else {
+        try { hls.destroy(); } catch { /* ignore */ }
+        hlsInstances.delete(video);
+        video.dataset.hlsReady = "";
+      }
+    });
+  }).catch((err) => {
+    console.warn("[ITS] hls.js load failed:", err);
+    startNative();
+  });
+}
+
+function fallbackWhepSurfaceToHls(surface: HTMLElement, reason: string): boolean {
+  if (surface.dataset.streamMode === "hls") return true;
+  const video = surface.querySelector<HTMLVideoElement>("video[data-camera-video]");
+  const cameraUrl = surface.dataset.cameraUrl || publicCameraUrl(state.device);
+  if (!video || !cameraUrl) return false;
+  const playlist = surface.dataset.cameraHlsUrl || publicCameraHlsUrl(state.device) || hlsPlaylistUrl(cameraUrl);
+  if (!playlist) return false;
+
+  surface.dataset.streamMode = "hls";
+  video.dataset.hlsSrc = playlist;
+  video.dataset.hlsReady = "";
+  video.dataset.whepFallback = "true";
+  video.removeAttribute("data-whep-src");
+  video.srcObject = null;
+  video.crossOrigin = "anonymous";
+  video.classList.add("camera-hls-video");
+  setBrowserYoloStatus(surface, "WebRTC diblok jaringan, memakai HLS live...", "idle");
+  const status = surface.querySelector<HTMLElement>("[data-webrtc-status]");
+  if (status) {
+    status.textContent = reason;
+    status.dataset.status = "connecting";
+  }
+  setupHlsVideo(video);
+  void video.play().catch(() => { /* user gesture may be required */ });
+  return true;
+}
+
+function fallbackWhepSurfaces(deviceId: string, whepUrl: string, reason: string): boolean {
+  let changed = false;
+  document.querySelectorAll<HTMLElement>("[data-browser-yolo-surface]").forEach((surface) => {
+    if (surface.dataset.deviceId !== deviceId) return;
+    const video = surface.querySelector<HTMLVideoElement>("video[data-camera-video]");
+    if (!video || video.dataset.whepSrc !== whepUrl) return;
+    changed = fallbackWhepSurfaceToHls(surface, reason) || changed;
+  });
+  return changed;
+}
+
+function watchWhepVideoFrames(video: HTMLVideoElement, whepSrc: string): void {
+  const surface = video.closest<HTMLElement>("[data-browser-yolo-surface]");
+  if (!surface || video.dataset.whepWatchdog === whepSrc) return;
+  video.dataset.whepWatchdog = whepSrc;
+  window.setTimeout(() => {
+    if (!surface.isConnected || video.dataset.whepSrc !== whepSrc || surface.dataset.streamMode === "hls") return;
+    if (video.videoWidth > 0 && video.readyState >= 2) return;
+    fallbackWhepSurfaceToHls(surface, "Menunggu frame WebRTC terlalu lama, pindah ke HLS live");
+  }, WHEP_FRAME_FALLBACK_MS);
+}
+
+function setupWhepVideo(video: HTMLVideoElement): void {
+  const whepSrc = video.dataset.whepSrc || "";
+  if (!whepSrc) return;
+  if (video.dataset.whepFallback === "true" || video.closest<HTMLElement>("[data-browser-yolo-surface]")?.dataset.streamMode === "hls") return;
+  video.muted = true;
+  video.playsInline = true;
+  video.autoplay = true;
+  video.preload = "auto";
+
+  const deviceId = video.dataset.webrtcCamera || "";
+  const device = state.devices.find((item) => item.id === deviceId)
+    || (state.device?.id === deviceId ? state.device : null);
+  if (!device) return;
+  if (state.webrtc.whepUrl === whepSrc && state.webrtc.stream) attachWebRtcStream();
+  watchWhepVideoFrames(video, whepSrc);
+  void startWebRtcSession(device);
+}
+
+function preprocessBrowserYoloFrame(video: HTMLVideoElement): { tensor: any; meta: BrowserYoloFrameMeta } {
+  const ort = (window as any).ort;
+  const size = BROWSER_YOLO_INPUT_SIZE;
+  const frameWidth = Math.max(1, video.videoWidth);
+  const frameHeight = Math.max(1, video.videoHeight);
+  const scale = Math.min(size / frameWidth, size / frameHeight);
+  const drawWidth = Math.max(1, Math.round(frameWidth * scale));
+  const drawHeight = Math.max(1, Math.round(frameHeight * scale));
+  const padX = Math.round((size - drawWidth) / 2);
+  const padY = Math.round((size - drawHeight) / 2);
+  browserYoloWorkCanvas.width = size;
+  browserYoloWorkCanvas.height = size;
+  const ctx = browserYoloWorkCanvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) throw new Error("canvas unavailable");
+  ctx.fillStyle = "rgb(114, 114, 114)";
+  ctx.fillRect(0, 0, size, size);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.filter = "contrast(1.12) saturate(1.05) brightness(1.03)";
+  ctx.drawImage(video, 0, 0, frameWidth, frameHeight, padX, padY, drawWidth, drawHeight);
+  ctx.filter = "none";
+  const pixels = ctx.getImageData(0, 0, size, size).data;
+  const input = new Float32Array(3 * size * size);
+  const plane = size * size;
+  for (let i = 0, p = 0; i < pixels.length; i += 4, p += 1) {
+    input[p] = clamp(pixels[i], 0, 255) / 255;
+    input[plane + p] = clamp(pixels[i + 1], 0, 255) / 255;
+    input[(plane * 2) + p] = clamp(pixels[i + 2], 0, 255) / 255;
+  }
+  return {
+    tensor: new ort.Tensor("float32", input, [1, 3, size, size]),
+    meta: { inputSize: size, frameWidth, frameHeight, scale, padX, padY },
+  };
+}
+
+function readYolo(data: Float32Array, index: number): number {
+  return Number.isFinite(data[index]) ? data[index] : 0;
+}
+
+function yoloToDetection(label: string, confidence: number, cx: number, cy: number, w: number, h: number, meta: BrowserYoloFrameMeta): YoloDetection {
+  const normalized = [cx, cy, w, h].every((v) => v >= 0 && v <= 1.5);
+  const inputCx = normalized ? cx * meta.inputSize : cx;
+  const inputCy = normalized ? cy * meta.inputSize : cy;
+  const inputW = normalized ? w * meta.inputSize : w;
+  const inputH = normalized ? h * meta.inputSize : h;
+  const rawLeft = (inputCx - (inputW / 2) - meta.padX) / meta.scale;
+  const rawTop = (inputCy - (inputH / 2) - meta.padY) / meta.scale;
+  const rawRight = (inputCx + (inputW / 2) - meta.padX) / meta.scale;
+  const rawBottom = (inputCy + (inputH / 2) - meta.padY) / meta.scale;
+  const left = clamp(rawLeft, 0, meta.frameWidth);
+  const top = clamp(rawTop, 0, meta.frameHeight);
+  const right = clamp(rawRight, 0, meta.frameWidth);
+  const bottom = clamp(rawBottom, 0, meta.frameHeight);
+  const key = label.toLowerCase();
+  return { label, confidence, vehicle: VEHICLE_LABELS.has(key), x: left, y: top, width: Math.max(0, right - left), height: Math.max(0, bottom - top) };
+}
+
+function yoloCornersToDetection(label: string, confidence: number, x1: number, y1: number, x2: number, y2: number, meta: BrowserYoloFrameMeta): YoloDetection {
+  const normalized = [x1, y1, x2, y2].every((v) => v >= 0 && v <= 1.5);
+  const inputX1 = normalized ? x1 * meta.inputSize : x1;
+  const inputY1 = normalized ? y1 * meta.inputSize : y1;
+  const inputX2 = normalized ? x2 * meta.inputSize : x2;
+  const inputY2 = normalized ? y2 * meta.inputSize : y2;
+  const left = clamp((inputX1 - meta.padX) / meta.scale, 0, meta.frameWidth);
+  const top = clamp((inputY1 - meta.padY) / meta.scale, 0, meta.frameHeight);
+  const right = clamp((inputX2 - meta.padX) / meta.scale, 0, meta.frameWidth);
+  const bottom = clamp((inputY2 - meta.padY) / meta.scale, 0, meta.frameHeight);
+  const key = label.toLowerCase();
+  return { label, confidence, vehicle: VEHICLE_LABELS.has(key), x: left, y: top, width: Math.max(0, right - left), height: Math.max(0, bottom - top) };
+}
+
+function browserYoloIou(a: YoloDetection, b: YoloDetection): number {
+  const ax2 = a.x + a.width;
+  const ay2 = a.y + a.height;
+  const bx2 = b.x + b.width;
+  const by2 = b.y + b.height;
+  const interX1 = Math.max(a.x, b.x);
+  const interY1 = Math.max(a.y, b.y);
+  const interX2 = Math.min(ax2, bx2);
+  const interY2 = Math.min(ay2, by2);
+  const interW = Math.max(0, interX2 - interX1);
+  const interH = Math.max(0, interY2 - interY1);
+  const interArea = interW * interH;
+  const unionArea = (a.width * a.height) + (b.width * b.height) - interArea;
+  return unionArea <= 0 ? 0 : interArea / unionArea;
+}
+
+function browserYoloNms(detections: YoloDetection[]): YoloDetection[] {
+  const kept: YoloDetection[] = [];
+  for (const det of detections.sort((a, b) => browserYoloSortScore(b) - browserYoloSortScore(a))) {
+    const detVehicle = BROWSER_YOLO_VEHICLE_CLASSES.has(det.label.trim().toLowerCase());
+    const overlaps = kept.some((existing) => {
+      const existingVehicle = BROWSER_YOLO_VEHICLE_CLASSES.has(existing.label.trim().toLowerCase());
+      return (existing.label === det.label || (detVehicle && existingVehicle))
+        && browserYoloIou(existing, det) > BROWSER_YOLO_NMS;
+    });
+    if (!overlaps) kept.push(det);
+    if (kept.length >= BROWSER_YOLO_MAX_DETECTIONS) break;
+  }
+  return kept;
+}
+
+function browserYoloSortScore(det: YoloDetection): number {
+  const label = det.label.trim().toLowerCase();
+  const vehicleBoost = label === "truck" || label === "bus"
+    ? 1.12
+    : label === "motorcycle" || label === "bicycle"
+      ? 1.06
+      : 1;
+  return det.confidence * vehicleBoost;
+}
+
+function browserYoloMinConfidence(label: string): number {
+  return BROWSER_YOLO_CLASS_CONFIDENCE[label.trim().toLowerCase()] ?? BROWSER_YOLO_CONFIDENCE;
+}
+
+function isRoadPlausibleDetection(det: YoloDetection, frameWidth: number, frameHeight: number): boolean {
+  const label = det.label.trim().toLowerCase();
+  if (!BROWSER_YOLO_CLASSES.has(label)) return false;
+  if (det.confidence < browserYoloMinConfidence(label)) return false;
+  if (frameWidth <= 0 || frameHeight <= 0 || det.width <= 0 || det.height <= 0) return false;
+
+  const areaRatio = (det.width * det.height) / Math.max(1, frameWidth * frameHeight);
+  const aspect = det.width / Math.max(1, det.height);
+  const isVehicle = BROWSER_YOLO_VEHICLE_CLASSES.has(label);
+  const minArea = label === "traffic light"
+    ? 0.0005
+    : isVehicle
+      ? 0.00018
+      : label === "person"
+        ? 0.00035
+        : 0.0018;
+  if (areaRatio < minArea) return false;
+  if (label === "traffic light") return det.confidence >= browserYoloMinConfidence(label) && aspect >= 0.18 && aspect <= 2.4;
+  if (label === "person") return aspect >= 0.12 && aspect <= 2.8;
+
+  if (!isVehicle) return false;
+  if (aspect < 0.18 || aspect > 5.8) return false;
+  if (label === "car" || label === "bus" || label === "truck") {
+    if (aspect < 0.45 || aspect > 5.6) return false;
+  }
+  return true;
+}
+
+function stabilizeBrowserYoloDetections(
+  runtime: BrowserYoloRuntime,
+  detections: YoloDetection[],
+  frameWidth: number,
+  frameHeight: number,
+): YoloDetection[] {
+  const now = Date.now();
+  const plausible = detections.filter((det) => isRoadPlausibleDetection(det, frameWidth, frameHeight));
+  const previous = runtime.tracked || [];
+  const matched = new Set<number>();
+  const next: BrowserYoloTrackedDetection[] = [];
+
+  plausible.forEach((det) => {
+    let bestIndex = -1;
+    let bestIou = 0;
+    previous.forEach((old, index) => {
+      if (matched.has(index) || old.label !== det.label) return;
+      const iou = browserYoloIou(old, det);
+      if (iou > bestIou) {
+        bestIou = iou;
+        bestIndex = index;
+      }
+    });
+
+    if (bestIndex >= 0 && bestIou >= 0.22) {
+      const old = previous[bestIndex];
+      matched.add(bestIndex);
+      const blend = 0.68;
+      next.push({
+        label: det.label,
+        confidence: Math.max(det.confidence, old.confidence * 0.92),
+        vehicle: det.vehicle,
+        x: (old.x * (1 - blend)) + (det.x * blend),
+        y: (old.y * (1 - blend)) + (det.y * blend),
+        width: (old.width * (1 - blend)) + (det.width * blend),
+        height: (old.height * (1 - blend)) + (det.height * blend),
+        seen: Math.min(12, old.seen + 1),
+        missed: 0,
+        lastSeenAt: now,
+      });
+    } else {
+      next.push({ ...det, seen: 1, missed: 0, lastSeenAt: now });
+    }
+  });
+
+  previous.forEach((old, index) => {
+    if (matched.has(index) || old.missed >= 1 || now - old.lastSeenAt > 1800) return;
+    next.push({
+      ...old,
+      confidence: old.confidence * 0.82,
+      missed: old.missed + 1,
+    });
+  });
+
+  runtime.tracked = browserYoloNms(next)
+    .map((det) => ({ ...det, seen: (det as BrowserYoloTrackedDetection).seen || 1, missed: (det as BrowserYoloTrackedDetection).missed || 0, lastSeenAt: (det as BrowserYoloTrackedDetection).lastSeenAt || now }));
+
+  return runtime.tracked
+    .filter((det) => det.missed === 0 || det.seen >= 2)
+    .filter((det) => det.seen >= 2 || det.confidence >= browserYoloMinConfidence(det.label) + 0.025)
+    .slice(0, BROWSER_YOLO_MAX_DETECTIONS);
+}
+
+function parseBrowserYoloOutput(data: Float32Array, dims: number[], meta: BrowserYoloFrameMeta): YoloDetection[] {
+  const parseRows = (rows: number, attrs: number, index: (row: number, attr: number) => number): YoloDetection[] => {
+    if (rows <= 0 || attrs < 6) return [];
+    const parsed: YoloDetection[] = [];
+    if (attrs === 6) {
+      for (let row = 0; row < rows; row += 1) {
+        const a0 = readYolo(data, index(row, 0));
+        const a1 = readYolo(data, index(row, 1));
+        const a2 = readYolo(data, index(row, 2));
+        const a3 = readYolo(data, index(row, 3));
+        const a4 = readYolo(data, index(row, 4));
+        const a5 = readYolo(data, index(row, 5));
+        const classId = Number.isInteger(a5) && a5 >= 0 && a5 < COCO_LABELS.length ? a5 : -1;
+        const score = a4 >= 0 && a4 <= 1 ? a4 : 0;
+        if (classId < 0) continue;
+        const label = COCO_LABELS[classId];
+        if (!BROWSER_YOLO_CLASSES.has(label) || score < browserYoloMinConfidence(label)) continue;
+        parsed.push(a2 > a0 && a3 > a1
+          ? yoloCornersToDetection(label, score, a0, a1, a2, a3, meta)
+          : yoloToDetection(label, score, a0, a1, a2, a3, meta));
+      }
+      return parsed;
+    }
+
+    const classStart = attrs >= 85 ? 5 : 4;
+    const hasObjectness = attrs >= 85;
+    for (let row = 0; row < rows; row += 1) {
+      const cx = readYolo(data, index(row, 0));
+      const cy = readYolo(data, index(row, 1));
+      const w = readYolo(data, index(row, 2));
+      const h = readYolo(data, index(row, 3));
+      const objectness = hasObjectness ? readYolo(data, index(row, 4)) : 1;
+      const candidates: Array<{ label: string; score: number }> = [];
+      for (let attr = classStart; attr < attrs; attr += 1) {
+        const score = readYolo(data, index(row, attr)) * objectness;
+        const label = COCO_LABELS[attr - classStart] || `class-${attr - classStart}`;
+        if (!BROWSER_YOLO_CLASSES.has(label) || score < browserYoloMinConfidence(label)) continue;
+        candidates.push({ label, score });
+      }
+      if (!candidates.length) continue;
+      candidates.sort((a, b) => b.score - a.score);
+      const bestScore = candidates[0].score;
+      candidates
+        .filter((candidate, index) => {
+          if (index === 0) return true;
+          const label = candidate.label.trim().toLowerCase();
+          return BROWSER_YOLO_VEHICLE_CLASSES.has(label) && candidate.score >= bestScore * 0.5;
+        })
+        .slice(0, 3)
+        .forEach((candidate) => {
+          parsed.push(yoloToDetection(candidate.label, candidate.score, cx, cy, w, h, meta));
+        });
+    }
+    return parsed;
+  };
+
+  if (dims.length >= 3) {
+    const a = dims[dims.length - 2];
+    const b = dims[dims.length - 1];
+    return browserYoloNms(a > b
+      ? parseRows(a, b, (row, attr) => (row * b) + attr)
+      : parseRows(b, a, (row, attr) => (attr * b) + row));
+  }
+  const rows = dims[0] || 0;
+  const attrs = dims[1] || 0;
+  return browserYoloNms(parseRows(rows, attrs, (row, attr) => (row * attrs) + attr));
+}
+
+function drawYoloDetectionsOnCanvas(
+  canvas: HTMLCanvasElement,
+  surface: HTMLElement,
+  detections: YoloDetection[],
+  frameWidth: number,
+  frameHeight: number,
+): void {
+  if (!canvas) return;
+  const rect = surface.getBoundingClientRect();
+  const width = Math.max(1, Math.round(rect.width));
+  const height = Math.max(1, Math.round(rect.height));
+  if (canvas.width !== width || canvas.height !== height) {
+    canvas.width = width;
+    canvas.height = height;
+  }
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  ctx.clearRect(0, 0, width, height);
+  if (!detections.length || frameWidth <= 0 || frameHeight <= 0) return;
+  const media = surface.querySelector<HTMLElement>("video[data-camera-video], video[data-webrtc-camera], iframe");
+  const objectFit = media ? window.getComputedStyle(media).objectFit : "cover";
+  const scale = objectFit === "contain"
+    ? Math.min(width / frameWidth, height / frameHeight)
+    : Math.max(width / frameWidth, height / frameHeight);
+  const offsetX = (width - (frameWidth * scale)) / 2;
+  const offsetY = (height - (frameHeight * scale)) / 2;
+  ctx.lineWidth = Math.max(2, width / 220);
+  ctx.font = `700 ${Math.max(11, Math.round(width / 34))}px system-ui, sans-serif`;
+  detections.forEach((det) => {
+    const color = det.vehicle ? "#22c55e" : "#38bdf8";
+    const x = offsetX + (det.x * scale);
+    const y = offsetY + (det.y * scale);
+    const w = det.width * scale;
+    const h = det.height * scale;
+    const label = `${detectionLabel(det.label)} ${(det.confidence * 100).toFixed(0)}%`;
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.strokeRect(x, y, w, h);
+    const metrics = ctx.measureText(label);
+    const labelW = Math.min(width - 8, metrics.width + 12);
+    const labelH = 22;
+    const labelX = clamp(x, 4, Math.max(4, width - labelW - 4));
+    const labelY = y < labelH + 4 ? clamp(y + 2, 4, height - labelH - 4) : y - labelH;
+    ctx.fillRect(labelX, labelY, labelW, labelH);
+    ctx.fillStyle = "#fff";
+    ctx.fillText(label, labelX + 6, labelY + 16);
+  });
+}
+
+function drawBrowserYoloDetections(surface: HTMLElement, detections: YoloDetection[], frameWidth: number, frameHeight: number): void {
+  const canvas = surface.querySelector<HTMLCanvasElement>("[data-browser-yolo-canvas]");
+  if (!canvas) return;
+  drawYoloDetectionsOnCanvas(canvas, surface, detections, frameWidth, frameHeight);
+}
+
+function drawServerYoloOverlays(root: ParentNode = document): void {
+  root.querySelectorAll<HTMLElement>("[data-server-yolo-surface]").forEach((surface) => {
+    const deviceId = surface.dataset.deviceId || state.device?.id || "";
+    const device = state.devices.find((d) => d.id === deviceId)
+      || (state.device?.id === deviceId ? state.device : null)
+      || state.device;
+    const canvas = surface.querySelector<HTMLCanvasElement>("[data-server-yolo-canvas]");
+    const status = surface.querySelector<HTMLElement>("[data-server-yolo-status]");
+    if (status) {
+      const detectorStatus = device?.detectorStatus || "";
+      status.textContent = serverYoloStatusText(device || null);
+      status.dataset.status = detectorStatus === "online" || detectorStatus === "browser-yolo" ? "live"
+        : detectorStatus ? "idle" : "error";
+    }
+    if (!canvas || !device) return;
+    const frameWidth = device.detectorFrameWidth || 0;
+    const frameHeight = device.detectorFrameHeight || 0;
+    drawYoloDetectionsOnCanvas(canvas, surface, device.detections || [], frameWidth, frameHeight);
+  });
+}
+
+async function lockLandscapeForFullscreen(): Promise<void> {
+  try {
+    await (screen.orientation as any)?.lock?.("landscape");
+  } catch {
+    // Mobile browsers may allow fullscreen but reject orientation lock.
+  }
+}
+
+function unlockFullscreenOrientation(): void {
+  try {
+    screen.orientation?.unlock?.();
+  } catch {
+    // Ignore unsupported unlock.
+  }
+}
+
+async function runBrowserYoloLoop(surface: HTMLElement, video: HTMLVideoElement, runtime: BrowserYoloRuntime): Promise<void> {
+  if (runtime.stopped || runtime.busy) return;
+  if (!surface.isConnected) {
+    runtime.stopped = true;
+    return;
+  }
+  if (video.readyState < 2 || !video.videoWidth || !video.videoHeight) {
+    setBrowserYoloStatus(surface, "Menunggu frame video live...", "idle");
+    runtime.timer = window.setTimeout(() => void runBrowserYoloLoop(surface, video, runtime), 350);
+    return;
+  }
+
+  runtime.busy = true;
+  runtime.lastStartedAt = performance.now();
+  try {
+    const session = await loadBrowserYoloSession();
+    const { tensor: input, meta } = preprocessBrowserYoloFrame(video);
+    const inputName = session.inputNames[0];
+    const outputName = session.outputNames[0];
+    const result = await session.run({ [inputName]: input });
+    const output = result[outputName];
+    const rawDetections = parseBrowserYoloOutput(output.data as Float32Array, output.dims as number[], meta);
+    const detections = stabilizeBrowserYoloDetections(runtime, rawDetections, video.videoWidth, video.videoHeight);
+    runtime.lastDetections = detections;
+    drawBrowserYoloDetections(surface, detections, video.videoWidth, video.videoHeight);
+    const elapsed = Math.max(1, performance.now() - runtime.lastStartedAt);
+    runtime.fps = 1000 / elapsed;
+    const vehicles = vehicleBreakdownFromDetections(detections).total;
+    setBrowserYoloStatus(surface, `YOLO web ${runtime.fps.toFixed(1)} FPS - ${detections.length} object - ${vehicles} kendaraan`, "live");
+    updateCameraAiPanel(surface);
+    void publishBrowserYoloResult(surface, video, runtime, detections).catch((publishErr) => {
+      console.warn("[ITS] browser YOLO publish failed:", publishErr);
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "YOLO gagal";
+    setBrowserYoloStatus(surface, msg.includes("Tainted") || msg.includes("cross-origin") ? "YOLO tidak bisa membaca frame stream" : `YOLO web: ${msg}`, "error");
+    console.warn("[ITS] browser YOLO failed:", err);
+  } finally {
+    runtime.busy = false;
+    if (!runtime.stopped) {
+      runtime.timer = window.setTimeout(() => void runBrowserYoloLoop(surface, video, runtime), BROWSER_YOLO_SAMPLE_MS);
+    }
+  }
+}
+
+function startBrowserYolo(surface: HTMLElement): void {
+  const key = surface.dataset.cameraKey || "";
+  const existing = browserYoloRuntimes.get(surface);
+  if (existing && existing.key === key && !existing.stopped) return;
+  if (existing) {
+    existing.stopped = true;
+    window.clearTimeout(existing.timer);
+  }
+  const video = surface.querySelector<HTMLVideoElement>("video[data-camera-video]");
+  if (!video || !key) return;
+  const runtime: BrowserYoloRuntime = {
+    key,
+    stopped: false,
+    busy: false,
+    timer: 0,
+    lastStartedAt: 0,
+    lastPublishedAt: 0,
+    lastThumbnailAt: 0,
+    fps: 0,
+    tracked: [],
+    lastDetections: [],
+    lastDatasetAt: 0,
+    datasetSnapshot1Url: "",
+    datasetSnapshot2Url: "",
+  };
+  browserYoloRuntimes.set(surface, runtime);
+  setBrowserYoloStatus(surface, "Memuat YOLO web...", "idle");
+  const kick = () => void runBrowserYoloLoop(surface, video, runtime);
+  video.addEventListener("loadeddata", kick, { once: true });
+  video.addEventListener("play", kick);
+  kick();
+}
+
+function initializeCameraSurfaces(root: ParentNode = document): void {
+  root.querySelectorAll<HTMLVideoElement>("video[data-hls-src]").forEach((video) => setupHlsVideo(video));
+  root.querySelectorAll<HTMLVideoElement>("video[data-whep-src]").forEach((video) => setupWhepVideo(video));
+  drawServerYoloOverlays(root);
+  if (!cameraFullscreenEventsReady) {
+    cameraFullscreenEventsReady = true;
+    document.addEventListener("fullscreenchange", () => {
+      if (!document.fullscreenElement) unlockFullscreenOrientation();
+      document.querySelectorAll<HTMLElement>("[data-browser-yolo-surface]").forEach((surface) => {
+        updateCameraFullscreenButton(surface);
+        updateCameraCustomControls(surface);
+        if (cameraSurfaceIsFullscreen(surface)) {
+          showCameraControls(surface);
+          updateCameraAiPanel(surface);
+        } else {
+          setCameraAiPanelOpen(surface, false);
+        }
+      });
+    });
+  }
+  root.querySelectorAll<HTMLElement>("[data-browser-yolo-surface]").forEach((surface) => {
+    setupCameraCustomControls(surface);
+    startBrowserYolo(surface);
+  });
+  root.querySelectorAll<HTMLElement>("[data-camera-fullscreen]").forEach((button) => {
+    if (button.dataset.fullscreenReady === "true") return;
+    button.dataset.fullscreenReady = "true";
+    button.addEventListener("click", () => {
+      const target = button.closest<HTMLElement>("[data-browser-yolo-surface]")
+        || button.closest<HTMLElement>(".m-its-camera-box")?.querySelector<HTMLElement>("[data-browser-yolo-surface]")
+        || button.closest<HTMLElement>("[data-camera-key]");
+      if (!target) return;
+      const fullscreen = document.fullscreenElement as HTMLElement | null;
+      const active = Boolean(fullscreen && (fullscreen === target || target.contains(fullscreen) || fullscreen.contains(target)));
+      if (active) {
+        const done = document.exitFullscreen?.();
+        if (done) void done.finally(() => unlockFullscreenOrientation());
+        else unlockFullscreenOrientation();
+      } else {
+        const done = target.requestFullscreen?.();
+        if (done) void done.then(() => {
+          lockLandscapeForFullscreen();
+          showCameraControls(target);
+          updateCameraFullscreenButton(target);
+        });
+      }
+    });
+  });
 }
 
 function cameraModeFor(device: DeviceRecord | null): CameraMode | null {
   if (!device || device.status === "offline") return null;
   if (publicCameraUrl(device)) return device.cameraMode || "mjpeg";
-  if (device.cameraMode === "webrtc" || device.webrtcEnabled || device.cameraReady) return "webrtc";
   return null;
 }
 
 function isWebRtcSignalingCamera(device: DeviceRecord | null): boolean {
-  return cameraModeFor(device) === "webrtc" && !publicCameraUrl(device);
+  return false;
 }
 
 function webRtcSignalPath(device: DeviceRecord): string {
@@ -2417,6 +5692,41 @@ async function firebaseWritePath(method: "PUT" | "PATCH" | "DELETE", path: strin
   if (!res.ok) throw new Error(`Firebase ${method} ${path} failed: HTTP ${res.status}`);
 }
 
+async function fetchFreshDeviceFromFirebase(deviceId: string): Promise<DeviceRecord | null> {
+  const raw = await firebaseGetPath<SnapshotDevice | null>(`devices/${deviceId}`);
+  if (!raw || typeof raw !== "object") return null;
+  return normalizeOneDevice({ ...raw, id: raw.id?.trim() || deviceId });
+}
+
+function replaceDeviceInState(device: DeviceRecord): void {
+  const devices = state.devices.length
+    ? state.devices.map((item) => item.id === device.id ? device : item)
+    : [device];
+  if (!devices.some((item) => item.id === device.id)) devices.push(device);
+  applyDevices(devices);
+}
+
+function scheduleCameraUrlRecovery(device: DeviceRecord, failedWhepUrl: string, reason: string): void {
+  const now = Date.now();
+  if (now - state.lastCameraRecoveryAt < 3000) return;
+  state.lastCameraRecoveryAt = now;
+  window.setTimeout(() => {
+    void (async () => {
+      try {
+        const fresh = await fetchFreshDeviceFromFirebase(device.id);
+        if (!fresh) return;
+        const freshWhepUrl = whepEndpointUrl(publicCameraUrl(fresh));
+        if (freshWhepUrl && freshWhepUrl !== failedWhepUrl) {
+          console.info("[ITS] camera tunnel URL refreshed after WebRTC failure:", reason, freshWhepUrl);
+          replaceDeviceInState(fresh);
+        }
+      } catch (err) {
+        console.warn("[ITS] camera URL recovery failed:", err);
+      }
+    })();
+  }, 600);
+}
+
 function browserViewerId(): string {
   const storageKey = "its-webrtc-viewer-id";
   const existing = window.sessionStorage.getItem(storageKey);
@@ -2425,6 +5735,262 @@ function browserViewerId(): string {
   const id = `viewer-${random.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
   window.sessionStorage.setItem(storageKey, id);
   return id;
+}
+
+function splitHttpLinkHeader(header: string): string[] {
+  const parts: string[] = [];
+  let current = "";
+  let quoted = false;
+  let angled = false;
+  for (let i = 0; i < header.length; i += 1) {
+    const ch = header[i];
+    const prev = i > 0 ? header[i - 1] : "";
+    if (ch === "\"" && prev !== "\\") quoted = !quoted;
+    else if (ch === "<" && !quoted) angled = true;
+    else if (ch === ">" && !quoted) angled = false;
+
+    if (ch === "," && !quoted && !angled) {
+      if (current.trim()) parts.push(current.trim());
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+  if (current.trim()) parts.push(current.trim());
+  return parts;
+}
+
+function unquoteHttpParam(value = ""): string {
+  const trimmed = value.trim();
+  if (trimmed.startsWith("\"") && trimmed.endsWith("\"")) {
+    return trimmed.slice(1, -1).replace(/\\"/g, "\"");
+  }
+  return trimmed;
+}
+
+function parseWhepIceServers(linkHeader: string | null): RTCIceServer[] {
+  if (!linkHeader) return WEBRTC_ICE_SERVERS;
+  const servers: RTCIceServer[] = [];
+  splitHttpLinkHeader(linkHeader).forEach((entry) => {
+    const urlMatch = entry.match(/^\s*<([^>]+)>/);
+    if (!urlMatch) return;
+    const params: Record<string, string> = {};
+    Array.from(entry.matchAll(/;\s*([^=;]+)(?:=("[^"]*"|[^;]*))?/g)).forEach((match) => {
+      params[match[1].trim().toLowerCase()] = unquoteHttpParam(match[2] || "");
+    });
+    if (!params.rel?.split(/\s+/).includes("ice-server")) return;
+    const server: RTCIceServer = { urls: urlMatch[1] };
+    if (params.username) server.username = params.username;
+    if (params.credential) server.credential = params.credential;
+    servers.push(server);
+  });
+  return servers.length ? servers : WEBRTC_ICE_SERVERS;
+}
+
+async function requestWhepIceServers(whepUrl: string): Promise<RTCIceServer[]> {
+  try {
+    const res = await fetch(whepUrl, { method: "OPTIONS", cache: "no-store" });
+    if (!res.ok) return WEBRTC_ICE_SERVERS;
+    return parseWhepIceServers(res.headers.get("Link"));
+  } catch (err) {
+    console.warn("[ITS] WHEP OPTIONS failed, using fallback ICE:", err);
+    return WEBRTC_ICE_SERVERS;
+  }
+}
+
+function parseWhepOfferData(sdp = ""): WhepOfferData {
+  const medias: WhepOfferData["medias"] = [];
+  let current: WhepOfferData["medias"][number] | null = null;
+  let iceUfrag = "";
+  let icePwd = "";
+
+  sdp.split(/\r?\n/).forEach((rawLine) => {
+    const line = rawLine.trim();
+    if (!line) return;
+    if (line.startsWith("m=")) {
+      current = { mid: "", mLine: line };
+      medias.push(current);
+    } else if (current && line.startsWith("a=mid:")) {
+      current.mid = line.slice("a=mid:".length).trim();
+    }
+    if (!iceUfrag && line.startsWith("a=ice-ufrag:")) iceUfrag = line.slice("a=ice-ufrag:".length).trim();
+    if (!icePwd && line.startsWith("a=ice-pwd:")) icePwd = line.slice("a=ice-pwd:".length).trim();
+  });
+
+  medias.forEach((media, index) => {
+    if (!media.mid) media.mid = String(index);
+  });
+  if (!iceUfrag || !icePwd || medias.length === 0) {
+    throw new Error("Offer WHEP tidak lengkap");
+  }
+  return { iceUfrag, icePwd, medias };
+}
+
+function whepMediaForCandidate(candidate: RTCIceCandidateInit, offerData: WhepOfferData): WhepOfferData["medias"][number] | null {
+  const mid = candidate.sdpMid ?? "";
+  if (mid) return offerData.medias.find((media) => media.mid === mid) || null;
+  const index = candidate.sdpMLineIndex ?? 0;
+  return offerData.medias[index] || null;
+}
+
+function generateWhepSdpFragment(offerData: WhepOfferData, candidates: RTCIceCandidateInit[]): string {
+  const byMid = new Map<string, RTCIceCandidateInit[]>();
+  candidates.forEach((candidate) => {
+    if (!candidate.candidate) return;
+    const media = whepMediaForCandidate(candidate, offerData);
+    if (!media) return;
+    const existing = byMid.get(media.mid) || [];
+    existing.push(candidate);
+    byMid.set(media.mid, existing);
+  });
+  if (byMid.size === 0) return "";
+
+  let frag = `a=ice-ufrag:${offerData.iceUfrag}\r\n`;
+  frag += `a=ice-pwd:${offerData.icePwd}\r\n`;
+  offerData.medias.forEach((media) => {
+    const mediaCandidates = byMid.get(media.mid);
+    if (!mediaCandidates?.length) return;
+    frag += `${media.mLine}\r\n`;
+    frag += `a=mid:${media.mid}\r\n`;
+    mediaCandidates.forEach((candidate) => {
+      frag += `a=${candidate.candidate}\r\n`;
+    });
+  });
+  return frag;
+}
+
+function resolveWhepSessionUrl(locationHeader: string | null, whepUrl: string): string {
+  if (!locationHeader) throw new Error("Server WHEP tidak mengirim Location session");
+  return new URL(locationHeader, whepUrl).toString();
+}
+
+function syncLocalBrowserYoloDevice(deviceId: string, patch: Partial<DeviceRecord>): void {
+  const applyPatch = (device: DeviceRecord | null): void => {
+    if (!device || device.id !== deviceId) return;
+    Object.assign(device, patch);
+    state.trafficById.set(device.id, buildTrafficState(device));
+  };
+
+  applyPatch(state.device);
+  state.devices.forEach(applyPatch);
+}
+
+async function publishBrowserYoloResult(
+  surface: HTMLElement,
+  video: HTMLVideoElement,
+  runtime: BrowserYoloRuntime,
+  detections: YoloDetection[],
+): Promise<void> {
+  const now = Date.now();
+  if (now - runtime.lastPublishedAt < BROWSER_YOLO_PUBLISH_MS) return;
+  runtime.lastPublishedAt = now;
+
+  const deviceId = surface.dataset.deviceId || state.device?.id || "raspberry-its";
+  const cameraUrl = surface.dataset.cameraUrl || "";
+  const breakdown = vehicleBreakdownFromDetections(detections);
+  const trafficLevel = trafficLevelForVehicleCount(breakdown.total);
+  let thumbnailUrl = readCameraPoster(runtime.key);
+  let thumbnailUpdatedAt = 0;
+  let cameraDataset: TrafficCameraDataset | undefined = runtime.datasetSnapshot1Url || runtime.datasetSnapshot2Url
+    ? {
+      snapshot1Url: runtime.datasetSnapshot1Url,
+      snapshot2Url: runtime.datasetSnapshot2Url,
+      updatedAt: runtime.lastDatasetAt,
+      source: "browser-yolo",
+      path: `${BROWSER_YOLO_DATASET_ROOT}/${deviceId}`,
+    }
+    : undefined;
+
+  if (now - runtime.lastThumbnailAt >= BROWSER_YOLO_THUMBNAIL_MS || !thumbnailUrl) {
+    try {
+      const freshThumbnail = makeCameraThumbnail(video, 320, 0.58);
+      if (freshThumbnail) {
+        thumbnailUrl = freshThumbnail;
+        thumbnailUpdatedAt = now;
+        runtime.lastThumbnailAt = now;
+        writeCameraPoster(runtime.key, freshThumbnail);
+      }
+    } catch (err) {
+      console.warn("[ITS] camera thumbnail failed:", err);
+    }
+  }
+
+  if (now - runtime.lastDatasetAt >= BROWSER_YOLO_DATASET_MS || !runtime.datasetSnapshot1Url || !runtime.datasetSnapshot2Url) {
+    try {
+      const datasetImage = makeCameraThumbnail(video, 640, 0.72);
+      if (datasetImage) {
+        runtime.lastDatasetAt = now;
+        runtime.datasetSnapshot1Url = datasetImage;
+        runtime.datasetSnapshot2Url = datasetImage;
+        cameraDataset = {
+          snapshot1Url: datasetImage,
+          snapshot2Url: datasetImage,
+          updatedAt: now,
+          source: "browser-yolo",
+          path: `${BROWSER_YOLO_DATASET_ROOT}/${deviceId}`,
+        };
+        await firebaseWritePath("PUT", `${BROWSER_YOLO_DATASET_ROOT}/${deviceId}`, {
+          updatedAt: now,
+          source: "browser-yolo",
+          deviceId,
+          cameraUrl,
+          nama1: datasetImage,
+          nama2: datasetImage,
+          snapshot1Url: datasetImage,
+          snapshot2Url: datasetImage,
+        });
+      }
+    } catch (err) {
+      console.warn("[ITS] camera dataset publish failed:", err);
+    }
+  }
+
+  const payload = {
+    source: "browser-yolo",
+    status: "online",
+    note: "YOLO berjalan di browser pengguna",
+    updatedAt: now,
+    viewerId: browserViewerId(),
+    cameraUrl,
+    modelUrl: BROWSER_YOLO_MODEL_URL,
+    fps: Number(runtime.fps.toFixed(2)),
+    frameWidth: video.videoWidth,
+    frameHeight: video.videoHeight,
+    objectCount: detections.length,
+    vehicleCount: breakdown.total,
+    vehicleBreakdown: breakdown,
+    trafficLevel,
+    thumbnailUrl,
+    thumbnailUpdatedAt,
+    cameraDataset,
+    detections: detections.slice(0, BROWSER_YOLO_MAX_DETECTIONS).map((det) => ({
+      label: det.label,
+      confidence: Number(det.confidence.toFixed(4)),
+      vehicle: Boolean(det.vehicle),
+      x: Number(det.x.toFixed(2)),
+      y: Number(det.y.toFixed(2)),
+      width: Number(det.width.toFixed(2)),
+      height: Number(det.height.toFixed(2)),
+    })),
+  };
+
+  await firebaseWritePath("PUT", `browserYolo/devices/${deviceId}`, payload);
+  syncLocalBrowserYoloDevice(deviceId, {
+    cameraThumbnailUrl: thumbnailUrl,
+    cameraDataset,
+    vehicleCount: breakdown.total,
+    vehicleBreakdown: breakdown,
+    detections,
+    objectCount: detections.length,
+    detectorStatus: "browser-yolo",
+    detectorNote: "YOLO berjalan di browser pengguna",
+    detectorUpdatedAt: now,
+    detectorFps: Number(runtime.fps.toFixed(2)),
+    detectorFrameWidth: video.videoWidth,
+    detectorFrameHeight: video.videoHeight,
+    detectorCameraSource: cameraUrl,
+    trafficLevel,
+  });
 }
 
 function newWebRtcSessionId(deviceId: string): string {
@@ -2479,9 +6045,13 @@ function resetWebRtcRuntime(): void {
     deviceId: "",
     signalPath: "",
     sessionId: "",
+    whepUrl: "",
+    whepSessionUrl: "",
+    whepOfferData: null,
     stream: null,
     pollTimer: 0,
     heartbeatTimer: 0,
+    restartTimer: 0,
     candidateSeq: 0,
     seenCameraCandidates: new Set<string>(),
     pendingCandidates: [],
@@ -2494,8 +6064,10 @@ function resetWebRtcRuntime(): void {
 
 function stopWebRtcSession(removeRemote = true): void {
   const sessionPath = state.webrtc.signalPath && state.webrtc.sessionId ? webRtcSessionPath() : "";
+  const whepSessionUrl = state.webrtc.whepSessionUrl;
   window.clearInterval(state.webrtc.pollTimer);
   window.clearInterval(state.webrtc.heartbeatTimer);
+  window.clearTimeout(state.webrtc.restartTimer);
   if (removeRemote && sessionPath) {
     void firebaseWritePath("PATCH", sessionPath, {
       viewerStatus: "closed",
@@ -2505,6 +6077,9 @@ function stopWebRtcSession(removeRemote = true): void {
         void firebaseWritePath("DELETE", sessionPath).catch(() => { /* ignore cleanup errors */ });
       })
       .catch(() => { /* ignore cleanup errors */ });
+  }
+  if (removeRemote && whepSessionUrl) {
+    void fetch(whepSessionUrl, { method: "DELETE" }).catch(() => { /* ignore WHEP cleanup errors */ });
   }
   state.webrtc.pc?.close();
   state.webrtc.stream?.getTracks().forEach((track) => track.stop());
@@ -2530,6 +6105,31 @@ function flushPendingViewerCandidates(): void {
   const pending = state.webrtc.pendingCandidates.splice(0);
   pending.forEach((candidate) => {
     void sendViewerCandidate(candidate).catch((err) => console.warn("[ITS] WebRTC candidate failed:", err));
+  });
+}
+
+async function sendWhepCandidate(candidate: RTCIceCandidateInit): Promise<void> {
+  if (!state.webrtc.whepSessionUrl || !state.webrtc.whepOfferData) {
+    state.webrtc.pendingCandidates.push(candidate);
+    return;
+  }
+  const fragment = generateWhepSdpFragment(state.webrtc.whepOfferData, [candidate]);
+  if (!fragment) return;
+  const res = await fetch(state.webrtc.whepSessionUrl, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/trickle-ice-sdpfrag",
+      "If-Match": "*",
+    },
+    body: fragment,
+  });
+  if (!res.ok && res.status !== 204) throw new Error(`WHEP ICE gagal: HTTP ${res.status}`);
+}
+
+function flushPendingWhepCandidates(): void {
+  const pending = state.webrtc.pendingCandidates.splice(0);
+  pending.forEach((candidate) => {
+    void sendWhepCandidate(candidate).catch((err) => console.warn("[ITS] WHEP ICE candidate failed:", err));
   });
 }
 
@@ -2561,7 +6161,145 @@ async function pollWebRtcSession(): Promise<void> {
   }
 }
 
+function scheduleWhepReconnect(device: DeviceRecord, whepUrl: string, reason: string): void {
+  if (state.webrtc.restartTimer) return;
+  scheduleCameraUrlRecovery(device, whepUrl, reason);
+  if (fallbackWhepSurfaces(device.id, whepUrl, `WebRTC ${reason}, memakai HLS live`)) {
+    setWebRtcStatus("failed", `WebRTC ${reason}, memakai HLS live`);
+    return;
+  }
+  setWebRtcStatus("failed", `WebRTC ${reason}, mencoba sambung ulang...`);
+  state.webrtc.restartTimer = window.setTimeout(() => {
+    state.webrtc.restartTimer = 0;
+    const currentDevice = state.devices.find((item) => item.id === device.id)
+      || (state.device?.id === device.id ? state.device : null)
+      || device;
+    if (whepEndpointUrl(publicCameraUrl(currentDevice)) !== whepUrl) return;
+    void startWhepWebRtcSession(currentDevice);
+  }, 2500);
+}
+
+async function startWhepWebRtcSession(device: DeviceRecord): Promise<void> {
+  const cameraUrl = publicCameraUrl(device);
+  const whepUrl = whepEndpointUrl(cameraUrl);
+  if (!whepUrl) {
+    setWebRtcStatus("failed", "URL WHEP kamera tidak valid");
+    return;
+  }
+  if (!("RTCPeerConnection" in window)) {
+    setWebRtcStatus("failed", "Browser tidak mendukung WebRTC");
+    return;
+  }
+  if (
+    state.webrtc.pc
+    && state.webrtc.deviceId === device.id
+    && state.webrtc.whepUrl === whepUrl
+    && state.webrtc.status !== "failed"
+  ) {
+    attachWebRtcStream();
+    return;
+  }
+
+  stopWebRtcSession(true);
+  const pc = new RTCPeerConnection({ iceServers: await requestWhepIceServers(whepUrl) });
+  const sessionId = newWebRtcSessionId(device.id);
+
+  Object.assign(state.webrtc, {
+    pc,
+    deviceId: device.id,
+    signalPath: "",
+    sessionId,
+    whepUrl,
+    whepSessionUrl: "",
+    whepOfferData: null,
+    stream: null,
+    pollTimer: 0,
+    heartbeatTimer: 0,
+    restartTimer: 0,
+    candidateSeq: 0,
+    seenCameraCandidates: new Set<string>(),
+    pendingCandidates: [],
+    sessionReady: false,
+    startedAt: Date.now(),
+    status: "connecting" as WebRtcStatus,
+    message: "Menghubungkan WebRTC live...",
+  });
+  updateWebRtcStatusElements();
+
+  pc.addTransceiver("video", { direction: "recvonly" });
+  pc.addTransceiver("audio", { direction: "recvonly" });
+  pc.ontrack = (event) => {
+    const [remoteStream] = event.streams;
+    const stream = remoteStream || state.webrtc.stream || new MediaStream();
+    if (!remoteStream && !stream.getTracks().includes(event.track)) stream.addTrack(event.track);
+    state.webrtc.stream = stream;
+    setWebRtcStatus("live");
+    attachWebRtcStream();
+  };
+  pc.onicecandidate = (event) => {
+    if (!event.candidate) return;
+    void sendWhepCandidate(event.candidate.toJSON()).catch((err) => {
+      console.warn("[ITS] WHEP ICE candidate publish failed:", err);
+    });
+  };
+  pc.onconnectionstatechange = () => {
+    if (pc.connectionState === "connected") setWebRtcStatus("live");
+    if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
+      scheduleWhepReconnect(device, whepUrl, pc.connectionState);
+    }
+  };
+  pc.oniceconnectionstatechange = () => {
+    if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
+      setWebRtcStatus("live");
+    }
+    if (pc.iceConnectionState === "failed") scheduleWhepReconnect(device, whepUrl, "ICE gagal");
+  };
+
+  try {
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    if (!pc.localDescription?.sdp) throw new Error("Local WebRTC offer kosong");
+    state.webrtc.whepOfferData = parseWhepOfferData(pc.localDescription.sdp);
+
+    const res = await fetch(whepUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/sdp" },
+      body: pc.localDescription.sdp,
+    });
+    if (!res.ok) throw new Error(`WHEP offer gagal: HTTP ${res.status}`);
+    state.webrtc.whepSessionUrl = resolveWhepSessionUrl(res.headers.get("Location"), whepUrl);
+    const answerSdp = await res.text();
+    await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
+    state.webrtc.sessionReady = true;
+    flushPendingWhepCandidates();
+    setWebRtcStatus("connecting", "Menunggu frame video WebRTC...");
+    attachWebRtcStream();
+  } catch (err) {
+    console.warn("[ITS] WHEP WebRTC start failed:", err);
+    setWebRtcStatus("failed", err instanceof Error ? err.message : "WebRTC WHEP gagal dimulai");
+    scheduleCameraUrlRecovery(device, whepUrl, err instanceof Error ? err.message : "WHEP gagal");
+    const fellBack = fallbackWhepSurfaces(device.id, whepUrl, "WebRTC gagal, memakai HLS live");
+    if (!fellBack) scheduleWhepReconnect(device, whepUrl, "gagal tersambung");
+  }
+}
+
 async function startWebRtcSession(device: DeviceRecord): Promise<void> {
+  if (device.cameraMode === "webrtc" && publicCameraUrl(device)) {
+    const key = `${device.id}:${whepEndpointUrl(publicCameraUrl(device))}`;
+    if (webRtcStartPromise && webRtcStartKey === key) {
+      await webRtcStartPromise;
+      return;
+    }
+    webRtcStartKey = key;
+    webRtcStartPromise = startWhepWebRtcSession(device).finally(() => {
+      if (webRtcStartKey === key) {
+        webRtcStartKey = "";
+        webRtcStartPromise = null;
+      }
+    });
+    await webRtcStartPromise;
+    return;
+  }
   if (!isWebRtcSignalingCamera(device)) return;
   if (!("RTCPeerConnection" in window)) {
     setWebRtcStatus("failed", "Browser tidak mendukung WebRTC");
@@ -2662,21 +6400,23 @@ async function startWebRtcSession(device: DeviceRecord): Promise<void> {
 }
 
 function syncCameraViews(device: DeviceRecord | null = state.device): void {
-  if (!device || !isWebRtcSignalingCamera(device)) {
-    if (!device || state.webrtc.deviceId !== device.id) stopWebRtcSession(true);
-    return;
-  }
-  if (state.webrtc.pc && state.webrtc.deviceId === device.id && state.webrtc.status !== "failed") {
-    attachWebRtcStream();
-    return;
-  }
-  void startWebRtcSession(device);
+  const cameraUrl = publicCameraUrl(device);
+  const nextWhepUrl = device?.cameraMode === "webrtc" && cameraUrl ? whepEndpointUrl(cameraUrl) : "";
+  const shouldStop = Boolean(state.webrtc.pc) && (
+    !device
+    || device.cameraMode !== "webrtc"
+    || state.webrtc.deviceId !== device.id
+    || (state.webrtc.whepUrl && state.webrtc.whepUrl !== nextWhepUrl)
+  );
+  if (shouldStop) stopWebRtcSession(true);
+  requestAnimationFrame(() => initializeCameraSurfaces());
 }
 
 function renderWebRtcSurface(device: DeviceRecord, videoClass: string): string {
   const status = escapeHtml(webRtcStatusText());
+  const key = cameraSurfaceKey(device);
   return `
-    <div class="webrtc-video-wrap">
+    <div class="webrtc-video-wrap" data-camera-key="${escapeHtml(key)}">
       <video class="${videoClass} webrtc-video" data-webrtc-camera="${escapeHtml(device.id)}" autoplay playsinline muted></video>
       <div class="webrtc-status-bar">
         <span class="webrtc-dot" data-webrtc-dot data-status="${state.webrtc.status}"></span>
@@ -2689,11 +6429,52 @@ function renderWebRtcSurface(device: DeviceRecord, videoClass: string): string {
 function renderCameraSurface(device: DeviceRecord | null, imageClass: string, frameClass: string): string {
   const url = publicCameraUrl(device);
   if (url) {
-    return isLikelyImageUrl(url)
-      ? `<img class="${imageClass}" src="${escapeHtml(url)}" alt="Camera preview">`
-      : `<iframe class="${frameClass}" src="${escapeHtml(url)}" allow="autoplay; camera; microphone; fullscreen" referrerpolicy="no-referrer" loading="lazy"></iframe>`;
+    const key = cameraSurfaceKey(device);
+    if (device?.cameraMode === "webrtc") {
+      const whepUrl = whepEndpointUrl(url);
+      const hlsUrl = publicCameraHlsUrl(device);
+      const status = escapeHtml(webRtcStatusText());
+      const poster = device.cameraThumbnailUrl || readCameraPoster(key);
+      const posterAttr = poster ? ` poster="${escapeHtml(poster)}"` : "";
+      return `<div class="${frameClass} camera-live-surface camera-webrtc-surface" data-camera-key="${escapeHtml(key)}" data-device-id="${escapeHtml(device.id)}" data-camera-url="${escapeHtml(url)}" data-camera-hls-url="${escapeHtml(hlsUrl)}" data-browser-yolo-surface>
+        <video class="${imageClass} camera-webrtc-video" data-camera-video data-webrtc-camera="${escapeHtml(device.id)}" data-whep-src="${escapeHtml(whepUrl)}" autoplay muted playsinline preload="auto" disablepictureinpicture${posterAttr}></video>
+        <canvas class="browser-yolo-canvas" data-browser-yolo-canvas></canvas>
+        <div class="camera-live-pill" aria-hidden="true"><span></span>LIVE</div>
+        <div class="browser-yolo-status" data-browser-yolo-status data-status="idle">Menghubungkan WebRTC...</div>
+        <div class="camera-video-buffer camera-webrtc-buffer" data-webrtc-status data-status="${state.webrtc.status}">${status}</div>
+        <div class="camera-custom-controls" data-camera-controls>
+          <button class="camera-control-button" data-camera-play aria-label="Jeda video"></button>
+          <div class="camera-controls-right">
+            <button class="camera-control-button camera-ai-button" data-camera-ai aria-label="Buka statistik AI">AI</button>
+            <button class="camera-control-button" data-camera-fullscreen aria-label="Fullscreen video">${fullscreenButtonIcon(false)}</button>
+          </div>
+        </div>
+      </div>`;
+    }
+    if (isLikelyImageUrl(url)) {
+      return `<img class="${imageClass}" src="${escapeHtml(url)}" alt="${escapeHtml(device?.label || "Raspberry camera")}" loading="lazy" data-camera-key="${escapeHtml(key)}">`;
+    }
+    if (isLikelyHlsUrl(url)) {
+      const playlist = hlsPlaylistUrl(url);
+      const poster = device?.cameraThumbnailUrl || readCameraPoster(key);
+      const posterAttr = poster ? ` poster="${escapeHtml(poster)}"` : "";
+      return `<div class="${frameClass} camera-hls-surface" data-camera-key="${escapeHtml(key)}" data-device-id="${escapeHtml(device?.id || "raspberry-its")}" data-camera-url="${escapeHtml(url)}" data-browser-yolo-surface>
+        <video class="${imageClass} camera-hls-video" data-camera-video data-hls-src="${escapeHtml(playlist)}" autoplay muted playsinline preload="auto" crossorigin="anonymous" disablepictureinpicture${posterAttr}></video>
+        <canvas class="browser-yolo-canvas" data-browser-yolo-canvas></canvas>
+        <div class="camera-live-pill" aria-hidden="true"><span></span>LIVE</div>
+        <div class="browser-yolo-status" data-browser-yolo-status data-status="idle">Memuat video...</div>
+        <div class="camera-video-buffer" data-camera-buffer></div>
+        <div class="camera-custom-controls" data-camera-controls>
+          <button class="camera-control-button" data-camera-play aria-label="Jeda video"></button>
+          <div class="camera-controls-right">
+            <button class="camera-control-button camera-ai-button" data-camera-ai aria-label="Buka statistik AI">AI</button>
+            <button class="camera-control-button" data-camera-fullscreen aria-label="Fullscreen video">${fullscreenButtonIcon(false)}</button>
+          </div>
+        </div>
+      </div>`;
+    }
+    return `<iframe class="${frameClass}" src="${escapeHtml(url)}" allow="autoplay; fullscreen" referrerpolicy="no-referrer" loading="eager" data-camera-key="${escapeHtml(key)}"></iframe>`;
   }
-  if (device && isWebRtcSignalingCamera(device)) return renderWebRtcSurface(device, imageClass);
   return "";
 }
 
@@ -2701,11 +6482,7 @@ function renderCameraTile(): void {
   if (!state.cameraPreview) return;
   const device = state.device;
   const url = publicCameraUrl(device);
-  state.cameraPreview.innerHTML = url && isLikelyImageUrl(url)
-    ? `<img class="camera-thumb-img" src="${escapeHtml(url)}" alt="Camera preview">`
-    : device && (url || isWebRtcSignalingCamera(device))
-      ? `<div class="camera-live-badge"><span data-webrtc-dot data-status="${state.webrtc.status}"></span>LIVE</div>`
-      : "";
+  state.cameraPreview.innerHTML = url ? `<div class="camera-live-badge">LIVE</div>` : "";
   syncCameraViews(device);
 }
 
@@ -3103,18 +6880,28 @@ const ModeControl = L.Control.extend({
   onAdd(): HTMLElement {
     const container = L.DomUtil.create('div', 'mode-control');
     container.innerHTML = `
-      <button class="mode-btn" data-mode="street" title="Street">2D</button>
-      <button class="mode-btn" data-mode="3d" title="3D">3D</button>
-      <button class="mode-btn" data-mode="satellite" title="Satellite">Sat</button>
+      <button class="mode-btn" type="button" data-mode="street" aria-pressed="${state.baseMode === "street"}" title="Mode peta 2D">2D</button>
+      <button class="mode-btn" type="button" data-mode="3d" aria-pressed="${state.baseMode === "3d"}" title="Mode peta 3D">3D</button>
+      <button class="mode-btn" type="button" data-mode="satellite" aria-pressed="${state.baseMode === "satellite"}" title="Mode satelit">Sat</button>
+      <span class="mode-control-divider" aria-hidden="true"></span>
+      <button class="mode-btn mode-transport-btn" type="button" data-transport="rail" aria-pressed="${state.transportLayer === "rail"}" title="Tampilkan jalur kereta">Kereta</button>
     `;
     L.DomEvent.disableClickPropagation(container);
     L.DomEvent.disableScrollPropagation(container);
     container.querySelectorAll<HTMLButtonElement>('.mode-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
-        const m = (btn.dataset.mode as BaseMapMode) || 'street';
-        void setBaseMap(m);
+        const mode = btn.dataset.mode as BaseMapMode | undefined;
+        if (mode) {
+          void setBaseMap(mode);
+          return;
+        }
+        const transport = btn.dataset.transport as TransportLayerMode | undefined;
+        if (transport === "rail") {
+          setTransportLayer(state.transportLayer === "rail" ? "traffic" : "rail");
+        }
       });
     });
+    syncLayerControls();
     return container;
   }
 });
@@ -3183,6 +6970,7 @@ function applyDevices(devices: DeviceRecord[]): void {
     ? devices.find((d) => d.id === state.device!.id) ?? devices[0]
     : devices[0];
   state.device = selected;
+  showUpdateNoticeForDevice(selected);
   renderCameraTile();
   devices.forEach((device) => {
     void resolveRoadName(device).then(() => {
@@ -3211,6 +6999,507 @@ function applyDevices(devices: DeviceRecord[]): void {
 
   syncPoiMarkers([selected.position.lat, selected.position.lng]);
   rescaleMarkers();
+  replayPendingDeepLink();
+}
+
+function updateNoticeTitle(update: ControllerUpdateInfo): string {
+  if (update.status === "error") return "Update controller gagal";
+  if (update.stage === "downloading") return "Mengunduh update controller";
+  if (update.stage === "downloaded") return "Update controller berhasil diunduh";
+  if (update.stage === "installing") return "Menerapkan update controller";
+  if (update.stage === "rebooting") return "Raspberry Pi akan restart";
+  if (update.stage === "restarted") return "Controller berhasil direstart";
+  if (update.stage === "up-to-date") return "Controller sudah versi terbaru";
+  if (update.status === "complete") return "Update controller selesai";
+  return "Status update controller";
+}
+
+function showDirectBrowserNotification(title: string, message: string): void {
+  try {
+    const notification = new Notification(title, {
+      body: message,
+      tag: "its-controller-update",
+      silent: false,
+    });
+    window.setTimeout(() => notification.close(), 7000);
+  } catch {
+    // Browser may block system notifications despite a granted permission.
+  }
+}
+
+function maybeShowBrowserNotification(title: string, message: string): void {
+  if (!("Notification" in window)) return;
+  if (Notification.permission !== "granted") return;
+  if ("serviceWorker" in navigator) {
+    void navigator.serviceWorker.ready
+      .then((registration) => registration.showNotification(title, {
+        body: message,
+        tag: "its-controller-update",
+        silent: false,
+        icon: "/favicon.svg",
+        badge: "/favicon.svg",
+        data: { url: window.location.origin },
+      }))
+      .catch(() => showDirectBrowserNotification(title, message));
+    return;
+  }
+  showDirectBrowserNotification(title, message);
+}
+
+function requestBrowserNotificationPermission(): void {
+  if (!("Notification" in window)) {
+    showGlobalNotice("warning", "Notifikasi browser tidak didukung", "Browser ini belum mendukung notifikasi sistem");
+    return;
+  }
+  void Notification.requestPermission().then((permission) => {
+    if (permission === "granted") {
+      showGlobalNotice("success", "Notifikasi aktif", "Update Raspberry Pi akan muncul sebagai notifikasi browser");
+      maybeShowBrowserNotification("Notifikasi ITS aktif", "Dashboard akan memberi kabar saat update controller berjalan");
+    } else {
+      showGlobalNotice("warning", "Notifikasi belum aktif", "Izin notifikasi browser belum diberikan");
+    }
+  });
+}
+
+function maybePromptNotificationPermission(): void {
+  if (state.notificationPromptShown) return;
+  if (Date.now() - APP_STARTED_AT < 12_000) return;
+  if (!("Notification" in window) || Notification.permission !== "default") return;
+  state.notificationPromptShown = true;
+  showGlobalNotice(
+    "info",
+    "Aktifkan notifikasi update",
+    "Tekan Aktifkan agar status download, restart, dan update Raspberry muncul di browser",
+    { actionLabel: "Aktifkan", onAction: requestBrowserNotificationPermission },
+  );
+}
+
+function showGlobalNotice(
+  kind: NoticeKind,
+  title: string,
+  message: string,
+  action?: { actionLabel: string; onAction: () => void },
+): void {
+  let host = document.querySelector<HTMLDivElement>(".global-notice-host");
+  if (!host) {
+    host = document.createElement("div");
+    host.className = "global-notice-host";
+    document.body.appendChild(host);
+  }
+
+  const notice = document.createElement("div");
+  notice.className = `global-notice global-notice-${kind}`;
+  notice.innerHTML = `
+    <div class="global-notice-dot"></div>
+    <div class="global-notice-copy">
+      <strong>${escapeHtml(title)}</strong>
+      <span>${escapeHtml(message)}</span>
+    </div>
+    ${action ? `<button class="global-notice-action" type="button">${escapeHtml(action.actionLabel)}</button>` : ""}
+  `;
+  notice.querySelector<HTMLButtonElement>(".global-notice-action")?.addEventListener("click", () => {
+    action?.onAction();
+    notice.classList.remove("show");
+    window.setTimeout(() => notice.remove(), 220);
+  });
+  host.appendChild(notice);
+  window.setTimeout(() => notice.classList.add("show"), 20);
+  window.setTimeout(() => {
+    notice.classList.remove("show");
+    window.setTimeout(() => notice.remove(), 220);
+  }, action ? 12000 : kind === "error" ? 9000 : 6500);
+}
+
+function showUpdateNoticeForDevice(device: DeviceRecord | null): void {
+  const update = device?.update;
+  if (!device || !update) return;
+  const updatedAt = normalizeEpoch(update.updatedAt ?? 0);
+  if (!updatedAt) return;
+  const ageMs = Date.now() - updatedAt;
+  if (ageMs > 20 * 60_000 && update.status !== "running") return;
+  const key = `${device.id}:${update.status || ""}:${update.stage || ""}:${updatedAt}`;
+  if (state.lastUpdateNoticeKey === key) return;
+  state.lastUpdateNoticeKey = key;
+
+  const kind = update.status === "error"
+    ? "error"
+    : update.status === "complete"
+      ? "success"
+      : update.stage === "rebooting"
+        ? "warning"
+        : "info";
+  const title = updateNoticeTitle(update);
+  const message = update.message || "Status update controller berubah";
+  showGlobalNotice(kind, title, message);
+  maybeShowBrowserNotification(title, message);
+}
+
+function appDownloadUrl(update: AppUpdateInfo): string {
+  return update.downloadUrl || update.apkUrl || update.latestUrl || APP_DOWNLOAD_FALLBACK_URL;
+}
+
+function openAppInstaller(update: AppUpdateInfo, automatic = false): void {
+  const url = appDownloadUrl(update);
+  if (!url) {
+    showGlobalNotice("warning", "Link update belum siap", "APK terbaru belum tersedia di Firebase");
+    return;
+  }
+
+  if (!automatic) {
+    showGlobalNotice(
+      "info",
+      "Download APK ITS",
+      "Android tetap akan meminta konfirmasi sebelum aplikasi diperbarui",
+    );
+  }
+
+  const link = document.createElement("a");
+  link.href = url;
+  link.rel = "noopener";
+  link.download = update.fileName || "its-latest.apk";
+  link.style.display = "none";
+  document.body.appendChild(link);
+  link.click();
+  window.setTimeout(() => link.remove(), 100);
+}
+
+async function fetchAppUpdateInfo(): Promise<AppUpdateInfo | null> {
+  const sources = [...APP_UPDATE_DATABASE_URLS, APP_UPDATE_MANIFEST_URL];
+  for (const url of sources) {
+    try {
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) continue;
+      const update = await res.json() as AppUpdateInfo | null;
+      if (!update || typeof update !== "object") continue;
+      if (!update.versionCode && !update.versionName && !appDownloadUrl(update)) continue;
+      return update;
+    } catch (err) {
+      console.warn("[ITS] app update source failed", url, err);
+    }
+  }
+  return null;
+}
+
+function closeAppUpdateModal(): void {
+  const modal = document.getElementById("app-update-modal");
+  if (!modal) return;
+  modal.classList.remove("open");
+  modal.classList.add("closing");
+  window.setTimeout(() => modal.remove(), 260);
+}
+
+function showAppUpdateModal(update: AppUpdateInfo): void {
+  document.getElementById("app-update-modal")?.remove();
+
+  const appName = update.appName || APP_NAME;
+  const ownerName = update.ownerName || APP_OWNER_NAME;
+  const institution = update.institution || APP_INSTITUTION;
+  const remoteCode = Number(update.versionCode);
+  const remoteVersion = update.versionName || (Number.isFinite(remoteCode) ? String(remoteCode) : "baru");
+  const localVersion = `v${APP_VERSION}`;
+  const latestVersion = remoteVersion.startsWith("v") ? remoteVersion : `v${remoteVersion}`;
+  const logoUrl = update.logoUrl || "/favicon.svg";
+  const notes = (update.releaseNotes || [])
+    .filter(Boolean)
+    .slice(0, 5);
+  const noteItems = notes.length
+    ? notes.map((note) => `<li>${escapeHtml(note)}</li>`).join("")
+    : "<li>APK terbaru ITS sudah tersedia.</li>";
+  const releaseTime = update.updatedAt ? new Date(update.updatedAt).getTime() : 0;
+  const releaseLabel = Number.isFinite(releaseTime) && releaseTime > 0
+    ? `Rilis ${new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeStyle: "short" }).format(new Date(releaseTime))}`
+    : "";
+  const meta = [
+    formatBytes(update.sizeBytes),
+    releaseLabel,
+  ].filter(Boolean).join(" - ");
+
+  const modal = document.createElement("div");
+  modal.id = "app-update-modal";
+  modal.className = "app-update-modal";
+  modal.innerHTML = `
+    <div class="app-update-backdrop"></div>
+    <section class="app-update-sheet" role="dialog" aria-modal="true" aria-labelledby="app-update-title">
+      <div class="app-update-handle"></div>
+      <div class="app-update-logo-wrap">
+        <img class="app-update-logo" src="${escapeHtml(logoUrl)}" alt="${escapeHtml(appName)}">
+      </div>
+      <h2 id="app-update-title">${escapeHtml(appName)}</h2>
+      <div class="app-update-owner">${escapeHtml(ownerName)} - ${escapeHtml(institution)}</div>
+      <div class="app-update-version">
+        <div class="app-update-version-item">
+          <span class="app-update-version-label">Versi saat ini</span>
+          <strong>${escapeHtml(localVersion)}</strong>
+        </div>
+        <div class="app-update-version-arrow">→</div>
+        <div class="app-update-version-item">
+          <span class="app-update-version-label">Versi terbaru</span>
+          <strong>${escapeHtml(latestVersion)}</strong>
+        </div>
+      </div>
+      <div class="app-update-notes">
+        <h3>Catatan update</h3>
+        <ul>${noteItems}</ul>
+      </div>
+      ${meta ? `<div class="app-update-meta">${escapeHtml(meta)}</div>` : ""}
+      <div class="app-update-actions">
+        <button class="app-update-primary" type="button" data-action="download">Download APK</button>
+        <button class="app-update-secondary" type="button" data-action="later">Nanti</button>
+      </div>
+    </section>
+  `;
+
+  modal.querySelector(".app-update-backdrop")?.addEventListener("click", closeAppUpdateModal);
+  modal.querySelector<HTMLButtonElement>('[data-action="later"]')?.addEventListener("click", closeAppUpdateModal);
+  modal.querySelector<HTMLButtonElement>('[data-action="download"]')?.addEventListener("click", () => {
+    openAppInstaller(update);
+  });
+
+  document.body.appendChild(modal);
+  const sheet = modal.querySelector<HTMLElement>(".app-update-sheet");
+  if (sheet) setupSheetSwipe(sheet, closeAppUpdateModal);
+  window.setTimeout(() => modal.classList.add("open"), 20);
+
+  const key = `${update.versionCode || ""}:${update.versionName || ""}:${appDownloadUrl(update)}`;
+  if (update.autoDownload && state.lastAppAutoDownloadKey !== key) {
+    state.lastAppAutoDownloadKey = key;
+    window.setTimeout(() => {
+      if (document.getElementById("app-update-modal")) {
+        openAppInstaller(update, true);
+        showGlobalNotice("info", "Download APK dimulai", "File APK ITS terbaru sedang diunduh");
+      }
+    }, 1400);
+  }
+}
+
+async function checkAppUpdateManifest(): Promise<void> {
+  try {
+    const update = await fetchAppUpdateInfo();
+    if (!update) return;
+
+    const remoteCode = Number(update.versionCode);
+    const hasNewCode = Number.isFinite(remoteCode) && remoteCode > APP_VERSION_CODE;
+    const hasNewName = Boolean(update.versionName && update.versionName !== APP_VERSION);
+    if (!hasNewCode && !hasNewName) return;
+
+    const key = `${update.versionCode || ""}:${update.versionName || ""}:${appDownloadUrl(update)}`;
+    if (state.lastAppUpdateKey === key) return;
+    state.lastAppUpdateKey = key;
+
+    const versionLabel = update.versionName || (Number.isFinite(remoteCode) ? String(remoteCode) : "baru");
+    const title = update.force ? "Update wajib ITS" : "Update aplikasi tersedia";
+    const message = `Versi ${versionLabel} siap didownload`;
+    showAppUpdateModal(update);
+    maybeShowBrowserNotification(title, message);
+  } catch (err) {
+    console.warn("[ITS] app update check failed", err);
+  }
+}
+
+function routeFromIncomingUrl(url: URL): string {
+  if (url.protocol === `${ANDROID_DEEP_LINK_SCHEME}:`) {
+    return (url.hostname || url.pathname.replace(/^\/+/, "") || "map").toLowerCase();
+  }
+  return (url.searchParams.get("route") || "map").toLowerCase();
+}
+
+function focusFromIncomingUrl(rawUrl: string, allowDefer = true): boolean {
+  let url: URL;
+  try {
+    url = new URL(rawUrl, APP_PUBLIC_URL);
+  } catch {
+    return false;
+  }
+
+  const route = routeFromIncomingUrl(url);
+  const focus = (url.searchParams.get("focus") || url.searchParams.get("view") || "").toLowerCase();
+  const mode = (url.searchParams.get("mode") || "").toLowerCase();
+  const lat = Number(url.searchParams.get("lat"));
+  const lng = Number(url.searchParams.get("lng"));
+  const z = Number(url.searchParams.get("z"));
+  if (route === "licenses" || route === "license" || focus === "licenses" || focus === "lisensi") {
+    openMapLicensePage();
+    return true;
+  }
+  if (mode === "street" || mode === "2d") {
+    void setBaseMap("street");
+  } else if (mode === "3d") {
+    void setBaseMap("3d");
+  } else if (mode === "satellite" || mode === "sat") {
+    void setBaseMap("satellite");
+  }
+
+  if (focus === "user" || focus === "me" || focus === "self" || focus === "lokasi-saya") {
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      map.setView(
+        [clamp(lat, -90, 90), clamp(lng, -180, 180)],
+        Number.isFinite(z) ? clamp(z, 3, 20) : Math.max(DEFAULT_ZOOM, map.getZoom() || DEFAULT_ZOOM),
+        { animate: true },
+      );
+    } else {
+      locateUser();
+    }
+    return true;
+  }
+
+  if (focus === "device" || focus === "raspi" || focus === "raspberry" || focus === "raspberry-pi") {
+    const deviceId = url.searchParams.get("device") || url.searchParams.get("deviceId") || state.device?.id || "raspberry-its";
+    const device = state.devices.find((d) => d.id === deviceId) ?? state.devices.find((d) => d.id.includes("rasp")) ?? state.device;
+    if (device) {
+      state.device = device;
+      map.setView([device.position.lat, device.position.lng], DEFAULT_ZOOM, { animate: true });
+      return true;
+    }
+    if (allowDefer) state.pendingDeepLinkUrl = rawUrl;
+    return true;
+  }
+
+  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+    map.setView(
+      [clamp(lat, -90, 90), clamp(lng, -180, 180)],
+      Number.isFinite(z) ? clamp(z, 3, 20) : Math.max(DEFAULT_ZOOM, map.getZoom() || DEFAULT_ZOOM),
+      { animate: true },
+    );
+  }
+
+  const deviceId = url.searchParams.get("device") || url.searchParams.get("deviceId") || "";
+  if (deviceId) {
+    const device = state.devices.find((d) => d.id === deviceId);
+    if (device) {
+      state.device = device;
+      map.setView([device.position.lat, device.position.lng], DEFAULT_ZOOM, { animate: true });
+      return true;
+    }
+    if (allowDefer) state.pendingDeepLinkUrl = rawUrl;
+  }
+
+  const poiId = url.searchParams.get("poi") || "";
+  if (poiId) {
+    const poi = state.poiData.get(poiId);
+    if (poi) {
+      openPoiModal(poi);
+      return true;
+    }
+    if (allowDefer) state.pendingDeepLinkUrl = rawUrl;
+  }
+
+  if (route === "traffic" || route === "chart" || route === "its") {
+    if (isMobile()) {
+      openITSSheet();
+    } else if (state.device) {
+      openModal(state.device);
+      const modal = document.querySelector<HTMLElement>(".m-device-sheet");
+      if (modal) setSheetActiveTab(modal, "traffic");
+    }
+    return true;
+  }
+
+  return route === "map" || route === "open" || route === "device" || (Number.isFinite(lat) && Number.isFinite(lng));
+}
+
+function replayPendingDeepLink(): void {
+  if (!state.pendingDeepLinkUrl) return;
+  const pending = state.pendingDeepLinkUrl;
+  state.pendingDeepLinkUrl = "";
+  if (!focusFromIncomingUrl(pending, false)) {
+    state.pendingDeepLinkUrl = pending;
+  }
+}
+
+function setupNativeDeepLinks(): void {
+  if (!Capacitor.isNativePlatform()) return;
+  void CapacitorApp.getLaunchUrl()
+    .then((launch) => {
+      if (launch?.url) focusFromIncomingUrl(launch.url);
+    })
+    .catch((err) => console.warn("[ITS] launch url failed", err));
+
+  void CapacitorApp.addListener("appUrlOpen", (event) => {
+    if (event.url) focusFromIncomingUrl(event.url);
+  });
+}
+
+function updateAndroidButtonState(): void {
+  const link = document.getElementById("android-open-btn");
+  if (!link) return;
+  link.dataset.installed = state.androidAppDetected === true
+    ? "true"
+    : state.androidAppDetected === false
+      ? "false"
+      : "unknown";
+  link.textContent = state.androidAppDetected === false ? "Download ITS" : "Buka ITS";
+}
+
+async function checkInstalledAndroidApp(showNotice = false): Promise<boolean> {
+  const relatedAppsApi = (navigator as NavigatorWithRelatedApps).getInstalledRelatedApps;
+  if (!relatedAppsApi) {
+    state.androidAppDetected = null;
+    state.relatedAppsChecked = true;
+    updateAndroidButtonState();
+    if (showNotice) {
+      showGlobalNotice("warning", "Apps on Device tidak tersedia", "Browser ini belum mendukung pengecekan aplikasi terpasang");
+    }
+    return false;
+  }
+
+  try {
+    const relatedApps = await relatedAppsApi.call(navigator);
+    const detected = relatedApps.some((app) =>
+      app.id === APP_PACKAGE_ID
+      || app.url === APP_PUBLIC_URL
+      || app.url === APP_PUBLIC_URL.replace(/\/$/, ""),
+    );
+    state.androidAppDetected = detected;
+    state.relatedAppsChecked = true;
+    updateAndroidButtonState();
+    if (showNotice) {
+      showGlobalNotice(
+        detected ? "success" : "info",
+        detected ? "Aplikasi ITS terdeteksi" : "Aplikasi ITS belum terdeteksi",
+        detected ? "Website bisa membuka aplikasi lewat its://map" : "Download APK terbaru dari panel update ITS",
+      );
+    }
+    return detected;
+  } catch (err) {
+    state.androidAppDetected = null;
+    state.relatedAppsChecked = true;
+    updateAndroidButtonState();
+    console.warn("[ITS] related app check failed", err);
+    if (showNotice) {
+      showGlobalNotice("warning", "Apps on Device belum aktif", "Izinkan Apps on Device di pengaturan situs browser");
+    }
+    return false;
+  }
+}
+
+function createOpenAndroidButton(): void {
+  if (Capacitor.isNativePlatform()) return;
+  if (document.getElementById("android-open-btn")) return;
+
+  const link = document.createElement("a");
+  link.id = "android-open-btn";
+  link.className = "android-open-btn";
+  link.href = currentMapDeepLink();
+  link.textContent = "Buka ITS";
+  link.setAttribute("aria-label", "Buka aplikasi Android ITS");
+  link.addEventListener("click", () => {
+    link.href = currentMapDeepLink();
+    void checkInstalledAndroidApp(true);
+    window.setTimeout(() => {
+      if (document.visibilityState === "visible") {
+        showGlobalNotice("info", "Aplikasi ITS", "Jika belum terbuka, install APK ITS terlebih dahulu");
+      }
+    }, 1200);
+  });
+
+  document.body.appendChild(link);
+  const updateHref = () => {
+    link.href = currentMapDeepLink();
+  };
+  map.on("moveend zoomend", updateHref);
+  window.setTimeout(() => {
+    void checkInstalledAndroidApp(false);
+  }, 1800);
 }
 
 function reportOfflineDevices(devices: DeviceRecord[]): void {
@@ -3272,6 +7561,7 @@ async function refreshSnapshot(): Promise<void> {
     if (!devices.length) throw new Error("No valid devices found (local & Firebase)");
 
     applyDevices(devices);
+    maybePromptNotificationPermission();
     reportOfflineDevices(devices);
   } catch (err) {
     console.warn("[ITS] Snapshot error:", err);
@@ -3313,7 +7603,6 @@ function isTablet(): boolean {
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 type MobileTab = "peta" | "its" | "profil";
-type LayerMode = "street" | "satellite" | "3d";
 
 const mobileState = {
   activeTab: "peta" as MobileTab,
@@ -3416,20 +7705,40 @@ function openLayerModal(): void {
     <div class="m-layer-backdrop"></div>
     <div class="m-layer-sheet">
       <div class="m-sheet-handle-bar"></div>
-      <div class="m-layer-title">Pilih Tampilan Peta</div>
-      <div class="m-layer-options">
-        <button class="m-layer-opt ${state.baseMode === 'street' ? 'active' : ''}" data-mode="street">
-          <div class="m-layer-icon">🗺️</div>
-          <span>Normal</span>
-        </button>
-        <button class="m-layer-opt ${state.baseMode === 'satellite' ? 'active' : ''}" data-mode="satellite">
-          <div class="m-layer-icon">🛰️</div>
-          <span>Satelit</span>
-        </button>
-        <button class="m-layer-opt ${state.baseMode === '3d' ? 'active' : ''}" data-mode="3d">
-          <div class="m-layer-icon">🏙️</div>
-          <span>3D</span>
-        </button>
+      <div class="m-layer-title">Lapisan Maps</div>
+      <div class="m-layer-section">
+        <h2 class="m-layer-heading">Mode Peta</h2>
+        <div class="m-layer-options">
+          <button class="m-layer-opt ${state.baseMode === 'street' ? 'active' : ''}" type="button" data-mode="street" aria-pressed="${state.baseMode === 'street'}">
+            <div class="m-layer-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M4 7.5 9 5l6 2.5 5-2.5v11.5L15 19l-6-2.5L4 19V7.5Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 5v11.5M15 7.5V19" stroke="currentColor" stroke-width="1.8"/></svg>
+            </div>
+            <span>2D</span>
+          </button>
+          <button class="m-layer-opt ${state.baseMode === '3d' ? 'active' : ''}" type="button" data-mode="3d" aria-pressed="${state.baseMode === '3d'}">
+            <div class="m-layer-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M5 10.5 12 6l7 4.5-7 4.5-7-4.5Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M5 14l7 4.5 7-4.5M12 15v3.5" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+            </div>
+            <span>3D</span>
+          </button>
+          <button class="m-layer-opt ${state.baseMode === 'satellite' ? 'active' : ''}" type="button" data-mode="satellite" aria-pressed="${state.baseMode === 'satellite'}">
+            <div class="m-layer-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M8.5 15.5 4 20m11.5-4.5L20 20M5 8l11 11M9 4l11 11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><rect x="7.5" y="3.5" width="7" height="11" rx="1.6" transform="rotate(-45 7.5 3.5)" stroke="currentColor" stroke-width="1.8"/></svg>
+            </div>
+            <span>Sat</span>
+          </button>
+        </div>
+      </div>
+      <div class="m-layer-section">
+        <h2 class="m-layer-heading">Transportasi</h2>
+        <div class="m-layer-options m-layer-options-transport">
+          <button class="m-layer-opt ${state.transportLayer === 'rail' ? 'active' : ''}" type="button" data-transport="rail" aria-pressed="${state.transportLayer === 'rail'}">
+            <div class="m-layer-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M7 5h10a2 2 0 0 1 2 2v7.5a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z" stroke="currentColor" stroke-width="1.8"/><path d="M8 9h8M8 13h8M8.5 20l2-3.5M15.5 20l-2-3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            </div>
+            <span>Kereta</span>
+          </button>
+        </div>
       </div>
     </div>
   `;
@@ -3438,10 +7747,14 @@ function openLayerModal(): void {
 
   overlay.querySelectorAll<HTMLButtonElement>(".m-layer-opt").forEach(btn => {
     btn.addEventListener("click", async () => {
-      const mode = btn.dataset.mode as LayerMode;
-      overlay.querySelectorAll(".m-layer-opt").forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-      await setBaseMap(mode);
+      const mode = btn.dataset.mode as BaseMapMode | undefined;
+      const transport = btn.dataset.transport as TransportLayerMode | undefined;
+      if (mode) {
+        await setBaseMap(mode);
+      } else if (transport === "rail") {
+        setTransportLayer(state.transportLayer === "rail" ? "traffic" : "rail");
+      }
+      syncLayerControls();
       setTimeout(closeLayerModal, 280);
     });
   });
@@ -3467,33 +7780,84 @@ function closeLayerModal(): void {
 // ─── 3. Generic Sheet Swipe Handler ──────────────────────────────────────────
 
 function setupSheetSwipe(sheetEl: HTMLElement, onClose: () => void): void {
+  if (sheetEl.dataset.swipeSetup === "true") {
+    return;
+  }
+  sheetEl.dataset.swipeSetup = "true";
+
+  let startX = 0;
   let startY = 0;
-  let currentY = 0;
+  let current = 0;
+  let dragging = false;
+  let activePointerId = -1;
 
-  const onTouchStart = (e: TouchEvent) => {
-    startY = e.touches[0].clientY;
-    currentY = 0;
+  const isDesktopSheet = () => window.matchMedia("(min-width: 900px)").matches;
+  const dragHandles = Array.from(
+    sheetEl.querySelectorAll<HTMLElement>(".m-sheet-handle-bar, .m-its-handle-zone, .app-update-handle"),
+  );
+
+  const beginDrag = (e: PointerEvent) => {
+    const target = e.target as HTMLElement | null;
+    if (target?.closest("button, a, input, textarea, select")) return;
+    e.preventDefault();
+    e.stopPropagation();
+    dragging = true;
+    activePointerId = e.pointerId;
+    current = 0;
+    startX = e.clientX;
+    startY = e.clientY;
     sheetEl.style.transition = "none";
+    sheetEl.classList.add("is-dragging");
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerUp);
+    try {
+      (e.currentTarget as HTMLElement | null)?.setPointerCapture?.(e.pointerId);
+    } catch {
+      // Ignore capture failures on older WebView builds.
+    }
   };
 
-  const onTouchMove = (e: TouchEvent) => {
-    const delta = e.touches[0].clientY - startY;
-    currentY = Math.max(0, delta);
-    sheetEl.style.transform = `translateY(${currentY}px)`;
+  const onPointerMove = (e: PointerEvent) => {
+    if (!dragging || e.pointerId !== activePointerId) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const desktop = isDesktopSheet();
+    const delta = desktop ? e.clientX - startX : e.clientY - startY;
+    current = desktop ? Math.min(0, delta) : Math.max(0, delta);
+    if (Math.abs(current) < 4) return;
+    sheetEl.style.transform = desktop ? `translateX(${current}px)` : `translateY(${current}px)`;
   };
 
-  const onTouchEnd = () => {
+  const onPointerUp = (e?: PointerEvent) => {
+    if (!dragging || (e && e.pointerId !== activePointerId)) return;
+    e?.preventDefault();
+    e?.stopPropagation();
+    dragging = false;
+    activePointerId = -1;
+    sheetEl.classList.remove("is-dragging");
     sheetEl.style.transition = "";
-    if (currentY > 80) {
-      onClose();
+    window.removeEventListener("pointermove", onPointerMove);
+    window.removeEventListener("pointerup", onPointerUp);
+    window.removeEventListener("pointercancel", onPointerUp);
+    const desktop = isDesktopSheet();
+    const shouldClose = desktop ? current < -110 : current > 80;
+    if (shouldClose) {
+      sheetEl.style.transform = desktop ? "translateX(-112%)" : "translateY(100%)";
+      window.setTimeout(onClose, 120);
     } else {
       sheetEl.style.transform = "";
     }
   };
 
-  sheetEl.addEventListener("touchstart", onTouchStart, { passive: true });
-  sheetEl.addEventListener("touchmove", onTouchMove, { passive: true });
-  sheetEl.addEventListener("touchend", onTouchEnd);
+  const listenerTargets = [sheetEl, ...dragHandles.filter((target) => target !== sheetEl)];
+  listenerTargets.forEach((target) => {
+    target.addEventListener("pointerdown", beginDrag);
+    target.addEventListener("pointermove", onPointerMove);
+    target.addEventListener("pointerup", onPointerUp);
+    target.addEventListener("pointercancel", onPointerUp);
+    target.addEventListener("lostpointercapture", onPointerUp);
+  });
 }
 
 // ─── 4. ITS Sheet (Swipeable, Dynamic Map Resize) ────────────────────────────
@@ -3634,12 +7998,292 @@ function focusITSVideoSection(): void {
   });
 }
 
+function detachReusableMobileCameraSurface(nextKey: string): HTMLElement | null {
+  if (!nextKey) return null;
+  const scroll = document.getElementById("m-its-scroll");
+  const current = scroll?.querySelector<HTMLElement>("[data-camera-key]");
+  if (!current || current.dataset.cameraKey !== nextKey) return null;
+  const holder = document.createElement("div");
+  holder.appendChild(current);
+  return current;
+}
+
+function restoreReusableMobileCameraSurface(nextKey: string, preserved: HTMLElement | null): void {
+  if (!nextKey || !preserved) return;
+  const scroll = document.getElementById("m-its-scroll");
+  const fresh = Array.from(scroll?.querySelectorAll<HTMLElement>("[data-camera-key]") || [])
+    .find((element) => element.dataset.cameraKey === nextKey);
+  fresh?.replaceWith(preserved);
+}
+
+function activeCameraFullscreenElement(): HTMLElement | null {
+  const fullscreen = document.fullscreenElement as HTMLElement | null;
+  if (!fullscreen) return null;
+  if (fullscreen.matches("[data-browser-yolo-surface], [data-camera-key]")) return fullscreen;
+  return fullscreen.closest<HTMLElement>("[data-browser-yolo-surface], [data-camera-key]");
+}
+
+function trafficLightPlainText(color: TrafficColor): string {
+  if (color === "red") return "Lampu merah";
+  if (color === "yellow") return "Lampu kuning";
+  return "Lampu hijau";
+}
+
+function trafficWidgetImages(device: DeviceRecord | null): string[] {
+  const online = Boolean(device && device.status === "online" && navigator.onLine);
+  const candidates = online
+    ? [
+      device?.cameraDataset?.snapshot1Url,
+      device?.cameraDataset?.snapshot2Url,
+      device?.cameraThumbnailUrl,
+      device ? readCameraPoster(cameraSurfaceKey(device)) : "",
+    ]
+    : [];
+  const unique = candidates
+    .filter((url): url is string => Boolean(url && url.trim()))
+    .filter((url, index, list) => list.indexOf(url) === index);
+  return unique.length ? unique.slice(0, 2) : [TRAFFIC_WIDGET_FALLBACK_IMAGE_URL];
+}
+
+function vehicleStatIcon(kind: keyof VehicleBreakdown | "total"): string {
+  const common = `fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"`;
+  if (kind === "motorcycle") {
+    return `<svg viewBox="0 0 24 24" aria-hidden="true"><path ${common} d="M6 17a3 3 0 1 0 0 .1M18 17a3 3 0 1 0 0 .1M7 17h4l2-6h3l2 6M9 10h4M13 11l-2-3H8"/></svg>`;
+  }
+  if (kind === "bus") {
+    return `<svg viewBox="0 0 24 24" aria-hidden="true"><path ${common} d="M5 17V7a3 3 0 0 1 3-3h8a3 3 0 0 1 3 3v10M5 9h14M7 19h.1M17 19h.1M7 13h4M13 13h4"/></svg>`;
+  }
+  if (kind === "truck") {
+    return `<svg viewBox="0 0 24 24" aria-hidden="true"><path ${common} d="M3 7h11v10H3zM14 11h4l3 4v2h-7zM7 19a2 2 0 1 0 0 .1M18 19a2 2 0 1 0 0 .1"/></svg>`;
+  }
+  if (kind === "bicycle") {
+    return `<svg viewBox="0 0 24 24" aria-hidden="true"><path ${common} d="M6 17a4 4 0 1 0 0 .1M18 17a4 4 0 1 0 0 .1M8 17l4-8 3 8M10 9h4M12 9l-2-3h3"/></svg>`;
+  }
+  if (kind === "total") {
+    return `<svg viewBox="0 0 24 24" aria-hidden="true"><path ${common} d="M5 19V5M10 19v-8M15 19v-5M20 19V9"/></svg>`;
+  }
+  return `<svg viewBox="0 0 24 24" aria-hidden="true"><path ${common} d="M4 13l2-5h12l2 5M6 13h12v5H6zM8 18h.1M16 18h.1M7 10h10"/></svg>`;
+}
+
+function renderTrafficObjectWidget(device: DeviceRecord | null, traffic: TrafficState | null): string {
+  const images = trafficWidgetImages(device);
+  const breakdown = device?.vehicleBreakdown || { car: 0, motorcycle: 0, bus: 0, truck: 0, bicycle: 0, total: 0 };
+  const total = Math.max(breakdown.total || 0, traffic?.vehicleCount || device?.vehicleCount || 0);
+  const color = traffic?.color || "red";
+  const duration = traffic?.duration || device?.trafficDuration || 0;
+  const location = traffic?.roadName || device?.roadName || device?.roadHint || device?.label || "Lokasi sistem belum tersedia";
+  const aiStatus = device?.detectorStatus || (device?.status === "online" ? "menunggu deteksi" : "offline");
+  const updated = device?.detectorUpdatedAt ? formatAge(normalizeEpoch(device.detectorUpdatedAt)) : "belum ada update";
+  const cards: Array<[keyof VehicleBreakdown | "total", string, number]> = [
+    ["car", "Mobil", breakdown.car],
+    ["motorcycle", "Motor", breakdown.motorcycle],
+    ["bus", "Bus", breakdown.bus],
+    ["truck", "Truk", breakdown.truck],
+    ["bicycle", "Sepeda", breakdown.bicycle],
+    ["total", "Jumlah", total],
+  ];
+
+  return `
+    <div class="traffic-object-widget" data-traffic-object-widget>
+      <div class="traffic-object-hero">
+        <div class="traffic-object-carousel" data-carousel-track>
+          ${images.map((url, index) => `
+            <img class="traffic-object-slide${index === 0 ? " active" : ""}"
+                 src="${escapeHtml(url)}"
+                 alt="${index === 0 ? "nama 1" : "nama 2"} traffic object detection"
+                 loading="${index === 0 ? "eager" : "lazy"}">
+          `).join("")}
+        </div>
+        <div class="traffic-object-shade"></div>
+        <div class="traffic-object-topbar">
+          <span class="traffic-object-pin"></span>
+          <span>${escapeHtml(location)}</span>
+        </div>
+        <div class="traffic-object-title">
+          <strong>Traffic Object Detection</strong>
+          <span>${escapeHtml(aiStatus)} - ${escapeHtml(updated)}</span>
+        </div>
+        <div class="traffic-object-modes">
+          <span>${vehicleStatIcon("car")} Mobil</span>
+          <span>${vehicleStatIcon("bus")} Bus</span>
+          <span>${vehicleStatIcon("truck")} Truk</span>
+          <span>${vehicleStatIcon("bicycle")} Sepeda</span>
+        </div>
+        <div class="traffic-object-signal signal-${color}">
+          <span></span>
+          <b>${escapeHtml(trafficLightPlainText(color))}</b>
+          <em>${duration ? `${Math.round(duration)} detik` : "sinkron lampu"}</em>
+        </div>
+      </div>
+
+      <div class="traffic-object-cards">
+        ${cards.map(([kind, label, value]) => `
+          <div class="traffic-object-card">
+            <span class="traffic-object-card-icon">${vehicleStatIcon(kind)}</span>
+            <span class="traffic-object-card-label">${escapeHtml(label)}</span>
+            <strong>${Math.max(0, Math.round(value || 0))}</strong>
+          </div>
+        `).join("")}
+      </div>
+
+      <div class="traffic-object-location">
+        <span>Lokasi sistem</span>
+        <strong>${escapeHtml(location)}</strong>
+      </div>
+    </div>
+  `;
+}
+
+function setupTrafficObjectCarousels(root: ParentNode = document): void {
+  root.querySelectorAll<HTMLElement>("[data-traffic-object-widget]").forEach((widget) => {
+    if (trafficObjectCarouselTimers.has(widget)) return;
+    const slides = Array.from(widget.querySelectorAll<HTMLImageElement>(".traffic-object-slide"));
+    if (slides.length <= 1) return;
+    let index = 0;
+    const timer = window.setInterval(() => {
+      if (!widget.isConnected) {
+        window.clearInterval(timer);
+        return;
+      }
+      slides[index]?.classList.remove("active");
+      index = (index + 1) % slides.length;
+      slides[index]?.classList.add("active");
+    }, 3200);
+    trafficObjectCarouselTimers.set(widget, timer);
+  });
+}
+
+function aiEngineLabel(mode?: AiEngineMode): string {
+  if (mode === "grove-vision-ai") return "Grove Vision AI V2";
+  if (mode === "raspberry-yolo") return "YOLO Raspberry";
+  return "YOLO web browser";
+}
+
+function cameraSourceLabel(mode?: CameraSourceMode): string {
+  if (mode === "grove-vision-ai") return "Grove Vision AI / XIAO";
+  if (mode === "raspberry-hls") return "Raspberry HLS";
+  return "Raspberry WebRTC";
+}
+
+function effectiveRuntimeConfig(device: DeviceRecord): Required<Pick<DeviceRuntimeConfig, "aiEngine" | "cameraSource">> & DeviceRuntimeConfig {
+  const aiEngine = device.runtimeConfig?.aiEngine || "browser-yolo";
+  const cameraSource = device.runtimeConfig?.cameraSource
+    || (device.cameraMode === "webrtc" ? "raspberry-webrtc" : "raspberry-hls");
+  return { ...device.runtimeConfig, aiEngine, cameraSource };
+}
+
+function renderAiCameraControl(device: DeviceRecord): string {
+  const config = effectiveRuntimeConfig(device);
+  const aiOptions: Array<[AiEngineMode, string]> = [
+    ["browser-yolo", "YOLO web"],
+    ["raspberry-yolo", "YOLO Raspberry"],
+    ["grove-vision-ai", "Grove Vision AI"],
+  ];
+  const cameraOptions: Array<[CameraSourceMode, string]> = [
+    ["raspberry-webrtc", "Raspberry WebRTC"],
+    ["raspberry-hls", "Raspberry HLS"],
+    ["grove-vision-ai", "Grove Vision AI"],
+  ];
+  const optionButtons = <T extends string>(items: Array<[T, string]>, active: T, attr: string) => items.map(([value, label]) => `
+    <button type="button"
+            class="m-ai-option${value === active ? " active" : ""}"
+            ${attr}="${escapeHtml(value)}"
+            aria-pressed="${value === active}">
+      ${escapeHtml(label)}
+    </button>
+  `).join("");
+  const groveOn = config.aiEngine === "grove-vision-ai" || config.cameraSource === "grove-vision-ai";
+  const updated = config.updatedAt ? formatAge(normalizeEpoch(config.updatedAt)) : "belum dikirim";
+  return `
+    <div class="m-its-section">
+      <div class="m-its-section-title">Control AI & Kamera</div>
+      <div class="m-ai-control" data-ai-camera-control data-device-id="${escapeHtml(device.id)}">
+        <div class="m-ai-control-row">
+          <span>AI engine</span>
+          <div class="m-ai-options">${optionButtons(aiOptions, config.aiEngine, "data-ai-engine")}</div>
+        </div>
+        <div class="m-ai-control-row">
+          <span>Sumber kamera</span>
+          <div class="m-ai-options">${optionButtons(cameraOptions, config.cameraSource, "data-camera-source")}</div>
+        </div>
+        <div class="m-ai-control-status">
+          <strong>${escapeHtml(aiEngineLabel(config.aiEngine))}</strong>
+          <span>${escapeHtml(cameraSourceLabel(config.cameraSource))} · ${groveOn ? "Grove mode diminta" : "Raspberry mode"} · ${escapeHtml(updated)}</span>
+        </div>
+        <div class="m-ai-control-note">
+          Grove Vision AI V2 dipakai sebagai edge AI sensor. XIAO ESP32C3 dapat menjadi bridge UART/Wi-Fi ke Raspberry; driver hardware aktif setelah controller membaca config ini.
+        </div>
+      </div>
+    </div>`;
+}
+
+async function saveAiCameraControl(device: DeviceRecord, partial: Partial<DeviceRuntimeConfig>): Promise<void> {
+  const next: DeviceRuntimeConfig = {
+    ...effectiveRuntimeConfig(device),
+    ...partial,
+    updatedAt: Date.now(),
+    requestedBy: "web",
+  };
+  const groveRequested = next.aiEngine === "grove-vision-ai" || next.cameraSource === "grove-vision-ai";
+  next.groveVisionAi = {
+    enabled: groveRequested,
+    transport: device.runtimeConfig?.groveVisionAi?.transport || "uart",
+    serialPath: device.runtimeConfig?.groveVisionAi?.serialPath || "/dev/ttyACM0",
+    host: device.runtimeConfig?.groveVisionAi?.host,
+    port: device.runtimeConfig?.groveVisionAi?.port,
+    model: device.runtimeConfig?.groveVisionAi?.model || "SenseCraft AI YOLOv8/custom vehicle",
+  };
+
+  await firebaseWritePath("PATCH", `deviceControl/${device.id}`, { runtimeConfig: next });
+  await firebaseWritePath("PATCH", `devices/${device.id}`, { runtimeConfig: next });
+
+  const applyLocal = (item: DeviceRecord) => item.id === device.id ? { ...item, runtimeConfig: next } : item;
+  state.devices = state.devices.map(applyLocal);
+  if (state.device?.id === device.id) state.device = applyLocal(state.device);
+  showGlobalNotice("success", "Opsi AI tersimpan", `${aiEngineLabel(next.aiEngine)} · ${cameraSourceLabel(next.cameraSource)}`);
+  renderITSSheetContent();
+}
+
+function setupAiCameraControl(root: ParentNode): void {
+  root.querySelectorAll<HTMLElement>("[data-ai-camera-control]").forEach((control) => {
+    if (control.dataset.ready === "true") return;
+    control.dataset.ready = "true";
+    const deviceId = control.dataset.deviceId || state.device?.id || "";
+    const device = state.devices.find((item) => item.id === deviceId) || (state.device?.id === deviceId ? state.device : null);
+    if (!device) return;
+    control.querySelectorAll<HTMLButtonElement>("[data-ai-engine]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const aiEngine = button.dataset.aiEngine;
+        if (!isAiEngineMode(aiEngine)) return;
+        void saveAiCameraControl(device, { aiEngine }).catch((err) => {
+          showGlobalNotice("error", "Gagal menyimpan opsi AI", err instanceof Error ? err.message : "Firebase tidak menerima update");
+        });
+      });
+    });
+    control.querySelectorAll<HTMLButtonElement>("[data-camera-source]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const cameraSource = button.dataset.cameraSource;
+        if (!isCameraSourceMode(cameraSource)) return;
+        void saveAiCameraControl(device, { cameraSource }).catch((err) => {
+          showGlobalNotice("error", "Gagal menyimpan opsi kamera", err instanceof Error ? err.message : "Firebase tidak menerima update");
+        });
+      });
+    });
+  });
+}
+
 function renderITSSheetContent(): void {
+  if (activeCameraFullscreenElement()) {
+    syncCameraViews(state.device);
+    return;
+  }
   const scroll = document.getElementById("m-its-scroll");
   if (!scroll) return;
 
   const device = state.device;
   const traffic = device ? trafficStateForDevice(device) : null;
+  const nextCameraKey = cameraSurfaceKey(device);
+  const preservedCameraSurface = detachReusableMobileCameraSurface(nextCameraKey);
   const cameraSurface = renderCameraSurface(device, "m-camera-img", "m-camera-frame");
   const breakdown = device?.vehicleBreakdown;
   const detectorStatus = device?.detectorStatus
@@ -3656,6 +8300,11 @@ function renderITSSheetContent(): void {
   const bulbColor = traffic ? colorMap[traffic.color] : "#9ca3af";
 
   scroll.innerHTML = `
+    <div class="m-its-section">
+      <div class="m-its-section-title">Traffic Object Detection</div>
+      ${renderTrafficObjectWidget(device, traffic)}
+    </div>
+
     <div class="m-its-section" id="m-its-video">
       <div class="m-its-section-title">Video Realtime</div>
       <div class="m-its-camera-box">
@@ -3666,13 +8315,7 @@ function renderITSSheetContent(): void {
                </svg>
                <span>Belum ada kamera</span>
              </div>`}
-        ${cameraSurface ? renderDetectionOverlay(device) : ""}
-        <button class="m-camera-fullscreen" aria-label="Fullscreen">
-          <svg viewBox="0 0 16 16" fill="none" width="14" height="14">
-            <path d="M1 6V1h5M10 1h5v5M15 10v5h-5M6 15H1v-5"
-                  stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-          </svg>
-        </button>
+        ${cameraSurface && device?.cameraMode !== "webrtc" ? renderDetectionOverlay(device) : ""}
       </div>
     </div>
 
@@ -3693,6 +8336,8 @@ function renderITSSheetContent(): void {
       ${device ? renderDetectionChips(device.detections) : ""}
       ${detectorNote ? `<div class="m-detector-note">${escapeHtml(detectorNote)}</div>` : ""}
     </div>
+
+    ${device ? renderAiCameraControl(device) : ""}
 
     ${traffic ? `
     <div class="m-its-section">
@@ -3716,19 +8361,22 @@ function renderITSSheetContent(): void {
     <div class="m-its-section">
       <div class="m-its-section-title">Perangkat (${state.devices.length})</div>
       ${state.devices.map(d => {          // FIX 2: hapus parameter idx yang tidak dipakai
-      const t = trafficStateForDevice(d);
-      const c = colorMap[t.color];
-      return `<div class="m-device-row" data-id="${d.id}">
+    const t = trafficStateForDevice(d);
+    const c = colorMap[t.color];
+    return `<div class="m-device-row" data-id="${d.id}">
           <span class="m-device-bulb" style="background:${c}"></span>
           <span class="m-device-name">${escapeHtml(d.label)}</span>
           <span class="m-device-status status-${d.status}">${d.status}</span>
         </div>`;
-    }).join("")}
+  }).join("")}
     </div>
 
     <div style="height:24px"></div>
   `;
 
+  restoreReusableMobileCameraSurface(nextCameraKey, preservedCameraSurface);
+  setupTrafficObjectCarousels(scroll);
+  setupAiCameraControl(scroll);
   syncCameraViews(device);
   attachWebRtcStream();
   requestAnimationFrame(() => drawTrafficChart());
@@ -3863,8 +8511,8 @@ function openProfilSheet(): void {
                 stroke="#3b82f6" stroke-width="2" stroke-linecap="round"/>
         </svg>
       </div>
-      <div class="m-profil-name">Operator ITS Maps</div>
-      <div class="m-profil-role">Sistem Manajemen Lalu Lintas</div>
+      <div class="m-profil-name">${APP_OWNER_NAME}</div>
+      <div class="m-profil-role">${APP_INSTITUTION} - ${APP_NAME} v${APP_VERSION}</div>
       <div class="m-profil-stats">
         <div class="m-stat">
           <span class="m-stat-val">${state.devices.length}</span>
@@ -3943,8 +8591,19 @@ function initMobileUI(): void {
 }
 initMobileUI();
 void refreshSnapshot();
+const preloadBrowserYolo = () => {
+  void loadBrowserYoloSession().catch((err) => {
+    console.warn("[ITS] browser YOLO preload failed:", err);
+  });
+};
+if (typeof (window as any).requestIdleCallback === "function") {
+  (window as any).requestIdleCallback(preloadBrowserYolo, { timeout: 3500 });
+} else {
+  window.setTimeout(preloadBrowserYolo, 1500);
+}
 // Also fetch nearby POIs immediately so tablet filters have data even if devices are empty
 void refreshOverpassLayer();
+void refreshRoadLabelLayer();
 
 // ─── PWA: Service Worker registration and install prompt handler ─────
 if ('serviceWorker' in navigator) {
@@ -3963,19 +8622,21 @@ function createInstallButton(): HTMLButtonElement {
   const btn = document.createElement('button');
   btn.id = 'pwa-install-btn';
   btn.className = 'pwa-install-btn';
-  btn.textContent = 'Pasang Aplikasi';
+  btn.textContent = 'Pasang';
   Object.assign(btn.style, {
     position: 'fixed',
     right: '12px',
     bottom: '84px',
     zIndex: '9999',
+    width: '86px',
     padding: '8px 12px',
     background: '#2563eb',
     color: '#fff',
     border: 'none',
     borderRadius: '8px',
     boxShadow: '0 6px 14px rgba(37,99,235,0.24)',
-    cursor: 'pointer'
+    cursor: 'pointer',
+    whiteSpace: 'nowrap'
   });
 
   btn.addEventListener('click', async () => {
@@ -3996,12 +8657,14 @@ function createInstallButton(): HTMLButtonElement {
 window.addEventListener('beforeinstallprompt', (e: Event) => {
   e.preventDefault();
   deferredPrompt = e;
-  if (!document.getElementById('pwa-install-btn')) {
-    const btn = createInstallButton();
-    document.body.appendChild(btn);
-  } else {
-    (document.getElementById('pwa-install-btn') as HTMLElement).style.display = 'block';
+  if (window.innerWidth < 560) return;
+  const existingButton = document.getElementById('pwa-install-btn') as HTMLButtonElement | null;
+  if (existingButton) {
+    existingButton.style.display = 'block';
+    return;
   }
+  const btn = createInstallButton();
+  document.body.appendChild(btn);
 });
 
 window.addEventListener('appinstalled', () => {
@@ -4009,441 +8672,10 @@ window.addEventListener('appinstalled', () => {
   const b = document.getElementById('pwa-install-btn');
   if (b) b.remove();
 });
-=======
-  devices?: Array<Partial<DeviceRecord> & { position?: { x?: number; y?: number } }>;
-  events?: Array<Partial<EventRecord>>;
-};
 
-type AppConfig = {
-  snapshotUrl?: string;
-  refreshMs?: number;
-  mapAttribution?: string;
-  mapLabel?: string;
-  githubRepo?: string;
-  githubBranch?: string;
-};
-
-const FALLBACK: Required<Snapshot> = {
-  updatedAt: 1777870000000,
-  source: "demo",
-  devices: [
-    {
-      id: "raspberry-its",
-      label: "Raspberry Pi 5 Controller",
-      district: "Koridor Utama ITS",
-      ip: "10.176.37.67",
-      status: "online",
-      vehicles: 28,
-      congestion: 62,
-      speedKph: 31,
-      camera: "pending",
-      note: "controller aktif; kamera belum terpasang",
-      lastSeen: 1777869995000,
-      position: { x: 54.8, y: 48.5 },
-    },
-    {
-      id: "edge-sensor-02",
-      label: "Edge Sensor Timur",
-      district: "Simpang Timur",
-      ip: "10.176.37.82",
-      status: "offline",
-      vehicles: 9,
-      congestion: 18,
-      speedKph: 40,
-      camera: "offline",
-      note: "node cadangan belum online",
-      lastSeen: 1777868880000,
-      position: { x: 70.5, y: 38.7 },
-    },
-    {
-      id: "camera-gate-01",
-      label: "Camera Gate Selatan",
-      district: "Gerbang Selatan",
-      ip: "10.176.37.120",
-      status: "degraded",
-      vehicles: 41,
-      congestion: 78,
-      speedKph: 22,
-      camera: "pending",
-      note: "AI detector menunggu kamera fisik",
-      lastSeen: 1777869972000,
-      position: { x: 43.8, y: 69.5 },
-    },
-  ],
-  events: [
-    {
-      id: "ev-1",
-      time: 1777869820000,
-      label: "Heartbeat Raspberry Pi",
-      detail: "device raspberry-its mengirim status online",
-      severity: "good",
-      deviceId: "raspberry-its",
-    },
-    {
-      id: "ev-2",
-      time: 1777869600000,
-      label: "Lonjakan kendaraan",
-      detail: "koridor timur naik ke 78% congestion",
-      severity: "warn",
-      deviceId: "camera-gate-01",
-    },
-  ],
-};
-
-const app = document.querySelector<HTMLDivElement>("#app");
-if (!app) {
-  throw new Error("Missing #app element.");
-}
-
-app.innerHTML = `
-  <div class="shell">
-    <header class="hero">
-      <div>
-        <p class="eyebrow">ITS live map</p>
-        <h1>Raspberry Pi traffic controller dashboard</h1>
-        <p class="hero-copy">Dashboard ini membaca JSON statis dari GitHub Pages. Nanti saat controller Scala aktif, data tinggal diganti oleh snapshot realtime yang ditulis ke file JSON atau endpoint publik yang kamu pilih.</p>
-      </div>
-      <div class="hero-badges">
-        <span id="backendBadge" class="badge">Github JSON</span>
-        <span id="syncNote" class="sync">belum sinkron</span>
-      </div>
-    </header>
-
-    <main class="layout">
-      <section class="map-card">
-        <div class="card-head">
-          <div>
-            <p class="eyebrow">Traffic map</p>
-            <h2>Digital twin koridor ITS</h2>
-          </div>
-          <button id="refreshBtn" class="tool-btn" type="button">Refresh</button>
-        </div>
-
-        <div class="map-stage" id="mapStage">
-          <svg class="map-svg" viewBox="0 0 1000 720" aria-hidden="true">
-            <g id="riverLayer"></g>
-            <g id="roadLayer"></g>
-            <g id="labelLayer"></g>
-          </svg>
-          <div class="device-layer" id="deviceLayer"></div>
-        </div>
-
-        <div class="legend">
-          <span><i class="dot good"></i>Online</span>
-          <span><i class="dot warn"></i>Congestion watch</span>
-          <span><i class="dot bad"></i>Offline</span>
-          <span><i class="line"></i>Road corridor</span>
-          <span><i class="water"></i>Water / boundary</span>
-        </div>
-        <div class="map-attribution">
-          <span id="mapLabel">OpenStreetMap-style custom map</span>
-          <span>Copyright ITS Telkom University</span>
-        </div>
-      </section>
-
-      <aside class="side">
-        <section class="stats">
-          <article><small>Device aktif</small><strong id="activeDevices">0</strong><span id="offlineDevices">0 offline</span></article>
-          <article><small>Jumlah kendaraan</small><strong id="vehicleTotal">0</strong><span>semua node</span></article>
-          <article><small>Rata-rata congestion</small><strong id="averageCongestion">0%</strong><span>indikasi macet</span></article>
-          <article><small>Kamera siap</small><strong id="cameraReady">0</strong><span>layer kamera</span></article>
-        </section>
-
-        <section class="panel">
-          <div class="panel-headline">
-            <div>
-              <p class="eyebrow">Raspberry devices</p>
-              <h3>Status node</h3>
-            </div>
-            <span id="syncAge" class="chip">demo</span>
-          </div>
-          <div id="deviceList" class="list"></div>
-        </section>
-
-        <section class="panel">
-          <div class="panel-headline">
-            <div>
-              <p class="eyebrow">Event feed</p>
-              <h3>Traffic signal</h3>
-            </div>
-          </div>
-          <div id="eventFeed" class="feed"></div>
-        </section>
-
-        <section class="panel selected">
-          <div class="panel-headline">
-            <div>
-              <p class="eyebrow">Selected device</p>
-              <h3 id="selectedTitle">Raspberry Pi 5 Controller</h3>
-            </div>
-          </div>
-          <div id="selectedBody"></div>
-        </section>
-      </aside>
-    </main>
-  </div>
-`;
-
-const DEFAULT_CONFIG: Required<Pick<AppConfig, "snapshotUrl" | "refreshMs" | "mapAttribution" | "mapLabel">> = {
-  snapshotUrl: "./data/its-state.json",
-  refreshMs: 5000,
-  mapAttribution: "OpenStreetMap contributors",
-  mapLabel: "Custom ITS map",
-};
-
-const state = {
-  devices: [...FALLBACK.devices],
-  events: [...FALLBACK.events],
-  backend: "github-json" as BackendMode,
-  selectedId: FALLBACK.devices[0].id,
-  updatedAt: FALLBACK.updatedAt,
-  zoom: 1,
-  config: DEFAULT_CONFIG,
-  refreshTimer: 0,
-  refreshBusy: false,
-};
-
-const svgRoads = [
-  "M 110 140 C 250 110, 410 120, 560 160 S 760 220, 930 190",
-  "M 70 250 C 230 225, 360 245, 510 292 S 780 345, 965 315",
-  "M 90 420 C 250 390, 400 398, 540 438 S 785 510, 955 475",
-  "M 130 570 C 310 538, 470 548, 632 590 S 820 648, 965 618",
-  "M 215 90 C 180 180, 180 300, 208 400 S 255 560, 220 675",
-  "M 385 68 C 360 175, 365 286, 390 402 S 442 562, 430 690",
-  "M 610 90 C 585 198, 594 310, 620 420 S 674 560, 664 682",
-  "M 840 92 C 804 214, 808 321, 830 438 S 870 580, 864 680",
-];
-
-const svgRivers = [
-  "M 20 640 C 140 600, 250 614, 360 602 S 590 540, 700 556 S 880 595, 980 575",
-  "M 30 612 C 155 578, 275 592, 396 580 S 630 522, 744 538 S 902 572, 972 560",
-];
-
-const districtLabels = [
-  { title: "Pusat ITS", x: 51, y: 35 },
-  { title: "Koridor Barat", x: 18, y: 43 },
-  { title: "Koridor Timur", x: 78, y: 30 },
-  { title: "Gerbang Selatan", x: 44, y: 79 },
-  { title: "Ruang Sungai", x: 68, y: 61 },
-];
-
-function esc(value: string): string {
-  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
-}
-
-function n(value: number): string {
-  return new Intl.NumberFormat("id-ID").format(value);
-}
-
-function ago(ms: number): string {
-  const delta = Math.max(0, Date.now() - ms);
-  if (delta < 60_000) return `${Math.max(1, Math.round(delta / 1000))} detik lalu`;
-  if (delta < 3_600_000) return `${Math.max(1, Math.round(delta / 60_000))} menit lalu`;
-  return `${Math.max(1, Math.round(delta / 3_600_000))} jam lalu`;
-}
-
-function renderBackground(): void {
-  const roadLayer = document.querySelector<SVGGElement>("#roadLayer");
-  const riverLayer = document.querySelector<SVGGElement>("#riverLayer");
-  const labelLayer = document.querySelector<SVGGElement>("#labelLayer");
-
-  if (!roadLayer || !riverLayer || !labelLayer) return;
-
-  roadLayer.innerHTML = svgRoads.map((d, i) => `<path d="${d}" class="road road-${i % 4}" />`).join("");
-  riverLayer.innerHTML = svgRivers.map((d) => `<path d="${d}" class="river" />`).join("");
-  labelLayer.innerHTML = districtLabels.map((label) => `
-    <g transform="translate(${label.x * 10}, ${label.y * 10})">
-      <rect x="-48" y="-14" width="96" height="24" rx="12" class="district-chip"></rect>
-      <text x="0" y="2" text-anchor="middle" class="district-text">${esc(label.title)}</text>
-    </g>
-  `).join("");
-}
-
-function selectedDevice(): DeviceRecord {
-  return state.devices.find((device) => device.id === state.selectedId) || state.devices[0];
-}
-
-function render(): void {
-  const active = state.devices.filter((device) => device.status !== "offline").length;
-  const offline = state.devices.length - active;
-  const vehicleTotal = state.devices.reduce((sum, device) => sum + device.vehicles, 0);
-  const averageCongestion = Math.round(state.devices.reduce((sum, device) => sum + device.congestion, 0) / state.devices.length);
-  const cameraReady = state.devices.filter((device) => device.camera === "online").length;
-
-  const badge = document.querySelector<HTMLElement>("#backendBadge");
-  const syncNote = document.querySelector<HTMLElement>("#syncNote");
-  const syncAge = document.querySelector<HTMLElement>("#syncAge");
-  const activeDevices = document.querySelector<HTMLElement>("#activeDevices");
-  const offlineDevices = document.querySelector<HTMLElement>("#offlineDevices");
-  const vehicleTotalEl = document.querySelector<HTMLElement>("#vehicleTotal");
-  const averageCongestionEl = document.querySelector<HTMLElement>("#averageCongestion");
-  const cameraReadyEl = document.querySelector<HTMLElement>("#cameraReady");
-  const deviceList = document.querySelector<HTMLElement>("#deviceList");
-  const eventFeed = document.querySelector<HTMLElement>("#eventFeed");
-  const selectedTitle = document.querySelector<HTMLElement>("#selectedTitle");
-  const selectedBody = document.querySelector<HTMLElement>("#selectedBody");
-  const deviceLayer = document.querySelector<HTMLElement>("#deviceLayer");
-  const mapLabel = document.querySelector<HTMLElement>("#mapLabel");
-
-  if (!badge || !syncNote || !syncAge || !activeDevices || !offlineDevices || !vehicleTotalEl || !averageCongestionEl || !cameraReadyEl || !deviceList || !eventFeed || !selectedTitle || !selectedBody || !deviceLayer || !mapLabel) {
-    throw new Error("Missing ITS dashboard element.");
-  }
-
-  badge.textContent = state.backend === "github-json" ? "GitHub JSON" : "Demo mode";
-  syncNote.textContent = state.refreshBusy ? "menarik snapshot terbaru..." : `sinkron ${ago(state.updatedAt)}`;
-  syncAge.textContent = state.backend === "github-json" ? `live / ${Math.round(state.config.refreshMs / 1000)}s` : "demo";
-  activeDevices.textContent = String(active);
-  offlineDevices.textContent = `${offline} offline`;
-  vehicleTotalEl.textContent = n(vehicleTotal);
-  averageCongestionEl.textContent = `${averageCongestion}%`;
-  cameraReadyEl.textContent = String(cameraReady);
-  mapLabel.textContent = `${state.config.mapLabel} · ${state.config.mapAttribution}`;
-
-  deviceLayer.innerHTML = state.devices.map((device) => `
-    <button class="pin ${device.status} ${device.id === state.selectedId ? "selected" : ""}" type="button" data-id="${esc(device.id)}" style="left:${device.position.x}%; top:${device.position.y}%">
-      <span class="pin-pulse"></span>
-      <span class="pin-core"></span>
-      <span class="pin-label">${esc(device.label)}</span>
-      <span class="pin-count">${n(device.vehicles)} kendaraan</span>
-    </button>
-  `).join("");
-
-  deviceList.innerHTML = state.devices.map((device) => `
-    <button class="device-row ${device.id === state.selectedId ? "selected" : ""}" type="button" data-id="${esc(device.id)}">
-      <div class="row-top">
-        <strong>${esc(device.label)}</strong>
-        <span class="status ${device.status}">${device.status}</span>
-      </div>
-      <div class="row-meta">
-        <span>${esc(device.district)}</span>
-        <span>${esc(device.ip || "no-ip")}</span>
-      </div>
-      <div class="row-stats">
-        <span>${n(device.vehicles)} kendaraan</span>
-        <span>${device.congestion}% macet</span>
-        <span>${device.speedKph} km/jam</span>
-      </div>
-      <div class="row-foot">
-        <span>Kamera: ${esc(device.camera)}</span>
-        <span>${ago(device.lastSeen)}</span>
-      </div>
-    </button>
-  `).join("");
-
-  eventFeed.innerHTML = state.events.map((event) => `
-    <article class="event">
-      <div class="bul ${event.severity}"></div>
-      <div>
-        <div class="event-head"><strong>${esc(event.label)}</strong><time>${new Intl.DateTimeFormat("id-ID", { hour: "2-digit", minute: "2-digit" }).format(new Date(event.time))}</time></div>
-        <p>${esc(event.detail)}</p>
-      </div>
-    </article>
-  `).join("");
-
-  selectedTitle.textContent = selectedDevice().label;
-  selectedBody.innerHTML = `
-    <div class="selected-grid">
-      <div><span>ID</span><strong>${esc(selectedDevice().id)}</strong></div>
-      <div><span>Status</span><strong>${esc(selectedDevice().status)}</strong></div>
-      <div><span>District</span><strong>${esc(selectedDevice().district)}</strong></div>
-      <div><span>Kamera</span><strong>${esc(selectedDevice().camera)}</strong></div>
-    </div>
-    <div class="selected-metrics">
-      <div><span>Kendaraan</span><strong>${n(selectedDevice().vehicles)}</strong></div>
-      <div><span>Congestion</span><strong>${selectedDevice().congestion}%</strong></div>
-      <div><span>Speed</span><strong>${selectedDevice().speedKph} km/jam</strong></div>
-    </div>
-    <p class="selected-note">${esc(selectedDevice().note || "Belum ada catatan.")}</p>
-    <div class="selected-footer"><span>${esc(selectedDevice().ip || "-")}</span><span>Last seen ${ago(selectedDevice().lastSeen)}</span></div>
-  `;
-
-  document.querySelectorAll<HTMLElement>("[data-id]").forEach((button) => {
-    button.onclick = () => {
-      state.selectedId = button.dataset.id || state.selectedId;
-      render();
-    };
-  });
-}
-
-async function loadSnapshot(): Promise<void> {
-  if (state.refreshBusy) {
-    return;
-  }
-  state.refreshBusy = true;
-  try {
-    const configResponse = await fetch("./data/its-config.json", { cache: "no-store" });
-    if (configResponse.ok) {
-      const config = (await configResponse.json()) as Partial<AppConfig>;
-      state.config = {
-        ...DEFAULT_CONFIG,
-        ...config,
-      };
-    } else {
-      state.config = { ...DEFAULT_CONFIG };
-    }
-
-    const response = await fetch(state.config.snapshotUrl, { cache: "no-store" });
-    if (!response.ok) throw new Error("snapshot not found");
-    const snapshot = (await response.json()) as Snapshot;
-    if (Array.isArray(snapshot.devices) && snapshot.devices.length) {
-      state.devices = snapshot.devices.map((device, index) => ({
-        id: String(device.id || FALLBACK.devices[index % FALLBACK.devices.length].id),
-        label: String(device.label || FALLBACK.devices[index % FALLBACK.devices.length].label),
-        district: String(device.district || FALLBACK.devices[index % FALLBACK.devices.length].district),
-        ip: String(device.ip || ""),
-        status: (device.status as DeviceStatus) || FALLBACK.devices[index % FALLBACK.devices.length].status,
-        vehicles: Number(device.vehicles ?? 0),
-        congestion: Number(device.congestion ?? 0),
-        speedKph: Number(device.speedKph ?? 0),
-        camera: String(device.camera || "pending"),
-        note: String(device.note || ""),
-        lastSeen: Number(device.lastSeen ?? Date.now()),
-        position: {
-          x: Number(device.position?.x ?? FALLBACK.devices[index % FALLBACK.devices.length].position.x),
-          y: Number(device.position?.y ?? FALLBACK.devices[index % FALLBACK.devices.length].position.y),
-        },
-      }));
-    }
-    if (Array.isArray(snapshot.events) && snapshot.events.length) {
-      state.events = snapshot.events.map((event) => ({
-        id: String(event.id || `event_${Date.now()}`),
-        time: Number(event.time ?? Date.now()),
-        label: String(event.label || "Event"),
-        detail: String(event.detail || ""),
-        severity: (event.severity as EventSeverity) || "info",
-        deviceId: String(event.deviceId || ""),
-      }));
-    }
-    state.backend = "github-json";
-    state.updatedAt = Number(snapshot.updatedAt || Date.now());
-  } catch {
-    state.backend = "demo";
-    state.updatedAt = Date.now();
-    state.devices = [...FALLBACK.devices];
-    state.events = [...FALLBACK.events];
-  }
-  if (!state.devices.some((device) => device.id === state.selectedId)) {
-    state.selectedId = state.devices[0]?.id || FALLBACK.devices[0].id;
-  }
-  renderBackground();
-  render();
-  window.clearInterval(state.refreshTimer);
-  state.refreshTimer = window.setInterval(() => {
-    void loadSnapshot();
-  }, state.config.refreshMs);
-  state.refreshBusy = false;
-}
-
-const refreshBtn = document.querySelector<HTMLButtonElement>("#refreshBtn");
-if (refreshBtn) {
-  refreshBtn.addEventListener("click", () => {
-    void loadSnapshot();
-  });
-}
-
-window.addEventListener("beforeunload", () => {
-  window.clearInterval(state.refreshTimer);
-});
-
-void loadSnapshot();
->>>>>>> 42767f8 (Initial-ITS-Maps-upload)
+setupNativeDeepLinks();
+focusFromIncomingUrl(window.location.href);
+createOpenAndroidButton();
+window.setTimeout(() => {
+  void checkAppUpdateManifest();
+}, 0);
