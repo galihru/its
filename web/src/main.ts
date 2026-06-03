@@ -1,4 +1,4 @@
-﻿import L from "leaflet";
+import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "leaflet-rotate";
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -4614,7 +4614,7 @@ async function setBaseMap(mode: BaseMapMode): Promise<void> {
 // ─── Camera tile ────────────────────────────────────────────────
 
 function publicCameraUrl(device: DeviceRecord | null): string {
-  return device?.cameraUrl?.trim() || device?.webrtcUrl?.trim() || "";
+  return device?.cameraUrl?.trim() || "";
 }
 
 function publicCameraHlsUrl(device: DeviceRecord | null): string {
