@@ -53,12 +53,14 @@ public class AlertFullDataWidgetProvider extends AppWidgetProvider {
     private static final String PREFS_NAME = "its_widget_prefs";
     private static final String PREF_DATASET = "traffic_dataset_snapshot";
     private static final String PREF_DEVICE = "traffic_device_snapshot";
+    private static final String PREF_APK_UPDATE = "traffic_apk_update_snapshot";
     private static final String PREF_HISTORY = "alert_full_data_history";
     private static final String PREF_PHASE_PREFIX = "alert_full_data_phase_";
     private static final String PREF_PHASE_STARTED_PREFIX = "alert_full_data_phase_started_";
     private static final String PRIMARY_DEVICE_ID = "raspberry-its";
     private static final String FIREBASE_DATASET_URL = "https://itstelkom-default-rtdb.asia-southeast1.firebasedatabase.app/trafficObjectDetectionDataset/devices/raspberry-its.json";
     private static final String FIREBASE_DEVICE_URL = "https://itstelkom-default-rtdb.asia-southeast1.firebasedatabase.app/devices/raspberry-its.json";
+    private static final String FIREBASE_APK_UPDATE_URL = "https://itstelkom-default-rtdb.asia-southeast1.firebasedatabase.app/apk.json";
     private static final long REFRESH_INTERVAL_MS = 10_000L;
     private static final long PHASE_DURATION_MS = 10_000L;
     private static final long STALE_AFTER_MS = 45_000L;
@@ -217,6 +219,7 @@ public class AlertFullDataWidgetProvider extends AppWidgetProvider {
         SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
         String datasetJson = prefs.getString(PREF_DATASET, "");
         String deviceJson = prefs.getString(PREF_DEVICE, "");
+        String apkUpdateJson = prefs.getString(PREF_APK_UPDATE, "");
 
         try {
             datasetJson = fetchJson(FIREBASE_DATASET_URL);
@@ -230,14 +233,31 @@ public class AlertFullDataWidgetProvider extends AppWidgetProvider {
         } catch (Exception ignored) {
         }
 
+        try {
+            apkUpdateJson = fetchJson(FIREBASE_APK_UPDATE_URL);
+            prefs.edit().putString(PREF_APK_UPDATE, apkUpdateJson).apply();
+        } catch (Exception ignored) {
+        }
+
         TrafficSnapshot snapshot;
         try {
-            snapshot = TrafficSnapshot.fromJson(datasetJson, deviceJson);
+            snapshot = TrafficSnapshot.fromJson(datasetJson, deviceJson, apkUpdateJson, localVersionCode(context));
         } catch (Exception ignored) {
             snapshot = TrafficSnapshot.fallback();
         }
         List<HistoryPoint> history = updateHistory(prefs, snapshot, System.currentTimeMillis());
         return new WidgetData(snapshot, history);
+    }
+
+    private int localVersionCode(Context context) {
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                return (int) context.getPackageManager().getPackageInfo(context.getPackageName(), 0).getLongVersionCode();
+            }
+            return context.getPackageManager().getPackageInfo(context.getPackageName(), 0).versionCode;
+        } catch (Exception ignored) {
+            return 1;
+        }
     }
 
     private String fetchJson(String url) throws Exception {
@@ -1359,9 +1379,10 @@ public class AlertFullDataWidgetProvider extends AppWidgetProvider {
             return new TrafficSnapshot("", "", "offline", "offline", "offline", "red", 0, "Sistem offline", "fallback", 0L, "", 0, 0, 0, 0, 0, 0, 0, 0, new ArrayList<>(), new ArrayList<>());
         }
 
-        static TrafficSnapshot fromJson(String datasetRaw, String deviceRaw) throws JSONException {
+        static TrafficSnapshot fromJson(String datasetRaw, String deviceRaw, String apkUpdateRaw, int localVersionCode) throws JSONException {
             JSONObject dataset = parseObject(datasetRaw);
             JSONObject device = selectDevice(parseObject(deviceRaw));
+            JSONObject apkUpdate = parseObject(apkUpdateRaw);
             if (dataset == null) dataset = new JSONObject();
             if (device == null) device = new JSONObject();
 
@@ -1377,6 +1398,9 @@ public class AlertFullDataWidgetProvider extends AppWidgetProvider {
 
             JSONArray detectionArray = dataset.optJSONArray("detections");
             if (detectionArray == null || detectionArray.length() == 0) detectionArray = device.optJSONArray("detections");
+
+            List<NoticeItem> notices = parseNoticeItems(dataset, device);
+            appendApkUpdateNotice(notices, apkUpdate, localVersionCode);
 
             return new TrafficSnapshot(
                 firstNonEmpty(dataset.optString("nama1", ""), dataset.optString("snapshot1Url", "")),
@@ -1399,7 +1423,7 @@ public class AlertFullDataWidgetProvider extends AppWidgetProvider {
                 bicycle,
                 total,
                 parseDetections(detectionArray),
-                parseNoticeItems(dataset, device)
+                notices
             );
         }
 
@@ -1525,6 +1549,28 @@ public class AlertFullDataWidgetProvider extends AppWidgetProvider {
                 }
             }
             return notices;
+        }
+
+        private static void appendApkUpdateNotice(List<NoticeItem> notices, JSONObject apkUpdate, int localVersionCode) {
+            if (apkUpdate == null) return;
+            int remoteCode = apkUpdate.optInt("versionCode", 0);
+            if (remoteCode <= Math.max(1, localVersionCode)) return;
+            String versionName = apkUpdate.optString("versionName", "");
+            String version = TextUtils.isEmpty(versionName) ? String.valueOf(remoteCode) : versionName;
+            String message = "APK ITS versi " + version + " siap diinstall";
+            JSONArray notes = apkUpdate.optJSONArray("releaseNotes");
+            if (notes != null && notes.length() > 0 && !TextUtils.isEmpty(notes.optString(0, ""))) {
+                message = notes.optString(0);
+            }
+            String time = "sekarang";
+            String updatedAt = apkUpdate.optString("updatedAt", "");
+            if (!TextUtils.isEmpty(updatedAt)) {
+                time = updatedAt.replace('T', ' ');
+                int dot = time.indexOf('.');
+                if (dot > 0) time = time.substring(0, dot);
+                if (time.endsWith("Z")) time = time.substring(0, time.length() - 1);
+            }
+            notices.add(0, new NoticeItem("Update APK " + version, message, time, 0xFF2F80ED));
         }
 
         private static int noticeColorFor(String value) {

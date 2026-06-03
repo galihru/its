@@ -17,6 +17,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set APK version
+        run: |
+          set -euo pipefail
+          VERSION_CODE="${GITHUB_RUN_NUMBER}"
+          VERSION_NAME="1.0.${GITHUB_RUN_NUMBER}"
+          APK_FILE_NAME="its-${VERSION_NAME}-${VERSION_CODE}.apk"
+          APK_RELEASE_TAG="apk-${GITHUB_RUN_NUMBER}"
+          PUBLIC_APK_BASE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${APK_RELEASE_TAG}"
+          {
+            echo "ITS_VERSION_CODE=${VERSION_CODE}"
+            echo "ITS_VERSION_NAME=${VERSION_NAME}"
+            echo "VITE_APP_VERSION=${VERSION_NAME}"
+            echo "VITE_APP_VERSION_CODE=${VERSION_CODE}"
+            echo "APK_FILE_NAME=${APK_FILE_NAME}"
+            echo "APK_RELEASE_TAG=${APK_RELEASE_TAG}"
+            echo "PUBLIC_APK_BASE_URL=${PUBLIC_APK_BASE_URL}"
+          } >> "$GITHUB_ENV"
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -53,27 +71,58 @@ jobs:
         run: |
           set -euo pipefail
           APK_SRC="web/android/app/build/outputs/apk/debug/app-debug.apk"
-          APK_OUT="web/android/app/build/outputs/apk/debug/its-debug.apk"
+          APK_OUT="web/dist/apk/${APK_FILE_NAME}"
+          APK_LATEST="web/dist/apk/its-latest.apk"
           test -f "$APK_SRC"
+          mkdir -p web/dist/apk
           cp "$APK_SRC" "$APK_OUT"
+          cp "$APK_SRC" "$APK_LATEST"
+          node web/scripts/write-apk-manifest.mjs
           echo "path=$APK_OUT" >> "$GITHUB_OUTPUT"
+          echo "latest_path=$APK_LATEST" >> "$GITHUB_OUTPUT"
+          echo "manifest=web/dist/app-update.json" >> "$GITHUB_OUTPUT"
           echo "sha256=$(sha256sum "$APK_OUT" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: its-debug-apk
-          path: ${{ steps.apk.outputs.path }}
+          path: |
+            ${{ steps.apk.outputs.path }}
+            ${{ steps.apk.outputs.latest_path }}
+            ${{ steps.apk.outputs.manifest }}
 
       - name: Publish APK prerelease
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: apk-${{ github.run_number }}
+          tag_name: ${{ env.APK_RELEASE_TAG }}
           name: APK build ${{ github.run_number }}
           prerelease: true
-          files: ${{ steps.apk.outputs.path }}
+          files: |
+            ${{ steps.apk.outputs.path }}
+            ${{ steps.apk.outputs.latest_path }}
+            ${{ steps.apk.outputs.manifest }}
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_ITSTELKOM }}
+
+      - name: Deploy APK to Firebase
+        working-directory: web
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}
+        run: |
+          set -euo pipefail
+          find dist -name "*.apk" -delete
+          ./node_modules/.bin/firebase deploy --project itstelkom --only hosting --non-interactive
+          ./node_modules/.bin/firebase database:set /apk dist/app-update.json --project itstelkom --force
 
       - name: Summary
         run: |
+          echo "Version: ${ITS_VERSION_NAME} (${ITS_VERSION_CODE})" >> "$GITHUB_STEP_SUMMARY"
           echo "APK: ${{ steps.apk.outputs.path }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Download: ${PUBLIC_APK_BASE_URL}/${APK_FILE_NAME}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Firebase manifest: https://itstelkom.web.app/app-update.json" >> "$GITHUB_STEP_SUMMARY"
           echo "SHA256: ${{ steps.apk.outputs.sha256 }}" >> "$GITHUB_STEP_SUMMARY"
