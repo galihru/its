@@ -117,7 +117,7 @@ jobs:
           set -euo pipefail
           find dist -name "*.apk" -delete
           ./node_modules/.bin/firebase deploy --project itstelkom --only hosting --non-interactive
-          ./node_modules/.bin/firebase database:set /apk dist/app-update.json --project itstelkom -y
+          ./node_modules/.bin/firebase database:set /apk dist/app-update.json --project itstelkom --force
 
       - name: Summary
         run: |
