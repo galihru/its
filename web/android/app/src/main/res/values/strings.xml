@@ -6,6 +6,10 @@
     <string name="widget_maps_description">Widget ITS realtime</string>
     <string name="widget_chart_name">ITS Live</string>
     <string name="widget_chart_description">Widget ITS Live realtime</string>
+    <string name="widget_traffic_name">ITS Traffic AI</string>
+    <string name="widget_traffic_description">Widget 4x2 realtime kamera Raspberry, lokasi, status online, dan deteksi kendaraan ITS</string>
+    <string name="widget_alert_full_data_name">Alert dan Full Data</string>
+    <string name="widget_alert_full_data_description">Widget carousel realtime untuk data kendaraan, grafik traffic, pemantauan kamera, dan pemberitahuan ITS</string>
     <string name="package_name">id.ac.telkomuniversity.its</string>
     <string name="custom_url_scheme">its</string>
     <string name="asset_statements">[{\"relation\":[\"delegate_permission/common.handle_all_urls\"],\"target\":{\"namespace\":\"web\",\"site\":\"https://itstelkom.web.app\"}}]</string>

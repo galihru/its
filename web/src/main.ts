@@ -24,6 +24,8 @@ declare module "leaflet" {
 
 type DeviceStatus = "online" | "offline" | "degraded";
 type CameraMode = "webrtc" | "mjpeg";
+type AiEngineMode = "browser-yolo" | "raspberry-yolo" | "grove-vision-ai";
+type CameraSourceMode = "raspberry-webrtc" | "raspberry-hls" | "grove-vision-ai";
 type VehicleBreakdown = {
   car: number;
   motorcycle: number;
@@ -31,6 +33,13 @@ type VehicleBreakdown = {
   truck: number;
   bicycle: number;
   total: number;
+};
+type TrafficCameraDataset = {
+  snapshot1Url?: string;
+  snapshot2Url?: string;
+  updatedAt?: number;
+  source?: string;
+  path?: string;
 };
 type YoloDetection = {
   label: string;
@@ -47,6 +56,20 @@ type ControllerUpdateInfo = {
   message?: string;
   updatedAt?: number;
   source?: string;
+};
+type DeviceRuntimeConfig = {
+  aiEngine?: AiEngineMode;
+  cameraSource?: CameraSourceMode;
+  groveVisionAi?: {
+    enabled?: boolean;
+    transport?: "uart" | "i2c" | "wifi";
+    host?: string;
+    port?: number;
+    serialPath?: string;
+    model?: string;
+  };
+  updatedAt?: number;
+  requestedBy?: string;
 };
 type AppUpdateInfo = {
   appId?: string;
@@ -87,6 +110,9 @@ type DeviceRecord = {
   lastSeenText?: string;
   note?: string;
   cameraUrl?: string;
+  cameraHlsUrl?: string;
+  cameraThumbnailUrl?: string;
+  cameraDataset?: TrafficCameraDataset;
   cameraMode?: CameraMode;
   webrtcEnabled?: boolean;
   webrtcPath?: string;
@@ -111,10 +137,12 @@ type DeviceRecord = {
   objectCount?: number;
   detections?: YoloDetection[];
   trafficSource?: string;
+  trafficLevel?: "lancar" | "sedang" | "padat";
   gpioBackend?: string;
   gpioReady?: boolean;
   gpioNote?: string;
   update?: ControllerUpdateInfo;
+  runtimeConfig?: DeviceRuntimeConfig;
   position: { lat: number; lng: number };
 };
 
@@ -130,14 +158,23 @@ type Snapshot = {
 };
 type AppConfig = { snapshotUrl?: string; refreshMs?: number };
 type WebRtcStatus = "idle" | "connecting" | "live" | "failed";
+type WhepOfferData = {
+  iceUfrag: string;
+  icePwd: string;
+  medias: { mid: string; mLine: string }[];
+};
 type WebRtcRuntime = {
   pc: RTCPeerConnection | null;
   deviceId: string;
   signalPath: string;
   sessionId: string;
+  whepUrl: string;
+  whepSessionUrl: string;
+  whepOfferData: WhepOfferData | null;
   stream: MediaStream | null;
   pollTimer: number;
   heartbeatTimer: number;
+  restartTimer: number;
   candidateSeq: number;
   seenCameraCandidates: Set<string>;
   pendingCandidates: RTCIceCandidateInit[];
@@ -152,7 +189,36 @@ type WebRtcSessionRecord = {
   streamerStatus?: string;
   streamerError?: string;
 };
+type BrowserYoloRuntime = {
+  key: string;
+  stopped: boolean;
+  busy: boolean;
+  timer: number;
+  lastStartedAt: number;
+  lastPublishedAt: number;
+  lastThumbnailAt: number;
+  fps: number;
+  tracked: BrowserYoloTrackedDetection[];
+  lastDetections: YoloDetection[];
+  lastDatasetAt: number;
+  datasetSnapshot1Url: string;
+  datasetSnapshot2Url: string;
+};
+type BrowserYoloFrameMeta = {
+  inputSize: number;
+  frameWidth: number;
+  frameHeight: number;
+  scale: number;
+  padX: number;
+  padY: number;
+};
+type BrowserYoloTrackedDetection = YoloDetection & {
+  seen: number;
+  missed: number;
+  lastSeenAt: number;
+};
 type BaseMapMode = "street" | "3d" | "satellite";
+type TransportLayerMode = "traffic" | "rail";
 type TrafficColor = "red" | "yellow" | "green";
 type NoticeKind = "info" | "success" | "warning" | "error";
 type TrafficState = {
@@ -194,6 +260,8 @@ type PoiRecord = {
   minZoom?: number;
   named?: boolean;
   iconKey?: string;
+  iconUrl?: string;
+  customIcon?: boolean;
 };
 
 type RoadLabelRecord = {
@@ -202,8 +270,33 @@ type RoadLabelRecord = {
   lat: number;
   lng: number;
   priority: number;
-  kind: "road" | "place" | "area" | "building" | "direction" | "pedestrian";
+  kind: "road" | "place" | "area" | "building" | "station" | "direction" | "pedestrian";
   bearing?: number;
+};
+
+type MapLicenseEntry = {
+  title: string;
+  href: string;
+  role: string;
+  license: string;
+  licenseHref?: string;
+  note: string;
+};
+type MapLicenseGroup = {
+  title: string;
+  entries: MapLicenseEntry[];
+};
+type RailTrackRecord = {
+  id: string;
+  name: string;
+  color: string;
+  points: Array<{ lat: number; lng: number }>;
+};
+type RailStationLabelRecord = {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
 };
 
 // ─── Constants ──────────────────────────────────────────────────
@@ -228,6 +321,51 @@ const WEBRTC_ANSWER_TIMEOUT_MS = 18_000;
 const WEBRTC_ICE_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
 ];
+const HLS_JS_URL = "https://cdn.jsdelivr.net/npm/hls.js@1.5.20/dist/hls.min.js";
+const ORT_JS_URL = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/ort.min.js";
+const ORT_WASM_BASE_URL = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/";
+const BROWSER_YOLO_MODEL_URL = "/artifacts/yolo26n.onnx";
+const BROWSER_YOLO_INPUT_SIZE = 640;
+const BROWSER_YOLO_CONFIDENCE = 0.05;
+const BROWSER_YOLO_NMS = 0.45;
+const BROWSER_YOLO_MAX_DETECTIONS = 24;
+const BROWSER_YOLO_SAMPLE_MS = 850;
+const BROWSER_YOLO_PUBLISH_MS = 2200;
+const BROWSER_YOLO_THUMBNAIL_MS = 10_000;
+const BROWSER_YOLO_DATASET_MS = 10_000;
+const BROWSER_YOLO_DATASET_ROOT = "trafficObjectDetectionDataset/devices";
+const TRAFFIC_WIDGET_FALLBACK_IMAGE_URL = "/bwits.png";
+const BROWSER_YOLO_LANCAR_MAX = 5;
+const BROWSER_YOLO_SEDANG_MAX = 10;
+const HLS_LIVE_TARGET_OFFSET_SECONDS = 1.8;
+const HLS_LIVE_AUTO_SYNC_SECONDS = 12;
+const HLS_AUTO_SYNC_COOLDOWN_MS = 5_000;
+const WHEP_FRAME_FALLBACK_MS = 9_000;
+const CAMERA_CONTROLS_HIDE_MS = 2_600;
+const BROWSER_YOLO_CLASSES = new Set(["person", "bicycle", "car", "motorcycle", "bus", "truck", "traffic light"]);
+const BROWSER_YOLO_VEHICLE_CLASSES = new Set(["bicycle", "car", "motorcycle", "bus", "truck"]);
+const BROWSER_YOLO_CLASS_CONFIDENCE: Record<string, number> = {
+  person: 0.18,
+  bicycle: 0.045,
+  car: 0.035,
+  motorcycle: 0.04,
+  bus: 0.045,
+  truck: 0.035,
+  "traffic light": 0.32,
+};
+const COCO_LABELS = [
+  "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat",
+  "traffic light", "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat",
+  "dog", "horse", "sheep", "cow", "elephant", "bear", "zebra", "giraffe", "backpack",
+  "umbrella", "handbag", "tie", "suitcase", "frisbee", "skis", "snowboard", "sports ball",
+  "kite", "baseball bat", "baseball glove", "skateboard", "surfboard", "tennis racket",
+  "bottle", "wine glass", "cup", "fork", "knife", "spoon", "bowl", "banana", "apple",
+  "sandwich", "orange", "broccoli", "carrot", "hot dog", "pizza", "donut", "cake",
+  "chair", "couch", "potted plant", "bed", "dining table", "toilet", "tv", "laptop",
+  "mouse", "remote", "keyboard", "cell phone", "microwave", "oven", "toaster", "sink",
+  "refrigerator", "book", "clock", "vase", "scissors", "teddy bear", "hair drier",
+  "toothbrush",
+];
 
 const BEARING_STEP = 90;
 const BEARING_SNAP = 5;
@@ -241,6 +379,7 @@ const OVERPASS_ENDPOINTS = [
 const OVERPASS_FETCH_TIMEOUT_MS = 18000;
 const POI_QUERY_MAX_RADIUS_M = 3500;
 const ROAD_QUERY_MAX_RADIUS_M = 4200;
+const RAIL_QUERY_MAX_RADIUS_M = 24000;
 const APP_NAME = "ITS";
 const APP_PACKAGE_ID = "id.ac.telkomuniversity.its";
 const APP_OWNER_NAME = "Hanifa Septhi Larasati";
@@ -250,9 +389,203 @@ const APP_VERSION_CODE = 1;
 const APP_PUBLIC_URL = "https://itstelkom.web.app/";
 const ANDROID_DEEP_LINK_SCHEME = "its";
 const APP_UPDATE_MANIFEST_URL = "./app-update.json";
-const APP_UPDATE_DATABASE_URL = `${FIREBASE_ROOT_URL}/apk.json`;
+const APP_UPDATE_DATABASE_URLS = [
+  `${FIREBASE_ROOT_URL}/app.json`,
+  `${FIREBASE_ROOT_URL}/apk.json`,
+];
 const APP_DOWNLOAD_FALLBACK_URL = `${APP_PUBLIC_URL}apk/its-latest.apk`;
 const APP_STARTED_AT = Date.now();
+
+const CUSTOM_POI_ICON_URLS = {
+  alunAlunBandung: new URL("./poi/alunalunbandung.png", import.meta.url).href,
+  gedungSate: new URL("./poi/gedungsate.png", import.meta.url).href,
+  monas: new URL("./poi/monas.png", import.meta.url).href,
+  monumenPrjb: new URL("./poi/monumenPRJB.png", import.meta.url).href,
+  museumKaa: new URL("./poi/musium kaa.png", import.meta.url).href,
+  tamanMini: new URL("./poi/tamanminiindonesia.png", import.meta.url).href,
+};
+
+const CUSTOM_POI_SEEDS: Array<PoiRecord & { iconUrl: string; customIcon: true }> = [
+  {
+    id: "custom-poi-alun-alun-bandung",
+    kind: "park",
+    title: "Alun-Alun Bandung",
+    description: "Ruang publik utama Kota Bandung di sekitar Masjid Raya Bandung.",
+    address: "Jl. Asia Afrika, Kota Bandung",
+    imageUrl: CUSTOM_POI_ICON_URLS.alunAlunBandung,
+    rating: "4.7",
+    icon: "",
+    iconUrl: CUSTOM_POI_ICON_URLS.alunAlunBandung,
+    customIcon: true,
+    priority: 6,
+    minZoom: 16,
+    named: true,
+    lat: -6.92172,
+    lng: 107.60718,
+  },
+  {
+    id: "custom-poi-gedung-sate",
+    kind: "monument",
+    title: "Gedung Sate",
+    description: "Landmark pemerintahan dan ikon arsitektur Kota Bandung.",
+    address: "Jl. Diponegoro, Kota Bandung",
+    imageUrl: CUSTOM_POI_ICON_URLS.gedungSate,
+    rating: "4.8",
+    icon: "",
+    iconUrl: CUSTOM_POI_ICON_URLS.gedungSate,
+    customIcon: true,
+    priority: 6,
+    minZoom: 16,
+    named: true,
+    lat: -6.90248,
+    lng: 107.61872,
+  },
+  {
+    id: "custom-poi-monas",
+    kind: "monument",
+    title: "Monas",
+    description: "Monumen Nasional dan titik orientasi utama pusat Jakarta.",
+    address: "Gambir, Jakarta Pusat",
+    imageUrl: CUSTOM_POI_ICON_URLS.monas,
+    rating: "4.8",
+    icon: "",
+    iconUrl: CUSTOM_POI_ICON_URLS.monas,
+    customIcon: true,
+    priority: 6,
+    minZoom: 16,
+    named: true,
+    lat: -6.17539,
+    lng: 106.82715,
+  },
+  {
+    id: "custom-poi-monumen-prjb",
+    kind: "monument",
+    title: "Monumen Perjuangan Rakyat Jawa Barat",
+    description: "Monumen perjuangan rakyat Jawa Barat di kawasan Dipatiukur Bandung.",
+    address: "Jl. Dipati Ukur, Kota Bandung",
+    imageUrl: CUSTOM_POI_ICON_URLS.monumenPrjb,
+    rating: "4.6",
+    icon: "",
+    iconUrl: CUSTOM_POI_ICON_URLS.monumenPrjb,
+    customIcon: true,
+    priority: 5,
+    minZoom: 16,
+    named: true,
+    lat: -6.89366,
+    lng: 107.61742,
+  },
+  {
+    id: "custom-poi-museum-kaa",
+    kind: "museum",
+    title: "Museum Konferensi Asia Afrika",
+    description: "Museum sejarah Konferensi Asia Afrika di koridor Asia Afrika Bandung.",
+    address: "Jl. Asia Afrika, Kota Bandung",
+    imageUrl: CUSTOM_POI_ICON_URLS.museumKaa,
+    rating: "4.7",
+    icon: "",
+    iconUrl: CUSTOM_POI_ICON_URLS.museumKaa,
+    customIcon: true,
+    priority: 6,
+    minZoom: 16,
+    named: true,
+    lat: -6.92175,
+    lng: 107.60996,
+  },
+  {
+    id: "custom-poi-tmii",
+    kind: "theme_park",
+    title: "Taman Mini Indonesia Indah",
+    description: "Kawasan wisata budaya dan edukasi di Jakarta Timur.",
+    address: "Cipayung, Jakarta Timur",
+    imageUrl: CUSTOM_POI_ICON_URLS.tamanMini,
+    rating: "4.7",
+    icon: "",
+    iconUrl: CUSTOM_POI_ICON_URLS.tamanMini,
+    customIcon: true,
+    priority: 6,
+    minZoom: 16,
+    named: true,
+    lat: -6.30245,
+    lng: 106.89516,
+  },
+];
+
+const MAP_LICENSE_GROUPS: MapLicenseGroup[] = [
+  {
+    title: "Basemap dan Data",
+    entries: [
+      {
+        title: "CARTO Basemaps",
+        href: "https://carto.com/basemaps",
+        role: "Mode 2D",
+        license: "CARTO attribution + OpenStreetMap contributors",
+        licenseHref: "https://carto.com/attribution/",
+        note: "Tile 2D memakai CARTO Voyager dengan data berbasis OpenStreetMap.",
+      },
+      {
+        title: "OpenStreetMap",
+        href: "https://www.openstreetmap.org/copyright",
+        role: "Data jalan, bangunan, POI, rel, dan label",
+        license: "Open Database License (ODbL)",
+        licenseHref: "https://opendatacommons.org/licenses/odbl/1-0/",
+        note: "Data dinamis diambil lewat Overpass dan tetap mengikuti ketentuan atribusi OSM.",
+      },
+      {
+        title: "Esri World Imagery",
+        href: "https://www.esri.com/en-us/arcgis/products/arcgis-living-atlas-of-the-world/overview",
+        role: "Mode Satelit",
+        license: "Esri imagery attribution",
+        licenseHref: "https://support.esri.com/en-us/knowledge-base/what-is-the-correct-way-to-cite-an-arcgis-online-basema-000012040",
+        note: "Citra satelit mengikuti atribusi penyedia World Imagery.",
+      },
+      {
+        title: "OpenFreeMap",
+        href: "https://openfreemap.org/",
+        role: "Mode 3D / vector",
+        license: "OpenFreeMap terms + OSM attribution",
+        licenseHref: "https://openfreemap.org/tos/",
+        note: "Style 3D dirender dengan MapLibre dari endpoint OpenFreeMap.",
+      },
+    ],
+  },
+  {
+    title: "Library dan Layanan",
+    entries: [
+      {
+        title: "Leaflet",
+        href: "https://leafletjs.com/",
+        role: "Renderer peta 2D",
+        license: "BSD-2-Clause",
+        licenseHref: "https://github.com/Leaflet/Leaflet/blob/main/LICENSE",
+        note: "Dipakai untuk marker, layer, popup, dan kontrol peta.",
+      },
+      {
+        title: "MapLibre GL JS",
+        href: "https://maplibre.org/projects/gl-js/",
+        role: "Renderer 3D/vector",
+        license: "BSD-3-Clause",
+        licenseHref: "https://github.com/maplibre/maplibre-gl-js/blob/main/LICENSE.txt",
+        note: "Dipakai untuk mode 3D dan layer vector.",
+      },
+      {
+        title: "Overpass API",
+        href: "https://overpass-api.de/",
+        role: "Query POI, bangunan, stasiun, rel, dan label",
+        license: "OpenStreetMap data under ODbL",
+        licenseHref: "https://osmfoundation.org/wiki/Attribution_Guidelines",
+        note: "Dipakai untuk memperkaya POI dan label fasilitas publik di area viewport.",
+      },
+      {
+        title: "OSRM",
+        href: "https://project-osrm.org/",
+        role: "Routing menuju POI",
+        license: "BSD license",
+        licenseHref: "https://github.com/Project-OSRM/osrm-backend/blob/master/LICENSE.TXT",
+        note: "Dipakai untuk estimasi rute saat memilih tujuan POI.",
+      },
+    ],
+  },
+];
 
 // ─── DOM bootstrap ──────────────────────────────────────────────
 
@@ -291,14 +624,26 @@ if (Number.isFinite(initialLat) && Number.isFinite(initialLng)) {
 map.createPane("customPoiPane");
 const customPoiPane = map.getPane("customPoiPane");
 if (customPoiPane) {
-  customPoiPane.style.zIndex = "670";
+  customPoiPane.style.zIndex = "650";
   customPoiPane.style.pointerEvents = "auto";
+}
+map.createPane("trafficMarkerPane");
+const trafficMarkerPane = map.getPane("trafficMarkerPane");
+if (trafficMarkerPane) {
+  trafficMarkerPane.style.zIndex = "760";
+  trafficMarkerPane.style.pointerEvents = "auto";
 }
 map.createPane("customLabelPane");
 const customLabelPane = map.getPane("customLabelPane");
 if (customLabelPane) {
-  customLabelPane.style.zIndex = "640";
+  customLabelPane.style.zIndex = "630";
   customLabelPane.style.pointerEvents = "none";
+}
+map.createPane("railPane");
+const railPane = map.getPane("railPane");
+if (railPane) {
+  railPane.style.zIndex = "625";
+  railPane.style.pointerEvents = "auto";
 }
 
 // ─── State ──────────────────────────────────────────────────────
@@ -311,15 +656,26 @@ const state = {
   refreshBusy: false,
   hasCentered: false,
   baseMode: "street" as BaseMapMode,
+  transportLayer: "traffic" as TransportLayerMode,
   compassNeedle: null as SVGGElement | null,
   compassBtn: null as HTMLButtonElement | null,
   cameraButton: null as HTMLButtonElement | null,
   cameraPreview: null as HTMLDivElement | null,
+  lastCameraRecoveryAt: 0,
   markers: new Map<string, L.Marker>(),
   poiMarkers: new Map<string, L.Marker>(),
   poiData: new Map<string, PoiRecord>(),
   roadLabelMarkers: new Map<string, L.Marker>(),
   roadLabelData: new Map<string, RoadLabelRecord>(),
+  railLayer: null as L.LayerGroup | null,
+  railRouteLayers: new Map<string, L.Polyline>(),
+  railStationMarkers: new Map<string, L.CircleMarker>(),
+  railLabelMarkers: new Map<string, L.Marker>(),
+  railLegendControl: null as L.Control | null,
+  railLegendEl: null as HTMLDivElement | null,
+  railOsmTracks: [] as RailTrackRecord[],
+  railOsmStations: [] as RailStationLabelRecord[],
+  railFetchSeq: 0,
   trafficById: new Map<string, TrafficState>(),
   roadNameById: new Map<string, string>(),
   maplibreMap: null as any,
@@ -353,9 +709,13 @@ const state = {
     deviceId: "",
     signalPath: "",
     sessionId: "",
+    whepUrl: "",
+    whepSessionUrl: "",
+    whepOfferData: null,
     stream: null,
     pollTimer: 0,
     heartbeatTimer: 0,
+    restartTimer: 0,
     candidateSeq: 0,
     seenCameraCandidates: new Set<string>(),
     pendingCandidates: [],
@@ -366,12 +726,27 @@ const state = {
   } as WebRtcRuntime,
 };
 
+const hlsInstances = new WeakMap<HTMLVideoElement, any>();
+const browserYoloRuntimes = new WeakMap<HTMLElement, BrowserYoloRuntime>();
+const cameraControlTimers = new WeakMap<HTMLElement, number>();
+const cameraControlHideTimers = new WeakMap<HTMLElement, number>();
+const cameraAmbientTimers = new WeakMap<HTMLElement, number>();
+const trafficObjectCarouselTimers = new WeakMap<HTMLElement, number>();
+let hlsScriptPromise: Promise<void> | null = null;
+let ortScriptPromise: Promise<void> | null = null;
+let browserYoloSessionPromise: Promise<any> | null = null;
+let webRtcStartPromise: Promise<void> | null = null;
+let cameraFullscreenEventsReady = false;
+let webRtcStartKey = "";
+const browserYoloWorkCanvas = document.createElement("canvas");
+const browserYoloThumbnailCanvas = document.createElement("canvas");
+
 // ─── Tile layers ────────────────────────────────────────────────
 
 const streetLayer = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png", {
   subdomains: "abcd",
   maxZoom: 20,
-  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+  attribution: "",
 }).addTo(map);
 
 const streetLabelLayer = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png", {
@@ -388,7 +763,7 @@ const satelliteLayer = L.tileLayer(
 );
 
 if (map.attributionControl) {
-  try { map.attributionControl.setPrefix("ITS Maps"); } catch { /* ignore */ }
+  try { map.attributionControl.setPrefix('ITS Maps | <a href="?route=licenses" rel="noopener">Lisensi Peta</a>'); } catch { /* ignore */ }
 }
 
 // Add Overpass vector layer for clickable features (kept separate from POI markers)
@@ -1159,13 +1534,13 @@ export function poiPriority(kind: PoiKind, tags: Record<string, string> = {}): n
 }
 
 export function poiMinZoom(kind: PoiKind, priority: number): number {
-  if (priority >= 5) return 10;
-  if (priority >= 4) return 12;
-  if (kind === "school" || kind === "mall" || kind === "supermarket" || kind === "terminal" || kind === "bank" || kind === "hotel") return 13;
-  if (kind === "clinic" || kind === "pharmacy" || kind === "restaurant" || kind === "cafe" || kind === "fuel" || kind === "atm") return 15;
-  if (kind === "shelter" || kind === "parking" || kind === "fast_food" || kind === "bakery" || kind === "shop" || kind === "minimarket") return 16;
-  if (priority >= 3) return 14;
-  return 15;
+  if (priority >= 5) return 15;
+  if (priority >= 4) return 16;
+  if (kind === "school" || kind === "mall" || kind === "supermarket" || kind === "terminal" || kind === "bank" || kind === "hotel") return 16;
+  if (kind === "clinic" || kind === "pharmacy" || kind === "restaurant" || kind === "cafe" || kind === "fuel" || kind === "atm") return 17;
+  if (kind === "shelter" || kind === "parking" || kind === "fast_food" || kind === "bakery" || kind === "shop" || kind === "minimarket") return 17;
+  if (priority >= 3) return 16;
+  return 17;
 }
 
 // ---------------------------------------------------------------------------
@@ -1174,7 +1549,11 @@ export function poiMinZoom(kind: PoiKind, priority: number): number {
 
 // Gunakan: poiMarkerSize(map.getZoom())
 export function poiMarkerSize(zoom: number): number {
-  return clamp(18 + (zoom - 13) * 1.15, 18, 28);
+  return clamp(13 + (zoom - 15) * 1.7, 12, 24);
+}
+
+function customPoiMarkerSize(zoom: number): number {
+  return clamp(20 + (zoom - 16) * 2, 18, 32);
 }
 
 // ---------------------------------------------------------------------------
@@ -1198,19 +1577,20 @@ function cleanPoiTitle(tags: Record<string, string>, kind: PoiKind): { title: st
 
 function poiDisplayMinZoom(poi: PoiRecord): number {
   const base = poi.minZoom ?? poiMinZoom(poi.kind, poi.priority ?? 1);
-  return poi.named === false ? Math.max(base, 14) : Math.max(base - 1, 10);
+  if (poi.customIcon) return Math.max(base, 16);
+  return poi.named === false ? Math.max(base, 17) : base;
 }
 
 function poiVisibleLimit(zoom: number): number {
-  if (zoom < 11) return 28;
-  if (zoom < 13) return 75;
-  if (zoom < 15) return 180;
-  if (zoom < 17) return 420;
+  if (zoom < 14) return 0;
+  if (zoom < 15) return 12;
+  if (zoom < 16) return 45;
+  if (zoom < 17) return 180;
   return 900;
 }
 
 function visiblePoisForZoom(pois: PoiRecord[], zoom = map.getZoom()): PoiRecord[] {
-  if (zoom < 10) return [];
+  if (zoom < 14) return [];
   const limit = poiVisibleLimit(zoom);
   return dedupePoiRecords(pois)
     .filter((poi) => zoom >= poiDisplayMinZoom(poi))
@@ -1248,10 +1628,19 @@ function dedupePoiRecords(pois: PoiRecord[]): PoiRecord[] {
   return result;
 }
 
+function withCustomPois(pois: PoiRecord[]): PoiRecord[] {
+  const customByTitle = new Set(CUSTOM_POI_SEEDS.map((poi) => normalizedPoiTitle(poi.title)));
+  const filtered = pois.filter((poi) => {
+    if (!customByTitle.has(normalizedPoiTitle(poi.title))) return true;
+    return !CUSTOM_POI_SEEDS.some((custom) => L.latLng(custom.lat, custom.lng).distanceTo([poi.lat, poi.lng]) < 180);
+  });
+  return dedupePoiRecords([...CUSTOM_POI_SEEDS, ...filtered]);
+}
+
 function renderPoiMarkers(pois?: PoiRecord[]): void {
   if (pois) {
     const nextData = new Map<string, PoiRecord>();
-    dedupePoiRecords(pois).forEach((poi) => nextData.set(poi.id, poi));
+    withCustomPois(pois).forEach((poi) => nextData.set(poi.id, poi));
     state.poiData = nextData;
   }
 
@@ -1329,21 +1718,25 @@ function renderPoiMarkers(pois?: PoiRecord[]): void {
 
 function makePoiIcon(poi: PoiRecord, size: number): L.DivIcon {
   const visual = poiVisual(poi.kind);
-  const zoom = map.getZoom();
-  const priority = poi.priority ?? 1;
-  const showLabel = Boolean(poi.named) && (zoom >= 15 || (zoom >= 13 && priority >= 3) || (zoom >= 11 && priority >= 4));
+  const markerSize = poi.customIcon ? customPoiMarkerSize(map.getZoom()) : size;
+  const glyph = poi.iconUrl
+    ? `<img class="poi-custom-image" src="${escapeHtml(poi.iconUrl)}" alt="" loading="lazy">`
+    : visual.icon;
   return L.divIcon({
-    className: "poi-marker-icon",
-    html: `<div class="poi-marker poi-kind-${poi.kind} ${showLabel ? "has-label" : "no-label"}" title="${escapeHtml(poi.title)}" style="--poi-accent:${visual.color}; --poi-size:${size}px;">
-      <span class="poi-marker-glyph">${visual.icon}</span>
+    className: `poi-marker-icon ${poi.customIcon ? "poi-marker-icon-custom" : ""}`,
+    html: `<div class="poi-marker poi-kind-${poi.kind} ${poi.customIcon ? "poi-marker-custom" : ""} no-label" title="${escapeHtml(poi.title)}" style="--poi-accent:${visual.color}; --poi-size:${markerSize}px;">
+      <span class="poi-marker-glyph">${glyph}</span>
       <span class="poi-marker-label">${escapeHtml(poi.title)}</span>
     </div>`,
-    iconSize: [Math.max(86, size), size + 32],
-    iconAnchor: [Math.round(size / 2), Math.round(size / 2)],
+    iconSize: [markerSize + 8, markerSize + 8],
+    iconAnchor: [Math.round((markerSize + 8) / 2), Math.round((markerSize + 8) / 2)],
   });
 }
 
 function renderPoiModal(poi: PoiRecord): string {
+  const poiIcon = poi.iconUrl
+    ? `<img class="poi-icon-large-img" src="${escapeHtml(poi.iconUrl)}" alt="">`
+    : poi.icon;
   return `
     <div class="modal-header poi-modal-header">
       <button class="modal-close" data-action="close">×</button>
@@ -1362,7 +1755,7 @@ function renderPoiModal(poi: PoiRecord): string {
         </div>
       </div>
       <div class="poi-summary">
-        <div class="poi-icon-large">${poi.icon}</div>
+        <div class="poi-icon-large">${poiIcon}</div>
         <div>
           <div class="poi-title">${escapeHtml(poi.title)}</div>
           <div class="poi-address">${escapeHtml(poi.address)}</div>
@@ -1395,6 +1788,59 @@ function appDeepLink(route = "map", params: DeepLinkParams = {}): string {
   const safeRoute = route.replace(/[^a-z0-9-]/gi, "") || "map";
   const url = new URL(`${ANDROID_DEEP_LINK_SCHEME}://${safeRoute}`);
   return applyParams(url, params).toString();
+}
+
+function mapLicenseHtml(): string {
+  return MAP_LICENSE_GROUPS.map((group) => `
+    <section class="map-license-section">
+      <h2>${escapeHtml(group.title)}</h2>
+      <div class="map-license-grid">
+        ${group.entries.map((entry) => `
+          <article class="map-license-card">
+            <a href="${escapeHtml(entry.href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(entry.title)}</a>
+            <div class="map-license-role">${escapeHtml(entry.role)}</div>
+            <p>${escapeHtml(entry.note)}</p>
+            <div class="map-license-line">
+              <span>Lisensi</span>
+              ${entry.licenseHref
+                ? `<a href="${escapeHtml(entry.licenseHref)}" target="_blank" rel="noopener noreferrer">${escapeHtml(entry.license)}</a>`
+                : `<b>${escapeHtml(entry.license)}</b>`}
+            </div>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+  `).join("");
+}
+
+function openMapLicensePage(): void {
+  if (document.getElementById("map-license-modal")) return;
+  const overlay = document.createElement("div");
+  overlay.id = "map-license-modal";
+  overlay.className = "map-license-modal";
+  overlay.innerHTML = `
+    <div class="map-license-backdrop"></div>
+    <div class="map-license-panel" role="dialog" aria-modal="true" aria-labelledby="map-license-title">
+      <header class="map-license-header">
+        <div>
+          <span class="map-license-kicker">Attribution</span>
+          <h1 id="map-license-title">Lisensi Peta</h1>
+        </div>
+        <button type="button" class="map-license-close" aria-label="Tutup">x</button>
+      </header>
+      <div class="map-license-body">
+        ${mapLicenseHtml()}
+      </div>
+    </div>
+  `;
+  const close = () => {
+    overlay.classList.remove("open");
+    setTimeout(() => overlay.remove(), 160);
+  };
+  overlay.querySelector(".map-license-backdrop")?.addEventListener("click", close);
+  overlay.querySelector(".map-license-close")?.addEventListener("click", close);
+  document.body.appendChild(overlay);
+  requestAnimationFrame(() => overlay.classList.add("open"));
 }
 
 function currentMapDeepLink(params: DeepLinkParams = {}): string {
@@ -1977,7 +2423,7 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
             pipMapInstance = L.map(pipMapElDiv).setView([currentPos.lat, currentPos.lng], 17);
             L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png", {
               subdomains: "abcd",
-              attribution: "© OSM © CARTO",
+              attribution: "",
             }).addTo(pipMapInstance);
             L.marker([currentPos.lat, currentPos.lng], { icon: L.icon({ iconUrl: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSI4IiBmaWxsPSIjZmY0NDQ0Ii8+PC9zdmc+', iconSize: [24, 24] }) }).addTo(pipMapInstance);
             L.marker([currentTarget.lat, currentTarget.lng], { icon: L.icon({ iconUrl: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48cmVjdCB4PSI0IiB5PSI0IiB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIGZpbGw9IiMxMGI5ODEiIHJ4PSIyIi8+PC9zdmc+', iconSize: [24, 24] }) }).addTo(pipMapInstance);
@@ -2092,6 +2538,18 @@ function limitRoadQueryBounds(bounds: L.LatLngBounds): L.LatLngBounds {
   );
 }
 
+function limitRailQueryBounds(bounds: L.LatLngBounds): L.LatLngBounds {
+  const center = bounds.getCenter();
+  const diagonal = bounds.getSouthWest().distanceTo(bounds.getNorthEast());
+  if (diagonal <= RAIL_QUERY_MAX_RADIUS_M * 2) return bounds;
+  const latDelta = RAIL_QUERY_MAX_RADIUS_M / 111320;
+  const lngDelta = Math.abs(RAIL_QUERY_MAX_RADIUS_M / (111320 * Math.cos((center.lat * Math.PI) / 180)));
+  return L.latLngBounds(
+    [center.lat - latDelta, center.lng - lngDelta],
+    [center.lat + latDelta, center.lng + lngDelta],
+  );
+}
+
 function fallbackPoiRecords(center: L.LatLng, prefix = "fallback"): PoiRecord[] {
   const entries: Array<[PoiKind, string, number, number]> = [
     ["mosque", "Tempat Ibadah", 0.0060, -0.0042],
@@ -2149,8 +2607,11 @@ async function postOverpassQuery(q: string): Promise<any> {
 }
 
 function roadPriority(tags: Record<string, string>): number {
+  if (tags.railway === "station" || tags.public_transport === "station") return 8;
+  if (tags.railway === "halt" || tags.railway === "tram_stop" || tags.public_transport === "platform") return 7;
+  if (tags.amenity === "school" || tags.amenity === "hospital" || tags.amenity === "university" || tags.tourism === "museum") return 6;
   if (tags.place) return tags.place === "city" || tags.place === "town" ? 8 : 6;
-  if (tags.building) return 3;
+  if (tags.building) return tags.name ? 4 : 3;
   if (tags.landuse || tags.leisure || tags.natural) return 4;
   const highway = tags.highway || "";
   if (highway === "motorway" || highway === "trunk") return 6;
@@ -2161,6 +2622,7 @@ function roadPriority(tags: Record<string, string>): number {
 }
 
 function mapLabelKind(tags: Record<string, string>): RoadLabelRecord["kind"] {
+  if (tags.railway === "station" || tags.railway === "halt" || tags.railway === "tram_stop" || tags.public_transport) return "station";
   if (tags.highway) return "road";
   if (tags.place) return "place";
   if (tags.building) return "building";
@@ -2287,6 +2749,19 @@ async function fetchRoadLabelsForBounds(bounds: L.LatLngBounds): Promise<RoadLab
       way["shop"]["name"](${bbox});
       node["tourism"]["name"](${bbox});
       way["tourism"]["name"](${bbox});
+      relation["tourism"]["name"](${bbox});
+      node["railway"~"^(station|halt|tram_stop|platform)$"]["name"](${bbox});
+      way["railway"~"^(station|halt|tram_stop|platform)$"]["name"](${bbox});
+      relation["railway"~"^(station|halt|tram_stop|platform)$"]["name"](${bbox});
+      node["public_transport"~"^(station|platform|stop_position)$"]["name"](${bbox});
+      way["public_transport"~"^(station|platform|stop_position)$"]["name"](${bbox});
+      relation["public_transport"~"^(station|platform|stop_position)$"]["name"](${bbox});
+      node["healthcare"]["name"](${bbox});
+      way["healthcare"]["name"](${bbox});
+      relation["healthcare"]["name"](${bbox});
+      node["office"]["name"](${bbox});
+      way["office"]["name"](${bbox});
+      relation["office"]["name"](${bbox});
     );
     out center geom tags 1800;
   `;
@@ -2370,6 +2845,353 @@ async function refreshRoadLabelLayer(): Promise<void> {
   renderRoadLabels(labels);
 }
 
+function railTrackLatLngs(track: RailTrackRecord): L.LatLngExpression[] {
+  return track.points.map((point) => [point.lat, point.lng]);
+}
+
+function cleanRailTrackName(tags: Record<string, string>): string {
+  const raw = tags.name || tags.official_name || tags.ref || tags.operator || "";
+  const name = String(raw).trim();
+  if (name && !/^(yes|rail)$/i.test(name)) return name;
+  const railway = tags.railway || "";
+  if (railway === "light_rail") return "Lintasan LRT";
+  if (railway === "subway") return "Lintasan MRT";
+  if (railway === "monorail") return "Lintasan Monorel";
+  return "Jalur Kereta Api";
+}
+
+function railTrackColor(tags: Record<string, string>): string {
+  const railway = tags.railway || "";
+  const name = `${tags.name || ""} ${tags.operator || ""}`.toLowerCase();
+  if (railway === "light_rail") return "#7c3aed";
+  if (railway === "subway") return "#0ea5e9";
+  if (railway === "monorail") return "#db2777";
+  if (name.includes("bandara") || name.includes("airport")) return "#0284c7";
+  if (name.includes("commuter") || name.includes("krl")) return "#ef4444";
+  return "#475569";
+}
+
+function makeRailLabelIcon(track: RailTrackRecord, bearing: number): L.DivIcon {
+  const normalized = normBearing(bearing);
+  const readableBearing = normalized > 90 && normalized < 270 ? normalized + 180 : normalized;
+  return L.divIcon({
+    className: "rail-label-icon",
+    html: `<div class="rail-route-label" title="${escapeHtml(track.name)}" style="--rail-color:${track.color}; --rail-bearing:${readableBearing}deg"><span>${escapeHtml(track.name)}</span></div>`,
+    iconSize: [190, 22],
+    iconAnchor: [95, 11],
+  });
+}
+
+function railTrackLabelSamples(track: RailTrackRecord): Array<{ lat: number; lng: number; bearing: number }> {
+  const geometry = track.points.map((point) => ({ lat: point.lat, lon: point.lng }));
+  const samples = roadGeometrySamples(geometry, 7000, 2);
+  if (samples.length > 0) return samples;
+  if (track.points.length < 2) return [];
+  const middleIndex = Math.max(1, Math.floor(track.points.length / 2));
+  const prev = track.points[middleIndex - 1];
+  const next = track.points[middleIndex] ?? track.points[track.points.length - 1];
+  return [{
+    lat: (prev.lat + next.lat) / 2,
+    lng: (prev.lng + next.lng) / 2,
+    bearing: bearingBetween({ lat: prev.lat, lng: prev.lng }, { lat: next.lat, lng: next.lng }),
+  }];
+}
+
+async function fetchRailOsmForBounds(bounds: L.LatLngBounds): Promise<{ tracks: RailTrackRecord[]; stations: RailStationLabelRecord[] }> {
+  const safeBounds = limitRailQueryBounds(bounds);
+  const bbox = buildOverpassBBoxString(safeBounds);
+  const q = `
+    [out:json][timeout:14];
+    (
+      way["railway"~"^(rail|light_rail|subway|monorail)$"](${bbox});
+      node["railway"~"^(station|halt|tram_stop|platform)$"]["name"](${bbox});
+      way["railway"~"^(station|halt|tram_stop|platform)$"]["name"](${bbox});
+      relation["railway"~"^(station|halt|tram_stop|platform)$"]["name"](${bbox});
+      node["public_transport"~"^(station|platform|stop_position)$"]["name"](${bbox});
+      way["public_transport"~"^(station|platform|stop_position)$"]["name"](${bbox});
+      relation["public_transport"~"^(station|platform|stop_position)$"]["name"](${bbox});
+    );
+    out center geom tags 9000;
+  `;
+
+  try {
+    const data = await postOverpassQuery(q);
+    const elements = Array.isArray(data.elements) ? data.elements : [];
+    const tracks = new Map<string, RailTrackRecord>();
+    const stations = new Map<string, RailStationLabelRecord>();
+
+    elements.forEach((el: any) => {
+      const tags = el.tags || {};
+      if (el.type === "way" && Array.isArray(el.geometry) && el.geometry.length > 1 && tags.railway && !["station", "halt", "tram_stop", "platform"].includes(tags.railway)) {
+        const points = el.geometry
+          .map((point: any) => ({ lat: Number(point.lat), lng: Number(point.lon) }))
+          .filter((point: { lat: number; lng: number }) => Number.isFinite(point.lat) && Number.isFinite(point.lng));
+        if (points.length < 2) return;
+        tracks.set(`osm-rail-${el.id}`, {
+          id: `osm-rail-${el.id}`,
+          name: cleanRailTrackName(tags),
+          color: railTrackColor(tags),
+          points,
+        });
+        return;
+      }
+
+      const name = String(tags.name || tags.official_name || tags["name:id"] || "").trim();
+      const lat = Number(el.lat || el.center?.lat);
+      const lng = Number(el.lon || el.center?.lon);
+      if (!name || !Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      const key = `${name.toLowerCase()}@${lat.toFixed(4)},${lng.toFixed(4)}`;
+      stations.set(key, {
+        id: `osm-station-${el.type}-${el.id}`,
+        name,
+        lat,
+        lng,
+      });
+    });
+
+    return { tracks: [...tracks.values()], stations: [...stations.values()] };
+  } catch (err) {
+    console.warn("Rail OSM fetch failed:", err);
+    return { tracks: [], stations: [] };
+  }
+}
+
+let lastRailFetchBounds: L.LatLngBounds | null = null;
+
+function clearRailLayer(): void {
+  state.railLayer?.clearLayers();
+  state.railRouteLayers.clear();
+  state.railStationMarkers.clear();
+  state.railLabelMarkers.forEach((marker) => {
+    try { marker.remove(); } catch { /* ignore */ }
+  });
+  state.railLabelMarkers.clear();
+  clearRailLegend();
+}
+
+function ensureRailLayer(): L.LayerGroup {
+  if (!state.railLayer) {
+    state.railLayer = L.layerGroup([], { pane: "railPane" }).addTo(map);
+  }
+  return state.railLayer;
+}
+
+function setRailRouteHighlight(routeKey = ""): void {
+  state.railRouteLayers.forEach((line, id) => {
+    const trackName = String((line as any).railTrackName || "");
+    const active = routeKey === id || routeKey === `name:${trackName}`;
+    const dimmed = Boolean(routeKey) && !active;
+    const baseWeight = Number((line as any).railBaseWeight) || 3.2;
+    const baseOpacity = Number((line as any).railBaseOpacity) || 0.62;
+    line.setStyle({
+      weight: active ? baseWeight + 2.1 : baseWeight,
+      opacity: dimmed ? 0.22 : active ? 0.96 : baseOpacity,
+    });
+  });
+}
+
+function clearRailLegend(): void {
+  if (state.railLegendControl) {
+    try { map.removeControl(state.railLegendControl); } catch { /* ignore */ }
+  }
+  state.railLegendControl = null;
+  state.railLegendEl = null;
+}
+
+function renderRailLegend(): void {
+  if (state.transportLayer !== "rail" || state.railOsmTracks.length === 0) {
+    clearRailLegend();
+    return;
+  }
+
+  const entries = new Map<string, { name: string; color: string; count: number; points: Array<{ lat: number; lng: number }> }>();
+  state.railOsmTracks.forEach((track) => {
+    const key = `${track.name}::${track.color}`;
+    const existing = entries.get(key);
+    if (existing) {
+      existing.count += 1;
+      existing.points.push(...track.points);
+      return;
+    }
+    entries.set(key, {
+      name: track.name,
+      color: track.color,
+      count: 1,
+      points: [...track.points],
+    });
+  });
+
+  const items = [...entries.values()]
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+    .slice(0, 18);
+
+  if (!state.railLegendControl) {
+    const control = new L.Control({ position: "bottomleft" });
+    control.onAdd = () => {
+      const el = L.DomUtil.create("div", "rail-legend-control");
+      L.DomEvent.disableClickPropagation(el);
+      L.DomEvent.disableScrollPropagation(el);
+      state.railLegendEl = el;
+      return el;
+    };
+    state.railLegendControl = control;
+    control.addTo(map);
+  }
+
+  const el = state.railLegendEl;
+  if (!el) return;
+  el.innerHTML = `
+    <div class="rail-legend-head">
+      <strong>Legend Jalur Kereta</strong>
+    </div>
+    <div class="rail-legend-list">
+      ${items.map((item) => `
+        <button class="rail-legend-item" type="button" data-rail-name="${escapeHtml(item.name)}" style="--rail-color:${item.color}">
+          <span class="rail-legend-swatch" aria-hidden="true"></span>
+          <span class="rail-legend-copy">
+            <b>${escapeHtml(item.name)}</b>
+            <small>${item.count > 1 ? `${item.count} segmen` : "1 segmen"}</small>
+          </span>
+        </button>
+      `).join("")}
+    </div>
+  `;
+
+  el.querySelectorAll<HTMLButtonElement>(".rail-legend-item").forEach((btn) => {
+    const name = btn.dataset.railName || "";
+    const key = `name:${name}`;
+    btn.addEventListener("mouseenter", () => setRailRouteHighlight(key));
+    btn.addEventListener("mouseleave", () => setRailRouteHighlight(""));
+    btn.addEventListener("focus", () => setRailRouteHighlight(key));
+    btn.addEventListener("blur", () => setRailRouteHighlight(""));
+    btn.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      setRailRouteHighlight(key);
+      const entry = items.find((item) => item.name === name);
+      if (entry && entry.points.length > 1) {
+        const bounds = L.latLngBounds(entry.points.map((point) => [point.lat, point.lng] as L.LatLngTuple));
+        if (bounds.isValid()) map.fitBounds(bounds.pad(0.16), { maxZoom: 16, animate: true });
+      }
+      window.setTimeout(() => setRailRouteHighlight(""), 1400);
+    });
+  });
+}
+
+function renderRailLayer(): void {
+  if (state.transportLayer !== "rail") {
+    clearRailLayer();
+    return;
+  }
+  const layer = ensureRailLayer();
+  clearRailLayer();
+
+  state.railOsmTracks.forEach((track) => {
+    const line = L.polyline(railTrackLatLngs(track), {
+      pane: "railPane",
+      color: track.color,
+      weight: 3.7,
+      opacity: 0.72,
+      lineCap: "round",
+      lineJoin: "round",
+      interactive: true,
+      className: "rail-route-line rail-route-line-osm",
+    } as L.PolylineOptions).addTo(layer);
+    (line as any).railBaseWeight = 3.7;
+    (line as any).railBaseOpacity = 0.72;
+    (line as any).railTrackName = track.name;
+    const highlightKey = `name:${track.name}`;
+    line.on("mouseover", () => setRailRouteHighlight(highlightKey));
+    line.on("mouseout", () => setRailRouteHighlight(""));
+    line.on("click", (ev: L.LeafletMouseEvent) => {
+      L.DomEvent.stop(ev);
+      L.popup({ className: "rail-route-popup", maxWidth: 280 })
+        .setLatLng(ev.latlng)
+        .setContent(`<div class="rail-popup"><strong>${escapeHtml(track.name)}</strong><p>Geometri rel dari OpenStreetMap/Overpass.</p></div>`)
+        .openOn(map);
+      setRailRouteHighlight("");
+    });
+    state.railRouteLayers.set(track.id, line);
+
+    railTrackLabelSamples(track).forEach((sample, index) => {
+      const marker = L.marker([sample.lat, sample.lng], {
+        pane: "customLabelPane",
+        icon: makeRailLabelIcon(track, sample.bearing),
+        interactive: false,
+        keyboard: false,
+        zIndexOffset: 340,
+      }).addTo(map);
+      state.railLabelMarkers.set(`${track.id}-${index}`, marker);
+    });
+  });
+
+  state.railOsmStations.forEach((station) => {
+    const marker = L.circleMarker([station.lat, station.lng], {
+      pane: "railPane",
+      radius: 3.6,
+      color: "#334155",
+      weight: 1.4,
+      fillColor: "#ffffff",
+      fillOpacity: 0.94,
+      opacity: 0.9,
+      interactive: true,
+    }).addTo(layer);
+    marker.bindTooltip(station.name, {
+      permanent: true,
+      direction: "top",
+      offset: [0, -5],
+      opacity: 0.92,
+      className: "rail-station-tooltip rail-station-label",
+    });
+    state.railStationMarkers.set(station.id, marker);
+  });
+
+  renderRailLegend();
+}
+
+async function refreshRailOsmLayer(): Promise<void> {
+  if (state.transportLayer !== "rail") return;
+  const bounds = map.getBounds();
+  if (lastRailFetchBounds && lastRailFetchBounds.contains(bounds.getSouthWest()) && lastRailFetchBounds.contains(bounds.getNorthEast())) {
+    renderRailLayer();
+    return;
+  }
+  lastRailFetchBounds = bounds.pad(0.22);
+  const seq = ++state.railFetchSeq;
+  const result = await fetchRailOsmForBounds(bounds);
+  if (seq !== state.railFetchSeq) return;
+  state.railOsmTracks = result.tracks;
+  state.railOsmStations = result.stations;
+  renderRailLayer();
+}
+
+function setTransportLayer(layer: TransportLayerMode): void {
+  state.transportLayer = layer;
+  if (layer !== "rail") {
+    state.railFetchSeq += 1;
+    clearRailLayer();
+  } else {
+    renderRailLayer();
+    void refreshRailOsmLayer();
+  }
+  syncLayerControls();
+}
+
+function syncLayerControls(): void {
+  document.querySelectorAll<HTMLElement>("[data-mode]").forEach((el) => {
+    const mode = el.dataset.mode as BaseMapMode | undefined;
+    if (!mode) return;
+    el.classList.toggle("active", state.baseMode === mode);
+    el.setAttribute("aria-pressed", String(state.baseMode === mode));
+  });
+  document.querySelectorAll<HTMLElement>("[data-transport]").forEach((el) => {
+    const transport = el.dataset.transport as TransportLayerMode | undefined;
+    if (!transport) return;
+    el.classList.toggle("active", state.transportLayer === transport);
+    el.setAttribute("aria-pressed", String(state.transportLayer === transport));
+  });
+}
+
 async function fetchOverpassFeaturesForBounds(bounds: L.LatLngBounds): Promise<PoiRecord[]> {
   const safeBounds = limitPoiQueryBounds(bounds);
   const bbox = buildOverpassBBoxString(safeBounds);
@@ -2418,6 +3240,10 @@ async function fetchOverpassFeaturesForBounds(bounds: L.LatLngBounds): Promise<P
     const elements = Array.isArray(data.elements) ? data.elements : [];
     const pois: PoiRecord[] = elements.map((el: any) => {
       const tags = el.tags || {};
+      const railway = tags.railway || "";
+      if (railway && !["station", "halt", "tram_stop", "subway_entrance", "platform"].includes(railway) && !tags.public_transport) {
+        return null;
+      }
       const lat = el.type === 'node' ? el.lat : (el.center && el.center.lat) || el.lat || 0;
       const lng = el.type === 'node' ? el.lon : (el.center && el.center.lon) || el.lon || 0;
       const kind = classifyPoiKind(tags);
@@ -2444,7 +3270,7 @@ async function fetchOverpassFeaturesForBounds(bounds: L.LatLngBounds): Promise<P
         named,
         lat, lng,
       };
-    }).filter((p: PoiRecord) => p.lat && p.lng && !Number.isNaN(p.lat) && !Number.isNaN(p.lng));
+    }).filter((p: PoiRecord | null): p is PoiRecord => Boolean(p && p.lat && p.lng && !Number.isNaN(p.lat) && !Number.isNaN(p.lng)));
     return dedupePoiRecords(pois);
   } catch (err) {
     console.warn("Overpass fetch failed:", err);
@@ -2584,6 +3410,7 @@ map.on('click', async (ev: L.LeafletMouseEvent) => {
 map.on('moveend', () => {
   void refreshOverpassLayer();
   void refreshRoadLabelLayer();
+  if (state.transportLayer === "rail") void refreshRailOsmLayer();
 });
 
 // ─── Helpers ────────────────────────────────────────────────────
@@ -2593,6 +3420,12 @@ function isDeviceStatus(v: unknown): v is DeviceStatus {
 }
 function isCameraMode(v: unknown): v is CameraMode {
   return v === "webrtc" || v === "mjpeg";
+}
+function isAiEngineMode(v: unknown): v is AiEngineMode {
+  return v === "browser-yolo" || v === "raspberry-yolo" || v === "grove-vision-ai";
+}
+function isCameraSourceMode(v: unknown): v is CameraSourceMode {
+  return v === "raspberry-webrtc" || v === "raspberry-hls" || v === "grove-vision-ai";
 }
 function isTrafficColor(v: unknown): v is TrafficColor {
   return v === "red" || v === "yellow" || v === "green";
@@ -2627,6 +3460,34 @@ function normalizeUpdateInfo(rawRecord: Record<string, unknown>): ControllerUpda
     updatedAt,
     source: source?.trim() || undefined,
   };
+}
+function normalizeRuntimeConfig(v: unknown): DeviceRuntimeConfig | undefined {
+  if (!v || typeof v !== "object") return undefined;
+  const raw = v as Record<string, unknown>;
+  const groveRaw = raw.groveVisionAi && typeof raw.groveVisionAi === "object"
+    ? raw.groveVisionAi as Record<string, unknown>
+    : {};
+  const transport = groveRaw.transport === "uart" || groveRaw.transport === "i2c" || groveRaw.transport === "wifi"
+    ? groveRaw.transport
+    : undefined;
+  const config: DeviceRuntimeConfig = {
+    aiEngine: isAiEngineMode(raw.aiEngine) ? raw.aiEngine : undefined,
+    cameraSource: isCameraSourceMode(raw.cameraSource) ? raw.cameraSource : undefined,
+    updatedAt: finiteNumber(raw.updatedAt),
+    requestedBy: typeof raw.requestedBy === "string" ? raw.requestedBy.trim() || undefined : undefined,
+  };
+  if (Object.keys(groveRaw).length) {
+    config.groveVisionAi = {
+      enabled: typeof groveRaw.enabled === "boolean" ? groveRaw.enabled : undefined,
+      transport,
+      host: typeof groveRaw.host === "string" ? groveRaw.host.trim() || undefined : undefined,
+      port: finiteNumber(groveRaw.port),
+      serialPath: typeof groveRaw.serialPath === "string" ? groveRaw.serialPath.trim() || undefined : undefined,
+      model: typeof groveRaw.model === "string" ? groveRaw.model.trim() || undefined : undefined,
+    };
+  }
+  if (!config.aiEngine && !config.cameraSource && !config.groveVisionAi && !config.updatedAt) return undefined;
+  return config;
 }
 function normalizeVehicleBreakdown(v: unknown): VehicleBreakdown | undefined {
   if (!v || typeof v !== "object") return undefined;
@@ -2669,6 +3530,83 @@ function normalizeDetections(v: unknown): YoloDetection[] {
     const vehicle = typeof raw.vehicle === "boolean" ? raw.vehicle : VEHICLE_LABELS.has(key);
     return [{ label, confidence, vehicle, x, y, width, height }];
   }).sort((a, b) => b.confidence - a.confidence).slice(0, 80);
+}
+
+function vehicleBreakdownFromDetections(detections: YoloDetection[]): VehicleBreakdown {
+  const breakdown: VehicleBreakdown = { car: 0, motorcycle: 0, bus: 0, truck: 0, bicycle: 0, total: 0 };
+  detections.forEach((det) => {
+    const label = det.label.trim().toLowerCase();
+    if (!VEHICLE_LABELS.has(label)) return;
+    if (label === "car") breakdown.car += 1;
+    else if (label === "motorcycle") breakdown.motorcycle += 1;
+    else if (label === "bus") breakdown.bus += 1;
+    else if (label === "truck") breakdown.truck += 1;
+    else if (label === "bicycle") breakdown.bicycle += 1;
+  });
+  breakdown.total = breakdown.car + breakdown.motorcycle + breakdown.bus + breakdown.truck + breakdown.bicycle;
+  return breakdown;
+}
+
+function normalizeCameraDataset(v: unknown): TrafficCameraDataset | undefined {
+  if (!v || typeof v !== "object") return undefined;
+  const raw = v as Record<string, unknown>;
+  const snapshot1Url = typeof raw.snapshot1Url === "string"
+    ? raw.snapshot1Url.trim() || undefined
+    : typeof raw.nama1 === "string"
+      ? raw.nama1.trim() || undefined
+      : typeof raw.image1 === "string"
+        ? raw.image1.trim() || undefined
+        : undefined;
+  const snapshot2Url = typeof raw.snapshot2Url === "string"
+    ? raw.snapshot2Url.trim() || undefined
+    : typeof raw.nama2 === "string"
+      ? raw.nama2.trim() || undefined
+      : typeof raw.image2 === "string"
+        ? raw.image2.trim() || undefined
+        : undefined;
+  const updatedAt = finiteNumber(raw.updatedAt);
+  const source = typeof raw.source === "string" ? raw.source.trim() || undefined : undefined;
+  const path = typeof raw.path === "string" ? raw.path.trim() || undefined : undefined;
+  if (!snapshot1Url && !snapshot2Url && !updatedAt) return undefined;
+  return { snapshot1Url, snapshot2Url, updatedAt, source, path };
+}
+
+function trafficLevelForVehicleCount(count: number): "lancar" | "sedang" | "padat" {
+  const safe = Math.max(0, Math.round(count));
+  if (safe <= BROWSER_YOLO_LANCAR_MAX) return "lancar";
+  if (safe <= BROWSER_YOLO_SEDANG_MAX) return "sedang";
+  return "padat";
+}
+
+function cameraPosterStorageKey(key: string): string {
+  return `its-camera-thumbnail:${key}`;
+}
+
+function readCameraPoster(key: string): string {
+  try {
+    return key ? window.localStorage.getItem(cameraPosterStorageKey(key)) || "" : "";
+  } catch {
+    return "";
+  }
+}
+
+function writeCameraPoster(key: string, poster: string): void {
+  try {
+    if (key && poster) window.localStorage.setItem(cameraPosterStorageKey(key), poster);
+  } catch {
+    // Storage quota can be small on mobile private tabs.
+  }
+}
+
+function makeCameraThumbnail(video: HTMLVideoElement, width = 240, quality = 0.5): string {
+  if (!video.videoWidth || !video.videoHeight) return "";
+  const height = Math.max(120, Math.round(width * (video.videoHeight / video.videoWidth)));
+  browserYoloThumbnailCanvas.width = width;
+  browserYoloThumbnailCanvas.height = height;
+  const ctx = browserYoloThumbnailCanvas.getContext("2d");
+  if (!ctx) return "";
+  ctx.drawImage(video, 0, 0, width, height);
+  return browserYoloThumbnailCanvas.toDataURL("image/jpeg", quality);
 }
 function normalizeEpoch(v: number): number {
   if (!Number.isFinite(v) || v <= 0) return 0;
@@ -2845,6 +3783,17 @@ function renderDetectionOverlay(device: DeviceRecord | null): string {
   </div>`;
 }
 
+function serverYoloStatusText(device: DeviceRecord | null): string {
+  if (!device) return "Menunggu YOLO Raspberry";
+  const status = device.detectorStatus || "menunggu";
+  const isBrowser = status.toLowerCase().includes("browser-yolo");
+  const name = isBrowser ? "YOLO web" : "YOLO Raspberry";
+  const fps = device.detectorFps && device.detectorFps > 0 ? ` ${device.detectorFps.toFixed(1)} FPS` : "";
+  const objectCount = device.objectCount ?? device.detections?.length ?? 0;
+  const vehicles = device.vehicleBreakdown?.total ?? vehicleBreakdownFromDetections(device.detections || []).total;
+  return `${name}${fps} · ${objectCount} objek · ${vehicles} kendaraan`;
+}
+
 async function resolveRoadName(device: DeviceRecord): Promise<string> {
   const cached = state.roadNameById.get(device.id);
   if (cached) return cached;
@@ -2893,6 +3842,15 @@ function normalizeOneDevice(raw: SnapshotDevice): DeviceRecord | null {
   const rawRecord = raw as Record<string, unknown>;
   const rawCameraMode = rawRecord.cameraMode;
   const cameraUrl = raw.cameraUrl?.trim() || undefined;
+  const cameraHlsUrl = typeof rawRecord.cameraHlsUrl === "string"
+    ? rawRecord.cameraHlsUrl.trim() || undefined
+    : typeof rawRecord.hlsUrl === "string"
+      ? rawRecord.hlsUrl.trim() || undefined
+      : undefined;
+  const cameraThumbnailUrl = typeof rawRecord.cameraThumbnailUrl === "string"
+    ? rawRecord.cameraThumbnailUrl.trim() || undefined
+    : undefined;
+  const cameraDataset = normalizeCameraDataset(rawRecord.cameraDataset);
   const webrtcUrl = typeof rawRecord.webrtcUrl === "string" ? rawRecord.webrtcUrl.trim() || undefined : undefined;
   const cameraMode = isCameraMode(rawCameraMode)
     ? rawCameraMode
@@ -2913,6 +3871,9 @@ function normalizeOneDevice(raw: SnapshotDevice): DeviceRecord | null {
     lastSeenText: raw.lastSeenText?.trim() || undefined,
     note: raw.note?.trim() || undefined,
     cameraUrl,
+    cameraHlsUrl,
+    cameraThumbnailUrl,
+    cameraDataset,
     cameraMode,
     webrtcEnabled: typeof rawRecord.webrtcEnabled === "boolean" ? rawRecord.webrtcEnabled : undefined,
     webrtcPath: typeof rawRecord.webrtcPath === "string" ? rawRecord.webrtcPath.trim() || undefined : undefined,
@@ -2937,10 +3898,14 @@ function normalizeOneDevice(raw: SnapshotDevice): DeviceRecord | null {
     objectCount: Math.max(0, Math.round(finiteNumber(rawRecord.objectCount) ?? detections.length)),
     detections,
     trafficSource: typeof rawRecord.trafficSource === "string" ? rawRecord.trafficSource.trim() || undefined : undefined,
+    trafficLevel: rawRecord.trafficLevel === "lancar" || rawRecord.trafficLevel === "sedang" || rawRecord.trafficLevel === "padat"
+      ? rawRecord.trafficLevel
+      : undefined,
     gpioBackend: typeof rawRecord.gpioBackend === "string" ? rawRecord.gpioBackend.trim() || undefined : undefined,
     gpioReady: typeof rawRecord.gpioReady === "boolean" ? rawRecord.gpioReady : undefined,
     gpioNote: typeof rawRecord.gpioNote === "string" ? rawRecord.gpioNote.trim() || undefined : undefined,
     update: normalizeUpdateInfo(rawRecord),
+    runtimeConfig: normalizeRuntimeConfig(rawRecord.runtimeConfig),
     position: { lat: clamp(lat, -90, 90), lng: clamp(lng, -180, 180) },
   };
 }
@@ -3166,6 +4131,8 @@ function refreshOpenDeviceModal(device: DeviceRecord): void {
   sheet.querySelectorAll<HTMLButtonElement>(".modal-tab-btn").forEach((btn) => {
     btn.addEventListener("click", () => setSheetActiveTab(sheet, btn.dataset.tab || "system"));
   });
+  delete sheet.dataset.swipeSetup;
+  setupSheetSwipe(sheet, closeModal);
   setSheetActiveTab(sheet, activeTab);
 }
 
@@ -3186,6 +4153,7 @@ function ensureMarker(device: DeviceRecord): void {
   if (!existing) {
     const m = L.marker(latlng, {
       icon,
+      pane: "trafficMarkerPane",
       interactive: true,
       zIndexOffset: 1000,
       riseOnHover: true,
@@ -3219,19 +4187,12 @@ function ensureMarker(device: DeviceRecord): void {
   existing.setLatLng(latlng);
   existing.setIcon(icon);
 
-  // compute heading from previous position (if any) and apply rotation/greyscale
-  const prev = state.prevPositionById.get(device.id) || null;
+  // Do not write to the Leaflet marker wrapper transform; Leaflet uses it to position the marker.
   try {
     const el = existing.getElement?.() as HTMLElement | null;
     if (el) {
-      if (prev) {
-        const bearing = computeBearing(prev.lat, prev.lng, latlng.lat, latlng.lng);
-        el.style.transform = `rotate(${bearing}deg)`;
-      } else {
-        el.style.transform = "";
-      }
       el.style.filter = "grayscale(0.35)";
-      el.style.transition = "transform 300ms linear, filter 300ms";
+      el.style.transition = "filter 300ms";
       el.style.pointerEvents = "auto";
       // Ensure accessible name and keyboard activation remain present after updates
       try {
@@ -3644,6 +4605,7 @@ async function setBaseMap(mode: BaseMapMode): Promise<void> {
   }
 
   state.baseMode = mode;
+  syncLayerControls();
   renderPoiMarkers();
   renderRoadLabels();
   void refreshRoadLabelLayer();
@@ -3655,8 +4617,1039 @@ function publicCameraUrl(device: DeviceRecord | null): string {
   return device?.cameraUrl?.trim() || "";
 }
 
+function publicCameraHlsUrl(device: DeviceRecord | null): string {
+  const explicit = device?.cameraHlsUrl?.trim();
+  if (explicit) return explicit;
+  const url = publicCameraUrl(device);
+  return url ? hlsPlaylistUrl(url) : "";
+}
+
 function isLikelyImageUrl(url: string): boolean {
   return /^data:image/i.test(url) || /\.(mjpg|mjpeg|jpg|jpeg|png|webp)(\?|$)/i.test(url);
+}
+
+function isLikelyHlsUrl(url: string): boolean {
+  return /\.m3u8(\?|$)/i.test(url) || /\/cam\/?(\?|$)/i.test(url);
+}
+
+function hlsPlaylistUrl(url: string): string {
+  const clean = url.trim();
+  if (/\.m3u8(\?|$)/i.test(clean)) return clean;
+  const [base, query = ""] = clean.split("?");
+  const playlist = `${base.replace(/\/?$/, "/")}index.m3u8`;
+  return query ? `${playlist}?${query}` : playlist;
+}
+
+function whepEndpointUrl(url: string): string {
+  const clean = url.trim();
+  if (!clean) return "";
+  try {
+    const parsed = new URL(clean, window.location.href);
+    if (!parsed.pathname.endsWith("/")) parsed.pathname = `${parsed.pathname}/`;
+    const endpoint = new URL("whep", parsed);
+    endpoint.search = parsed.search;
+    return endpoint.toString();
+  } catch {
+    return "";
+  }
+}
+
+function cameraSurfaceKey(device: DeviceRecord | null): string {
+  const url = publicCameraUrl(device);
+  return url ? `camera:${url}` : "";
+}
+
+function loadExternalScript(src: string, test: () => boolean, current?: Promise<void> | null): Promise<void> {
+  if (test()) return Promise.resolve();
+  if (current) return current;
+  return new Promise<void>((resolve, reject) => {
+    const existing = Array.from(document.scripts).find((script) => script.src === src);
+    if (existing) {
+      existing.addEventListener("load", () => resolve(), { once: true });
+      existing.addEventListener("error", () => reject(new Error(`script failed: ${src}`)), { once: true });
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = src;
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error(`script failed: ${src}`));
+    document.head.appendChild(script);
+  });
+}
+
+function loadHlsScript(): Promise<void> {
+  hlsScriptPromise = loadExternalScript(HLS_JS_URL, () => !!(window as any).Hls, hlsScriptPromise);
+  return hlsScriptPromise;
+}
+
+function loadOrtScript(): Promise<void> {
+  ortScriptPromise = loadExternalScript(ORT_JS_URL, () => !!(window as any).ort, ortScriptPromise);
+  return ortScriptPromise;
+}
+
+async function loadBrowserYoloSession(): Promise<any> {
+  if (!browserYoloSessionPromise) {
+    browserYoloSessionPromise = (async () => {
+      await loadOrtScript();
+      const ort = (window as any).ort;
+      ort.env.wasm.wasmPaths = ORT_WASM_BASE_URL;
+      ort.env.wasm.numThreads = 1;
+      return ort.InferenceSession.create(BROWSER_YOLO_MODEL_URL, {
+        executionProviders: ["wasm"],
+        graphOptimizationLevel: "all",
+      });
+    })();
+  }
+  return browserYoloSessionPromise;
+}
+
+function setBrowserYoloStatus(surface: HTMLElement, text: string, kind: "idle" | "live" | "error" = "idle"): void {
+  const status = surface.querySelector<HTMLElement>("[data-browser-yolo-status]");
+  if (!status) return;
+  status.textContent = text;
+  status.dataset.status = kind;
+}
+
+function cameraSurfaceIsFullscreen(surface: HTMLElement): boolean {
+  const fullscreen = document.fullscreenElement as HTMLElement | null;
+  return Boolean(fullscreen && (fullscreen === surface || surface.contains(fullscreen) || fullscreen.contains(surface)));
+}
+
+function fullscreenButtonIcon(active: boolean): string {
+  return active
+    ? `<svg viewBox="0 0 18 18" fill="none" width="18" height="18" aria-hidden="true">
+        <path d="M7 2v5H2M11 2v5h5M16 11h-5v5M7 16v-5H2"
+              stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>`
+    : `<svg viewBox="0 0 18 18" fill="none" width="18" height="18" aria-hidden="true">
+        <path d="M2 7V2h5M11 2h5v5M16 11v5h-5M7 16H2v-5"
+              stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>`;
+}
+
+function updateCameraFullscreenButton(surface: HTMLElement): void {
+  const button = surface.querySelector<HTMLButtonElement>("[data-camera-fullscreen]");
+  if (!button) return;
+  const active = cameraSurfaceIsFullscreen(surface);
+  button.dataset.fullscreenActive = active ? "true" : "false";
+  button.innerHTML = fullscreenButtonIcon(active);
+  button.setAttribute("aria-label", active ? "Keluar fullscreen video" : "Fullscreen video");
+}
+
+function surfaceDetections(surface: HTMLElement): YoloDetection[] {
+  const runtime = browserYoloRuntimes.get(surface);
+  if (runtime?.lastDetections?.length) return runtime.lastDetections;
+  const deviceId = surface.dataset.deviceId || state.device?.id || "";
+  const device = state.devices.find((item) => item.id === deviceId)
+    || (state.device?.id === deviceId ? state.device : null);
+  return device?.detections || [];
+}
+
+function aiStatsFromDetections(detections: YoloDetection[]): {
+  breakdown: VehicleBreakdown;
+  others: number;
+  objectCount: number;
+  otherSummary: string;
+} {
+  const breakdown = vehicleBreakdownFromDetections(detections);
+  const otherCounts = new Map<string, number>();
+  detections.forEach((det) => {
+    const label = det.label.trim().toLowerCase();
+    if (!label || VEHICLE_LABELS.has(label)) return;
+    otherCounts.set(label, (otherCounts.get(label) || 0) + 1);
+  });
+  const otherSummary = Array.from(otherCounts.entries())
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 4)
+    .map(([label, count]) => `${label} ${count}`)
+    .join(" · ");
+  const others = Array.from(otherCounts.values()).reduce((sum, count) => sum + count, 0);
+  return { breakdown, others, objectCount: detections.length, otherSummary: otherSummary || "Belum ada" };
+}
+
+function renderCameraAiPanelContent(surface: HTMLElement): string {
+  const detections = surfaceDetections(surface);
+  const stats = aiStatsFromDetections(detections);
+  const status = surface.querySelector<HTMLElement>("[data-browser-yolo-status]")?.textContent?.trim() || "YOLO web menunggu frame";
+  const item = (label: string, value: number) => `
+    <div class="camera-ai-stat">
+      <span>${escapeHtml(label)}</span>
+      <strong>${value}</strong>
+    </div>`;
+  return `
+    <div class="camera-ai-panel-head">
+      <div>
+        <span>AI YOLO</span>
+        <strong>${escapeHtml(status)}</strong>
+      </div>
+      <button type="button" class="camera-ai-close" data-camera-ai-close aria-label="Tutup panel AI">
+        <svg viewBox="0 0 18 18" width="16" height="16" aria-hidden="true">
+          <path d="M4 4l10 10M14 4 4 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </div>
+    <div class="camera-ai-grid">
+      ${item("Total kendaraan", stats.breakdown.total)}
+      ${item("Mobil", stats.breakdown.car)}
+      ${item("Motor", stats.breakdown.motorcycle)}
+      ${item("Bus", stats.breakdown.bus)}
+      ${item("Truk", stats.breakdown.truck)}
+      ${item("Sepeda", stats.breakdown.bicycle)}
+      ${item("Object lainnya", stats.others)}
+      ${item("Semua object", stats.objectCount)}
+    </div>
+    <div class="camera-ai-other">
+      <span>Object lainnya</span>
+      <strong>${escapeHtml(stats.otherSummary)}</strong>
+    </div>`;
+}
+
+function ensureCameraAiPanel(surface: HTMLElement): HTMLElement {
+  let panel = surface.querySelector<HTMLElement>("[data-camera-ai-panel]");
+  if (!panel) {
+    panel = document.createElement("section");
+    panel.className = "camera-ai-panel";
+    panel.dataset.cameraAiPanel = "true";
+    panel.setAttribute("aria-label", "Informasi AI YOLO");
+    surface.appendChild(panel);
+  }
+  return panel;
+}
+
+function updateCameraAiPanel(surface: HTMLElement): void {
+  const panel = ensureCameraAiPanel(surface);
+  panel.innerHTML = renderCameraAiPanelContent(surface);
+  panel.querySelector<HTMLButtonElement>("[data-camera-ai-close]")?.addEventListener("click", () => {
+    setCameraAiPanelOpen(surface, false);
+  });
+}
+
+function setCameraAiPanelOpen(surface: HTMLElement, open: boolean): void {
+  updateCameraAiPanel(surface);
+  surface.dataset.aiPanelOpen = open ? "true" : "false";
+  showCameraControls(surface, open);
+}
+
+function setupCameraAiPanel(surface: HTMLElement): void {
+  if (surface.dataset.aiPanelReady === "true") return;
+  surface.dataset.aiPanelReady = "true";
+  updateCameraAiPanel(surface);
+  surface.querySelector<HTMLButtonElement>("[data-camera-ai]")?.addEventListener("click", () => {
+    setCameraAiPanelOpen(surface, surface.dataset.aiPanelOpen !== "true");
+  });
+
+  const panel = ensureCameraAiPanel(surface);
+  let startX = 0;
+  let startY = 0;
+  let dragging = false;
+  panel.addEventListener("pointerdown", (event) => {
+    startX = event.clientX;
+    startY = event.clientY;
+    dragging = true;
+    panel.setPointerCapture?.(event.pointerId);
+  });
+  panel.addEventListener("pointerup", (event) => {
+    if (!dragging) return;
+    dragging = false;
+    const dx = event.clientX - startX;
+    const dy = Math.abs(event.clientY - startY);
+    if (dx > 70 && dx > dy * 1.2) setCameraAiPanelOpen(surface, false);
+  });
+  panel.addEventListener("pointercancel", () => {
+    dragging = false;
+  });
+}
+
+function setupCameraAmbient(surface: HTMLElement, video: HTMLVideoElement): void {
+  if (cameraAmbientTimers.has(surface)) return;
+  const sampler = document.createElement("canvas");
+  sampler.width = 8;
+  sampler.height = 8;
+  const ctx = sampler.getContext("2d", { willReadFrequently: true });
+  const sample = () => {
+    if (!surface.isConnected) {
+      const timer = cameraAmbientTimers.get(surface);
+      if (timer) window.clearInterval(timer);
+      cameraAmbientTimers.delete(surface);
+      return;
+    }
+    if (!ctx || video.readyState < 2 || video.videoWidth <= 0 || video.videoHeight <= 0) return;
+    try {
+      ctx.drawImage(video, 0, 0, sampler.width, sampler.height);
+      const data = ctx.getImageData(0, 0, sampler.width, sampler.height).data;
+      let r = 0; let g = 0; let b = 0;
+      const count = data.length / 4;
+      for (let i = 0; i < data.length; i += 4) {
+        r += data[i];
+        g += data[i + 1];
+        b += data[i + 2];
+      }
+      r = Math.round(r / count);
+      g = Math.round(g / count);
+      b = Math.round(b / count);
+      surface.style.setProperty("--camera-ambient-color", `rgba(${r}, ${g}, ${b}, 0.42)`);
+      surface.style.setProperty("--camera-ambient-soft", `rgba(${r}, ${g}, ${b}, 0.22)`);
+    } catch {
+      const timer = cameraAmbientTimers.get(surface);
+      if (timer) window.clearInterval(timer);
+      cameraAmbientTimers.delete(surface);
+    }
+  };
+  sample();
+  const timer = window.setInterval(sample, 1200);
+  cameraAmbientTimers.set(surface, timer);
+}
+
+function videoLiveEdge(video: HTMLVideoElement): number {
+  const ranges = video.seekable;
+  if (ranges.length > 0) return ranges.end(ranges.length - 1);
+  return Number.isFinite(video.duration) ? video.duration : video.currentTime;
+}
+
+function videoBehindLiveSeconds(video: HTMLVideoElement): number {
+  const edge = videoLiveEdge(video);
+  if (!Number.isFinite(edge) || edge <= 0) return 0;
+  return Math.max(0, edge - video.currentTime);
+}
+
+function jumpVideoToLive(video: HTMLVideoElement, targetOffsetSeconds = HLS_LIVE_TARGET_OFFSET_SECONDS): void {
+  const edge = videoLiveEdge(video);
+  if (!Number.isFinite(edge) || edge <= 0) return;
+  try {
+    video.currentTime = Math.max(0, edge - targetOffsetSeconds);
+  } catch {
+    // Some native HLS implementations reject seeks while loading.
+  }
+  void video.play().catch(() => { /* user gesture may be required */ });
+}
+
+function updateCameraCustomControls(surface: HTMLElement): void {
+  const video = surface.querySelector<HTMLVideoElement>("video[data-camera-video]");
+  if (!video) return;
+  const playButton = surface.querySelector<HTMLButtonElement>("[data-camera-play]");
+  const buffer = surface.querySelector<HTMLElement>("[data-camera-buffer]");
+  const lag = videoBehindLiveSeconds(video);
+  const isBuffering = video.readyState < 3 && !video.paused;
+
+  surface.dataset.videoState = video.paused ? "paused" : isBuffering ? "buffering" : "live";
+  surface.dataset.liveLag = lag > 1.8 ? "behind" : "live";
+
+  if (playButton) {
+    playButton.innerHTML = video.paused
+      ? `<svg viewBox="0 0 18 18" width="16" height="16" aria-hidden="true"><path d="M5 3.5v11l10-5.5-10-5.5z" fill="currentColor"/></svg>`
+      : `<svg viewBox="0 0 18 18" width="16" height="16" aria-hidden="true"><path d="M4 3h4v12H4V3zm6 0h4v12h-4V3z" fill="currentColor"/></svg>`;
+    playButton.setAttribute("aria-label", video.paused ? "Putar video" : "Jeda video");
+  }
+  if (buffer) buffer.textContent = isBuffering ? "Menyambung live..." : "";
+  updateCameraFullscreenButton(surface);
+}
+
+function showCameraControls(surface: HTMLElement, hold = false): void {
+  surface.dataset.controlsVisible = "true";
+  const existing = cameraControlHideTimers.get(surface);
+  if (existing) window.clearTimeout(existing);
+  if (hold) return;
+  const timer = window.setTimeout(() => {
+    const video = surface.querySelector<HTMLVideoElement>("video[data-camera-video]");
+    if (!surface.matches(":hover") && !video?.paused) surface.dataset.controlsVisible = "false";
+    cameraControlHideTimers.delete(surface);
+  }, CAMERA_CONTROLS_HIDE_MS);
+  cameraControlHideTimers.set(surface, timer);
+}
+
+function keepVideoNearLive(video: HTMLVideoElement): void {
+  if (video.paused || video.readyState < 3) return;
+  const lag = videoBehindLiveSeconds(video);
+  if (lag <= HLS_LIVE_AUTO_SYNC_SECONDS) return;
+  const lastJumpAt = Number(video.dataset.lastLiveJumpAt || 0);
+  if (Date.now() - lastJumpAt < HLS_AUTO_SYNC_COOLDOWN_MS) return;
+  video.dataset.lastLiveJumpAt = String(Date.now());
+  jumpVideoToLive(video);
+}
+
+function setupCameraCustomControls(surface: HTMLElement): void {
+  if (surface.dataset.controlsReady === "true") return;
+  surface.dataset.controlsReady = "true";
+  const video = surface.querySelector<HTMLVideoElement>("video[data-camera-video]");
+  if (!video) return;
+  showCameraControls(surface);
+  setupCameraAiPanel(surface);
+  setupCameraAmbient(surface, video);
+
+  surface.querySelector<HTMLButtonElement>("[data-camera-play]")?.addEventListener("click", () => {
+    if (video.paused) void video.play().catch(() => { /* ignore */ });
+    else video.pause();
+    updateCameraCustomControls(surface);
+    showCameraControls(surface, video.paused);
+  });
+  surface.querySelector<HTMLButtonElement>("[data-camera-live]")?.addEventListener("click", () => {
+    jumpVideoToLive(video);
+    updateCameraCustomControls(surface);
+  });
+
+  ["pointermove", "pointerdown", "touchstart", "mousemove", "focusin"].forEach((eventName) => {
+    surface.addEventListener(eventName, () => showCameraControls(surface), { passive: true });
+  });
+  surface.addEventListener("mouseleave", () => {
+    if (!video.paused) showCameraControls(surface);
+  });
+
+  ["loadedmetadata", "loadeddata", "play", "pause", "playing", "waiting", "stalled", "timeupdate"].forEach((eventName) => {
+    video.addEventListener(eventName, () => updateCameraCustomControls(surface));
+  });
+  video.addEventListener("pause", () => showCameraControls(surface, true));
+  video.addEventListener("play", () => showCameraControls(surface));
+
+  const existingTimer = cameraControlTimers.get(surface);
+  if (existingTimer) window.clearInterval(existingTimer);
+  const timer = window.setInterval(() => {
+    if (!surface.isConnected) {
+      window.clearInterval(timer);
+      cameraControlTimers.delete(surface);
+      return;
+    }
+    keepVideoNearLive(video);
+    updateCameraCustomControls(surface);
+  }, 1500);
+  cameraControlTimers.set(surface, timer);
+  updateCameraCustomControls(surface);
+  updateCameraAiPanel(surface);
+}
+
+function setupHlsVideo(video: HTMLVideoElement): void {
+  const playlist = video.dataset.hlsSrc || "";
+  if (!playlist || video.dataset.hlsReady === playlist) return;
+  video.dataset.hlsReady = playlist;
+  video.crossOrigin = "anonymous";
+  video.muted = true;
+  video.playsInline = true;
+  video.autoplay = true;
+  video.preload = "auto";
+
+  const old = hlsInstances.get(video);
+  if (old) {
+    try { old.destroy(); } catch { /* ignore */ }
+    hlsInstances.delete(video);
+  }
+
+  const startNative = () => {
+    video.src = playlist;
+    video.load();
+    video.addEventListener("loadedmetadata", () => jumpVideoToLive(video), { once: true });
+    void video.play().catch(() => { /* user gesture may be required */ });
+  };
+
+  if (video.canPlayType("application/vnd.apple.mpegurl")) {
+    startNative();
+    return;
+  }
+
+  void loadHlsScript().then(() => {
+    const Hls = (window as any).Hls;
+    if (!Hls?.isSupported?.()) {
+      startNative();
+      return;
+    }
+    const hls = new Hls({
+      lowLatencyMode: false,
+      backBufferLength: 6,
+      liveBackBufferLength: 6,
+      maxBufferLength: 12,
+      maxMaxBufferLength: 20,
+      liveSyncDurationCount: 3,
+      liveMaxLatencyDurationCount: 8,
+      maxLiveSyncPlaybackRate: 1.1,
+      startPosition: -1,
+    });
+    hlsInstances.set(video, hls);
+    hls.loadSource(playlist);
+    hls.attachMedia(video);
+    hls.on(Hls.Events.MANIFEST_PARSED, () => {
+      jumpVideoToLive(video);
+      void video.play().catch(() => { /* user gesture may be required */ });
+    });
+    hls.on(Hls.Events.LEVEL_LOADED, () => keepVideoNearLive(video));
+    hls.on(Hls.Events.FRAG_BUFFERED, () => keepVideoNearLive(video));
+    hls.on(Hls.Events.ERROR, (_event: unknown, data: { fatal?: boolean; type?: string }) => {
+      if (!data?.fatal) {
+        keepVideoNearLive(video);
+        return;
+      }
+      if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
+      else if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad(-1);
+      else {
+        try { hls.destroy(); } catch { /* ignore */ }
+        hlsInstances.delete(video);
+        video.dataset.hlsReady = "";
+      }
+    });
+  }).catch((err) => {
+    console.warn("[ITS] hls.js load failed:", err);
+    startNative();
+  });
+}
+
+function fallbackWhepSurfaceToHls(surface: HTMLElement, reason: string): boolean {
+  if (surface.dataset.streamMode === "hls") return true;
+  const video = surface.querySelector<HTMLVideoElement>("video[data-camera-video]");
+  const cameraUrl = surface.dataset.cameraUrl || publicCameraUrl(state.device);
+  if (!video || !cameraUrl) return false;
+  const playlist = surface.dataset.cameraHlsUrl || publicCameraHlsUrl(state.device) || hlsPlaylistUrl(cameraUrl);
+  if (!playlist) return false;
+
+  surface.dataset.streamMode = "hls";
+  video.dataset.hlsSrc = playlist;
+  video.dataset.hlsReady = "";
+  video.dataset.whepFallback = "true";
+  video.removeAttribute("data-whep-src");
+  video.srcObject = null;
+  video.crossOrigin = "anonymous";
+  video.classList.add("camera-hls-video");
+  setBrowserYoloStatus(surface, "WebRTC diblok jaringan, memakai HLS live...", "idle");
+  const status = surface.querySelector<HTMLElement>("[data-webrtc-status]");
+  if (status) {
+    status.textContent = reason;
+    status.dataset.status = "connecting";
+  }
+  setupHlsVideo(video);
+  void video.play().catch(() => { /* user gesture may be required */ });
+  return true;
+}
+
+function fallbackWhepSurfaces(deviceId: string, whepUrl: string, reason: string): boolean {
+  let changed = false;
+  document.querySelectorAll<HTMLElement>("[data-browser-yolo-surface]").forEach((surface) => {
+    if (surface.dataset.deviceId !== deviceId) return;
+    const video = surface.querySelector<HTMLVideoElement>("video[data-camera-video]");
+    if (!video || video.dataset.whepSrc !== whepUrl) return;
+    changed = fallbackWhepSurfaceToHls(surface, reason) || changed;
+  });
+  return changed;
+}
+
+function watchWhepVideoFrames(video: HTMLVideoElement, whepSrc: string): void {
+  const surface = video.closest<HTMLElement>("[data-browser-yolo-surface]");
+  if (!surface || video.dataset.whepWatchdog === whepSrc) return;
+  video.dataset.whepWatchdog = whepSrc;
+  window.setTimeout(() => {
+    if (!surface.isConnected || video.dataset.whepSrc !== whepSrc || surface.dataset.streamMode === "hls") return;
+    if (video.videoWidth > 0 && video.readyState >= 2) return;
+    fallbackWhepSurfaceToHls(surface, "Menunggu frame WebRTC terlalu lama, pindah ke HLS live");
+  }, WHEP_FRAME_FALLBACK_MS);
+}
+
+function setupWhepVideo(video: HTMLVideoElement): void {
+  const whepSrc = video.dataset.whepSrc || "";
+  if (!whepSrc) return;
+  if (video.dataset.whepFallback === "true" || video.closest<HTMLElement>("[data-browser-yolo-surface]")?.dataset.streamMode === "hls") return;
+  video.muted = true;
+  video.playsInline = true;
+  video.autoplay = true;
+  video.preload = "auto";
+
+  const deviceId = video.dataset.webrtcCamera || "";
+  const device = state.devices.find((item) => item.id === deviceId)
+    || (state.device?.id === deviceId ? state.device : null);
+  if (!device) return;
+  if (state.webrtc.whepUrl === whepSrc && state.webrtc.stream) attachWebRtcStream();
+  watchWhepVideoFrames(video, whepSrc);
+  void startWebRtcSession(device);
+}
+
+function preprocessBrowserYoloFrame(video: HTMLVideoElement): { tensor: any; meta: BrowserYoloFrameMeta } {
+  const ort = (window as any).ort;
+  const size = BROWSER_YOLO_INPUT_SIZE;
+  const frameWidth = Math.max(1, video.videoWidth);
+  const frameHeight = Math.max(1, video.videoHeight);
+  const scale = Math.min(size / frameWidth, size / frameHeight);
+  const drawWidth = Math.max(1, Math.round(frameWidth * scale));
+  const drawHeight = Math.max(1, Math.round(frameHeight * scale));
+  const padX = Math.round((size - drawWidth) / 2);
+  const padY = Math.round((size - drawHeight) / 2);
+  browserYoloWorkCanvas.width = size;
+  browserYoloWorkCanvas.height = size;
+  const ctx = browserYoloWorkCanvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) throw new Error("canvas unavailable");
+  ctx.fillStyle = "rgb(114, 114, 114)";
+  ctx.fillRect(0, 0, size, size);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.filter = "contrast(1.12) saturate(1.05) brightness(1.03)";
+  ctx.drawImage(video, 0, 0, frameWidth, frameHeight, padX, padY, drawWidth, drawHeight);
+  ctx.filter = "none";
+  const pixels = ctx.getImageData(0, 0, size, size).data;
+  const input = new Float32Array(3 * size * size);
+  const plane = size * size;
+  for (let i = 0, p = 0; i < pixels.length; i += 4, p += 1) {
+    input[p] = clamp(pixels[i], 0, 255) / 255;
+    input[plane + p] = clamp(pixels[i + 1], 0, 255) / 255;
+    input[(plane * 2) + p] = clamp(pixels[i + 2], 0, 255) / 255;
+  }
+  return {
+    tensor: new ort.Tensor("float32", input, [1, 3, size, size]),
+    meta: { inputSize: size, frameWidth, frameHeight, scale, padX, padY },
+  };
+}
+
+function readYolo(data: Float32Array, index: number): number {
+  return Number.isFinite(data[index]) ? data[index] : 0;
+}
+
+function yoloToDetection(label: string, confidence: number, cx: number, cy: number, w: number, h: number, meta: BrowserYoloFrameMeta): YoloDetection {
+  const normalized = [cx, cy, w, h].every((v) => v >= 0 && v <= 1.5);
+  const inputCx = normalized ? cx * meta.inputSize : cx;
+  const inputCy = normalized ? cy * meta.inputSize : cy;
+  const inputW = normalized ? w * meta.inputSize : w;
+  const inputH = normalized ? h * meta.inputSize : h;
+  const rawLeft = (inputCx - (inputW / 2) - meta.padX) / meta.scale;
+  const rawTop = (inputCy - (inputH / 2) - meta.padY) / meta.scale;
+  const rawRight = (inputCx + (inputW / 2) - meta.padX) / meta.scale;
+  const rawBottom = (inputCy + (inputH / 2) - meta.padY) / meta.scale;
+  const left = clamp(rawLeft, 0, meta.frameWidth);
+  const top = clamp(rawTop, 0, meta.frameHeight);
+  const right = clamp(rawRight, 0, meta.frameWidth);
+  const bottom = clamp(rawBottom, 0, meta.frameHeight);
+  const key = label.toLowerCase();
+  return { label, confidence, vehicle: VEHICLE_LABELS.has(key), x: left, y: top, width: Math.max(0, right - left), height: Math.max(0, bottom - top) };
+}
+
+function yoloCornersToDetection(label: string, confidence: number, x1: number, y1: number, x2: number, y2: number, meta: BrowserYoloFrameMeta): YoloDetection {
+  const normalized = [x1, y1, x2, y2].every((v) => v >= 0 && v <= 1.5);
+  const inputX1 = normalized ? x1 * meta.inputSize : x1;
+  const inputY1 = normalized ? y1 * meta.inputSize : y1;
+  const inputX2 = normalized ? x2 * meta.inputSize : x2;
+  const inputY2 = normalized ? y2 * meta.inputSize : y2;
+  const left = clamp((inputX1 - meta.padX) / meta.scale, 0, meta.frameWidth);
+  const top = clamp((inputY1 - meta.padY) / meta.scale, 0, meta.frameHeight);
+  const right = clamp((inputX2 - meta.padX) / meta.scale, 0, meta.frameWidth);
+  const bottom = clamp((inputY2 - meta.padY) / meta.scale, 0, meta.frameHeight);
+  const key = label.toLowerCase();
+  return { label, confidence, vehicle: VEHICLE_LABELS.has(key), x: left, y: top, width: Math.max(0, right - left), height: Math.max(0, bottom - top) };
+}
+
+function browserYoloIou(a: YoloDetection, b: YoloDetection): number {
+  const ax2 = a.x + a.width;
+  const ay2 = a.y + a.height;
+  const bx2 = b.x + b.width;
+  const by2 = b.y + b.height;
+  const interX1 = Math.max(a.x, b.x);
+  const interY1 = Math.max(a.y, b.y);
+  const interX2 = Math.min(ax2, bx2);
+  const interY2 = Math.min(ay2, by2);
+  const interW = Math.max(0, interX2 - interX1);
+  const interH = Math.max(0, interY2 - interY1);
+  const interArea = interW * interH;
+  const unionArea = (a.width * a.height) + (b.width * b.height) - interArea;
+  return unionArea <= 0 ? 0 : interArea / unionArea;
+}
+
+function browserYoloNms(detections: YoloDetection[]): YoloDetection[] {
+  const kept: YoloDetection[] = [];
+  for (const det of detections.sort((a, b) => browserYoloSortScore(b) - browserYoloSortScore(a))) {
+    const detVehicle = BROWSER_YOLO_VEHICLE_CLASSES.has(det.label.trim().toLowerCase());
+    const overlaps = kept.some((existing) => {
+      const existingVehicle = BROWSER_YOLO_VEHICLE_CLASSES.has(existing.label.trim().toLowerCase());
+      return (existing.label === det.label || (detVehicle && existingVehicle))
+        && browserYoloIou(existing, det) > BROWSER_YOLO_NMS;
+    });
+    if (!overlaps) kept.push(det);
+    if (kept.length >= BROWSER_YOLO_MAX_DETECTIONS) break;
+  }
+  return kept;
+}
+
+function browserYoloSortScore(det: YoloDetection): number {
+  const label = det.label.trim().toLowerCase();
+  const vehicleBoost = label === "truck" || label === "bus"
+    ? 1.12
+    : label === "motorcycle" || label === "bicycle"
+      ? 1.06
+      : 1;
+  return det.confidence * vehicleBoost;
+}
+
+function browserYoloMinConfidence(label: string): number {
+  return BROWSER_YOLO_CLASS_CONFIDENCE[label.trim().toLowerCase()] ?? BROWSER_YOLO_CONFIDENCE;
+}
+
+function isRoadPlausibleDetection(det: YoloDetection, frameWidth: number, frameHeight: number): boolean {
+  const label = det.label.trim().toLowerCase();
+  if (!BROWSER_YOLO_CLASSES.has(label)) return false;
+  if (det.confidence < browserYoloMinConfidence(label)) return false;
+  if (frameWidth <= 0 || frameHeight <= 0 || det.width <= 0 || det.height <= 0) return false;
+
+  const areaRatio = (det.width * det.height) / Math.max(1, frameWidth * frameHeight);
+  const aspect = det.width / Math.max(1, det.height);
+  const isVehicle = BROWSER_YOLO_VEHICLE_CLASSES.has(label);
+  const minArea = label === "traffic light"
+    ? 0.0005
+    : isVehicle
+      ? 0.00018
+      : label === "person"
+        ? 0.00035
+        : 0.0018;
+  if (areaRatio < minArea) return false;
+  if (label === "traffic light") return det.confidence >= browserYoloMinConfidence(label) && aspect >= 0.18 && aspect <= 2.4;
+  if (label === "person") return aspect >= 0.12 && aspect <= 2.8;
+
+  if (!isVehicle) return false;
+  if (aspect < 0.18 || aspect > 5.8) return false;
+  if (label === "car" || label === "bus" || label === "truck") {
+    if (aspect < 0.45 || aspect > 5.6) return false;
+  }
+  return true;
+}
+
+function stabilizeBrowserYoloDetections(
+  runtime: BrowserYoloRuntime,
+  detections: YoloDetection[],
+  frameWidth: number,
+  frameHeight: number,
+): YoloDetection[] {
+  const now = Date.now();
+  const plausible = detections.filter((det) => isRoadPlausibleDetection(det, frameWidth, frameHeight));
+  const previous = runtime.tracked || [];
+  const matched = new Set<number>();
+  const next: BrowserYoloTrackedDetection[] = [];
+
+  plausible.forEach((det) => {
+    let bestIndex = -1;
+    let bestIou = 0;
+    previous.forEach((old, index) => {
+      if (matched.has(index) || old.label !== det.label) return;
+      const iou = browserYoloIou(old, det);
+      if (iou > bestIou) {
+        bestIou = iou;
+        bestIndex = index;
+      }
+    });
+
+    if (bestIndex >= 0 && bestIou >= 0.22) {
+      const old = previous[bestIndex];
+      matched.add(bestIndex);
+      const blend = 0.68;
+      next.push({
+        label: det.label,
+        confidence: Math.max(det.confidence, old.confidence * 0.92),
+        vehicle: det.vehicle,
+        x: (old.x * (1 - blend)) + (det.x * blend),
+        y: (old.y * (1 - blend)) + (det.y * blend),
+        width: (old.width * (1 - blend)) + (det.width * blend),
+        height: (old.height * (1 - blend)) + (det.height * blend),
+        seen: Math.min(12, old.seen + 1),
+        missed: 0,
+        lastSeenAt: now,
+      });
+    } else {
+      next.push({ ...det, seen: 1, missed: 0, lastSeenAt: now });
+    }
+  });
+
+  previous.forEach((old, index) => {
+    if (matched.has(index) || old.missed >= 1 || now - old.lastSeenAt > 1800) return;
+    next.push({
+      ...old,
+      confidence: old.confidence * 0.82,
+      missed: old.missed + 1,
+    });
+  });
+
+  runtime.tracked = browserYoloNms(next)
+    .map((det) => ({ ...det, seen: (det as BrowserYoloTrackedDetection).seen || 1, missed: (det as BrowserYoloTrackedDetection).missed || 0, lastSeenAt: (det as BrowserYoloTrackedDetection).lastSeenAt || now }));
+
+  return runtime.tracked
+    .filter((det) => det.missed === 0 || det.seen >= 2)
+    .filter((det) => det.seen >= 2 || det.confidence >= browserYoloMinConfidence(det.label) + 0.025)
+    .slice(0, BROWSER_YOLO_MAX_DETECTIONS);
+}
+
+function parseBrowserYoloOutput(data: Float32Array, dims: number[], meta: BrowserYoloFrameMeta): YoloDetection[] {
+  const parseRows = (rows: number, attrs: number, index: (row: number, attr: number) => number): YoloDetection[] => {
+    if (rows <= 0 || attrs < 6) return [];
+    const parsed: YoloDetection[] = [];
+    if (attrs === 6) {
+      for (let row = 0; row < rows; row += 1) {
+        const a0 = readYolo(data, index(row, 0));
+        const a1 = readYolo(data, index(row, 1));
+        const a2 = readYolo(data, index(row, 2));
+        const a3 = readYolo(data, index(row, 3));
+        const a4 = readYolo(data, index(row, 4));
+        const a5 = readYolo(data, index(row, 5));
+        const classId = Number.isInteger(a5) && a5 >= 0 && a5 < COCO_LABELS.length ? a5 : -1;
+        const score = a4 >= 0 && a4 <= 1 ? a4 : 0;
+        if (classId < 0) continue;
+        const label = COCO_LABELS[classId];
+        if (!BROWSER_YOLO_CLASSES.has(label) || score < browserYoloMinConfidence(label)) continue;
+        parsed.push(a2 > a0 && a3 > a1
+          ? yoloCornersToDetection(label, score, a0, a1, a2, a3, meta)
+          : yoloToDetection(label, score, a0, a1, a2, a3, meta));
+      }
+      return parsed;
+    }
+
+    const classStart = attrs >= 85 ? 5 : 4;
+    const hasObjectness = attrs >= 85;
+    for (let row = 0; row < rows; row += 1) {
+      const cx = readYolo(data, index(row, 0));
+      const cy = readYolo(data, index(row, 1));
+      const w = readYolo(data, index(row, 2));
+      const h = readYolo(data, index(row, 3));
+      const objectness = hasObjectness ? readYolo(data, index(row, 4)) : 1;
+      const candidates: Array<{ label: string; score: number }> = [];
+      for (let attr = classStart; attr < attrs; attr += 1) {
+        const score = readYolo(data, index(row, attr)) * objectness;
+        const label = COCO_LABELS[attr - classStart] || `class-${attr - classStart}`;
+        if (!BROWSER_YOLO_CLASSES.has(label) || score < browserYoloMinConfidence(label)) continue;
+        candidates.push({ label, score });
+      }
+      if (!candidates.length) continue;
+      candidates.sort((a, b) => b.score - a.score);
+      const bestScore = candidates[0].score;
+      candidates
+        .filter((candidate, index) => {
+          if (index === 0) return true;
+          const label = candidate.label.trim().toLowerCase();
+          return BROWSER_YOLO_VEHICLE_CLASSES.has(label) && candidate.score >= bestScore * 0.5;
+        })
+        .slice(0, 3)
+        .forEach((candidate) => {
+          parsed.push(yoloToDetection(candidate.label, candidate.score, cx, cy, w, h, meta));
+        });
+    }
+    return parsed;
+  };
+
+  if (dims.length >= 3) {
+    const a = dims[dims.length - 2];
+    const b = dims[dims.length - 1];
+    return browserYoloNms(a > b
+      ? parseRows(a, b, (row, attr) => (row * b) + attr)
+      : parseRows(b, a, (row, attr) => (attr * b) + row));
+  }
+  const rows = dims[0] || 0;
+  const attrs = dims[1] || 0;
+  return browserYoloNms(parseRows(rows, attrs, (row, attr) => (row * attrs) + attr));
+}
+
+function drawYoloDetectionsOnCanvas(
+  canvas: HTMLCanvasElement,
+  surface: HTMLElement,
+  detections: YoloDetection[],
+  frameWidth: number,
+  frameHeight: number,
+): void {
+  if (!canvas) return;
+  const rect = surface.getBoundingClientRect();
+  const width = Math.max(1, Math.round(rect.width));
+  const height = Math.max(1, Math.round(rect.height));
+  if (canvas.width !== width || canvas.height !== height) {
+    canvas.width = width;
+    canvas.height = height;
+  }
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  ctx.clearRect(0, 0, width, height);
+  if (!detections.length || frameWidth <= 0 || frameHeight <= 0) return;
+  const media = surface.querySelector<HTMLElement>("video[data-camera-video], video[data-webrtc-camera], iframe");
+  const objectFit = media ? window.getComputedStyle(media).objectFit : "cover";
+  const scale = objectFit === "contain"
+    ? Math.min(width / frameWidth, height / frameHeight)
+    : Math.max(width / frameWidth, height / frameHeight);
+  const offsetX = (width - (frameWidth * scale)) / 2;
+  const offsetY = (height - (frameHeight * scale)) / 2;
+  ctx.lineWidth = Math.max(2, width / 220);
+  ctx.font = `700 ${Math.max(11, Math.round(width / 34))}px system-ui, sans-serif`;
+  detections.forEach((det) => {
+    const color = det.vehicle ? "#22c55e" : "#38bdf8";
+    const x = offsetX + (det.x * scale);
+    const y = offsetY + (det.y * scale);
+    const w = det.width * scale;
+    const h = det.height * scale;
+    const label = `${detectionLabel(det.label)} ${(det.confidence * 100).toFixed(0)}%`;
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.strokeRect(x, y, w, h);
+    const metrics = ctx.measureText(label);
+    const labelW = Math.min(width - 8, metrics.width + 12);
+    const labelH = 22;
+    const labelX = clamp(x, 4, Math.max(4, width - labelW - 4));
+    const labelY = y < labelH + 4 ? clamp(y + 2, 4, height - labelH - 4) : y - labelH;
+    ctx.fillRect(labelX, labelY, labelW, labelH);
+    ctx.fillStyle = "#fff";
+    ctx.fillText(label, labelX + 6, labelY + 16);
+  });
+}
+
+function drawBrowserYoloDetections(surface: HTMLElement, detections: YoloDetection[], frameWidth: number, frameHeight: number): void {
+  const canvas = surface.querySelector<HTMLCanvasElement>("[data-browser-yolo-canvas]");
+  if (!canvas) return;
+  drawYoloDetectionsOnCanvas(canvas, surface, detections, frameWidth, frameHeight);
+}
+
+function drawServerYoloOverlays(root: ParentNode = document): void {
+  root.querySelectorAll<HTMLElement>("[data-server-yolo-surface]").forEach((surface) => {
+    const deviceId = surface.dataset.deviceId || state.device?.id || "";
+    const device = state.devices.find((d) => d.id === deviceId)
+      || (state.device?.id === deviceId ? state.device : null)
+      || state.device;
+    const canvas = surface.querySelector<HTMLCanvasElement>("[data-server-yolo-canvas]");
+    const status = surface.querySelector<HTMLElement>("[data-server-yolo-status]");
+    if (status) {
+      const detectorStatus = device?.detectorStatus || "";
+      status.textContent = serverYoloStatusText(device || null);
+      status.dataset.status = detectorStatus === "online" || detectorStatus === "browser-yolo" ? "live"
+        : detectorStatus ? "idle" : "error";
+    }
+    if (!canvas || !device) return;
+    const frameWidth = device.detectorFrameWidth || 0;
+    const frameHeight = device.detectorFrameHeight || 0;
+    drawYoloDetectionsOnCanvas(canvas, surface, device.detections || [], frameWidth, frameHeight);
+  });
+}
+
+async function lockLandscapeForFullscreen(): Promise<void> {
+  try {
+    await (screen.orientation as any)?.lock?.("landscape");
+  } catch {
+    // Mobile browsers may allow fullscreen but reject orientation lock.
+  }
+}
+
+function unlockFullscreenOrientation(): void {
+  try {
+    screen.orientation?.unlock?.();
+  } catch {
+    // Ignore unsupported unlock.
+  }
+}
+
+async function runBrowserYoloLoop(surface: HTMLElement, video: HTMLVideoElement, runtime: BrowserYoloRuntime): Promise<void> {
+  if (runtime.stopped || runtime.busy) return;
+  if (!surface.isConnected) {
+    runtime.stopped = true;
+    return;
+  }
+  if (video.readyState < 2 || !video.videoWidth || !video.videoHeight) {
+    setBrowserYoloStatus(surface, "Menunggu frame video live...", "idle");
+    runtime.timer = window.setTimeout(() => void runBrowserYoloLoop(surface, video, runtime), 350);
+    return;
+  }
+
+  runtime.busy = true;
+  runtime.lastStartedAt = performance.now();
+  try {
+    const session = await loadBrowserYoloSession();
+    const { tensor: input, meta } = preprocessBrowserYoloFrame(video);
+    const inputName = session.inputNames[0];
+    const outputName = session.outputNames[0];
+    const result = await session.run({ [inputName]: input });
+    const output = result[outputName];
+    const rawDetections = parseBrowserYoloOutput(output.data as Float32Array, output.dims as number[], meta);
+    const detections = stabilizeBrowserYoloDetections(runtime, rawDetections, video.videoWidth, video.videoHeight);
+    runtime.lastDetections = detections;
+    drawBrowserYoloDetections(surface, detections, video.videoWidth, video.videoHeight);
+    const elapsed = Math.max(1, performance.now() - runtime.lastStartedAt);
+    runtime.fps = 1000 / elapsed;
+    const vehicles = vehicleBreakdownFromDetections(detections).total;
+    setBrowserYoloStatus(surface, `YOLO web ${runtime.fps.toFixed(1)} FPS - ${detections.length} object - ${vehicles} kendaraan`, "live");
+    updateCameraAiPanel(surface);
+    void publishBrowserYoloResult(surface, video, runtime, detections).catch((publishErr) => {
+      console.warn("[ITS] browser YOLO publish failed:", publishErr);
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "YOLO gagal";
+    setBrowserYoloStatus(surface, msg.includes("Tainted") || msg.includes("cross-origin") ? "YOLO tidak bisa membaca frame stream" : `YOLO web: ${msg}`, "error");
+    console.warn("[ITS] browser YOLO failed:", err);
+  } finally {
+    runtime.busy = false;
+    if (!runtime.stopped) {
+      runtime.timer = window.setTimeout(() => void runBrowserYoloLoop(surface, video, runtime), BROWSER_YOLO_SAMPLE_MS);
+    }
+  }
+}
+
+function startBrowserYolo(surface: HTMLElement): void {
+  const key = surface.dataset.cameraKey || "";
+  const existing = browserYoloRuntimes.get(surface);
+  if (existing && existing.key === key && !existing.stopped) return;
+  if (existing) {
+    existing.stopped = true;
+    window.clearTimeout(existing.timer);
+  }
+  const video = surface.querySelector<HTMLVideoElement>("video[data-camera-video]");
+  if (!video || !key) return;
+  const runtime: BrowserYoloRuntime = {
+    key,
+    stopped: false,
+    busy: false,
+    timer: 0,
+    lastStartedAt: 0,
+    lastPublishedAt: 0,
+    lastThumbnailAt: 0,
+    fps: 0,
+    tracked: [],
+    lastDetections: [],
+    lastDatasetAt: 0,
+    datasetSnapshot1Url: "",
+    datasetSnapshot2Url: "",
+  };
+  browserYoloRuntimes.set(surface, runtime);
+  setBrowserYoloStatus(surface, "Memuat YOLO web...", "idle");
+  const kick = () => void runBrowserYoloLoop(surface, video, runtime);
+  video.addEventListener("loadeddata", kick, { once: true });
+  video.addEventListener("play", kick);
+  kick();
+}
+
+function initializeCameraSurfaces(root: ParentNode = document): void {
+  root.querySelectorAll<HTMLVideoElement>("video[data-hls-src]").forEach((video) => setupHlsVideo(video));
+  root.querySelectorAll<HTMLVideoElement>("video[data-whep-src]").forEach((video) => setupWhepVideo(video));
+  drawServerYoloOverlays(root);
+  if (!cameraFullscreenEventsReady) {
+    cameraFullscreenEventsReady = true;
+    document.addEventListener("fullscreenchange", () => {
+      if (!document.fullscreenElement) unlockFullscreenOrientation();
+      document.querySelectorAll<HTMLElement>("[data-browser-yolo-surface]").forEach((surface) => {
+        updateCameraFullscreenButton(surface);
+        updateCameraCustomControls(surface);
+        if (cameraSurfaceIsFullscreen(surface)) {
+          showCameraControls(surface);
+          updateCameraAiPanel(surface);
+        } else {
+          setCameraAiPanelOpen(surface, false);
+        }
+      });
+    });
+  }
+  root.querySelectorAll<HTMLElement>("[data-browser-yolo-surface]").forEach((surface) => {
+    setupCameraCustomControls(surface);
+    startBrowserYolo(surface);
+  });
+  root.querySelectorAll<HTMLElement>("[data-camera-fullscreen]").forEach((button) => {
+    if (button.dataset.fullscreenReady === "true") return;
+    button.dataset.fullscreenReady = "true";
+    button.addEventListener("click", () => {
+      const target = button.closest<HTMLElement>("[data-browser-yolo-surface]")
+        || button.closest<HTMLElement>(".m-its-camera-box")?.querySelector<HTMLElement>("[data-browser-yolo-surface]")
+        || button.closest<HTMLElement>("[data-camera-key]");
+      if (!target) return;
+      const fullscreen = document.fullscreenElement as HTMLElement | null;
+      const active = Boolean(fullscreen && (fullscreen === target || target.contains(fullscreen) || fullscreen.contains(target)));
+      if (active) {
+        const done = document.exitFullscreen?.();
+        if (done) void done.finally(() => unlockFullscreenOrientation());
+        else unlockFullscreenOrientation();
+      } else {
+        const done = target.requestFullscreen?.();
+        if (done) void done.then(() => {
+          lockLandscapeForFullscreen();
+          showCameraControls(target);
+          updateCameraFullscreenButton(target);
+        });
+      }
+    });
+  });
 }
 
 function cameraModeFor(device: DeviceRecord | null): CameraMode | null {
@@ -3699,6 +5692,41 @@ async function firebaseWritePath(method: "PUT" | "PATCH" | "DELETE", path: strin
   if (!res.ok) throw new Error(`Firebase ${method} ${path} failed: HTTP ${res.status}`);
 }
 
+async function fetchFreshDeviceFromFirebase(deviceId: string): Promise<DeviceRecord | null> {
+  const raw = await firebaseGetPath<SnapshotDevice | null>(`devices/${deviceId}`);
+  if (!raw || typeof raw !== "object") return null;
+  return normalizeOneDevice({ ...raw, id: raw.id?.trim() || deviceId });
+}
+
+function replaceDeviceInState(device: DeviceRecord): void {
+  const devices = state.devices.length
+    ? state.devices.map((item) => item.id === device.id ? device : item)
+    : [device];
+  if (!devices.some((item) => item.id === device.id)) devices.push(device);
+  applyDevices(devices);
+}
+
+function scheduleCameraUrlRecovery(device: DeviceRecord, failedWhepUrl: string, reason: string): void {
+  const now = Date.now();
+  if (now - state.lastCameraRecoveryAt < 3000) return;
+  state.lastCameraRecoveryAt = now;
+  window.setTimeout(() => {
+    void (async () => {
+      try {
+        const fresh = await fetchFreshDeviceFromFirebase(device.id);
+        if (!fresh) return;
+        const freshWhepUrl = whepEndpointUrl(publicCameraUrl(fresh));
+        if (freshWhepUrl && freshWhepUrl !== failedWhepUrl) {
+          console.info("[ITS] camera tunnel URL refreshed after WebRTC failure:", reason, freshWhepUrl);
+          replaceDeviceInState(fresh);
+        }
+      } catch (err) {
+        console.warn("[ITS] camera URL recovery failed:", err);
+      }
+    })();
+  }, 600);
+}
+
 function browserViewerId(): string {
   const storageKey = "its-webrtc-viewer-id";
   const existing = window.sessionStorage.getItem(storageKey);
@@ -3707,6 +5735,262 @@ function browserViewerId(): string {
   const id = `viewer-${random.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
   window.sessionStorage.setItem(storageKey, id);
   return id;
+}
+
+function splitHttpLinkHeader(header: string): string[] {
+  const parts: string[] = [];
+  let current = "";
+  let quoted = false;
+  let angled = false;
+  for (let i = 0; i < header.length; i += 1) {
+    const ch = header[i];
+    const prev = i > 0 ? header[i - 1] : "";
+    if (ch === "\"" && prev !== "\\") quoted = !quoted;
+    else if (ch === "<" && !quoted) angled = true;
+    else if (ch === ">" && !quoted) angled = false;
+
+    if (ch === "," && !quoted && !angled) {
+      if (current.trim()) parts.push(current.trim());
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+  if (current.trim()) parts.push(current.trim());
+  return parts;
+}
+
+function unquoteHttpParam(value = ""): string {
+  const trimmed = value.trim();
+  if (trimmed.startsWith("\"") && trimmed.endsWith("\"")) {
+    return trimmed.slice(1, -1).replace(/\\"/g, "\"");
+  }
+  return trimmed;
+}
+
+function parseWhepIceServers(linkHeader: string | null): RTCIceServer[] {
+  if (!linkHeader) return WEBRTC_ICE_SERVERS;
+  const servers: RTCIceServer[] = [];
+  splitHttpLinkHeader(linkHeader).forEach((entry) => {
+    const urlMatch = entry.match(/^\s*<([^>]+)>/);
+    if (!urlMatch) return;
+    const params: Record<string, string> = {};
+    Array.from(entry.matchAll(/;\s*([^=;]+)(?:=("[^"]*"|[^;]*))?/g)).forEach((match) => {
+      params[match[1].trim().toLowerCase()] = unquoteHttpParam(match[2] || "");
+    });
+    if (!params.rel?.split(/\s+/).includes("ice-server")) return;
+    const server: RTCIceServer = { urls: urlMatch[1] };
+    if (params.username) server.username = params.username;
+    if (params.credential) server.credential = params.credential;
+    servers.push(server);
+  });
+  return servers.length ? servers : WEBRTC_ICE_SERVERS;
+}
+
+async function requestWhepIceServers(whepUrl: string): Promise<RTCIceServer[]> {
+  try {
+    const res = await fetch(whepUrl, { method: "OPTIONS", cache: "no-store" });
+    if (!res.ok) return WEBRTC_ICE_SERVERS;
+    return parseWhepIceServers(res.headers.get("Link"));
+  } catch (err) {
+    console.warn("[ITS] WHEP OPTIONS failed, using fallback ICE:", err);
+    return WEBRTC_ICE_SERVERS;
+  }
+}
+
+function parseWhepOfferData(sdp = ""): WhepOfferData {
+  const medias: WhepOfferData["medias"] = [];
+  let current: WhepOfferData["medias"][number] | null = null;
+  let iceUfrag = "";
+  let icePwd = "";
+
+  sdp.split(/\r?\n/).forEach((rawLine) => {
+    const line = rawLine.trim();
+    if (!line) return;
+    if (line.startsWith("m=")) {
+      current = { mid: "", mLine: line };
+      medias.push(current);
+    } else if (current && line.startsWith("a=mid:")) {
+      current.mid = line.slice("a=mid:".length).trim();
+    }
+    if (!iceUfrag && line.startsWith("a=ice-ufrag:")) iceUfrag = line.slice("a=ice-ufrag:".length).trim();
+    if (!icePwd && line.startsWith("a=ice-pwd:")) icePwd = line.slice("a=ice-pwd:".length).trim();
+  });
+
+  medias.forEach((media, index) => {
+    if (!media.mid) media.mid = String(index);
+  });
+  if (!iceUfrag || !icePwd || medias.length === 0) {
+    throw new Error("Offer WHEP tidak lengkap");
+  }
+  return { iceUfrag, icePwd, medias };
+}
+
+function whepMediaForCandidate(candidate: RTCIceCandidateInit, offerData: WhepOfferData): WhepOfferData["medias"][number] | null {
+  const mid = candidate.sdpMid ?? "";
+  if (mid) return offerData.medias.find((media) => media.mid === mid) || null;
+  const index = candidate.sdpMLineIndex ?? 0;
+  return offerData.medias[index] || null;
+}
+
+function generateWhepSdpFragment(offerData: WhepOfferData, candidates: RTCIceCandidateInit[]): string {
+  const byMid = new Map<string, RTCIceCandidateInit[]>();
+  candidates.forEach((candidate) => {
+    if (!candidate.candidate) return;
+    const media = whepMediaForCandidate(candidate, offerData);
+    if (!media) return;
+    const existing = byMid.get(media.mid) || [];
+    existing.push(candidate);
+    byMid.set(media.mid, existing);
+  });
+  if (byMid.size === 0) return "";
+
+  let frag = `a=ice-ufrag:${offerData.iceUfrag}\r\n`;
+  frag += `a=ice-pwd:${offerData.icePwd}\r\n`;
+  offerData.medias.forEach((media) => {
+    const mediaCandidates = byMid.get(media.mid);
+    if (!mediaCandidates?.length) return;
+    frag += `${media.mLine}\r\n`;
+    frag += `a=mid:${media.mid}\r\n`;
+    mediaCandidates.forEach((candidate) => {
+      frag += `a=${candidate.candidate}\r\n`;
+    });
+  });
+  return frag;
+}
+
+function resolveWhepSessionUrl(locationHeader: string | null, whepUrl: string): string {
+  if (!locationHeader) throw new Error("Server WHEP tidak mengirim Location session");
+  return new URL(locationHeader, whepUrl).toString();
+}
+
+function syncLocalBrowserYoloDevice(deviceId: string, patch: Partial<DeviceRecord>): void {
+  const applyPatch = (device: DeviceRecord | null): void => {
+    if (!device || device.id !== deviceId) return;
+    Object.assign(device, patch);
+    state.trafficById.set(device.id, buildTrafficState(device));
+  };
+
+  applyPatch(state.device);
+  state.devices.forEach(applyPatch);
+}
+
+async function publishBrowserYoloResult(
+  surface: HTMLElement,
+  video: HTMLVideoElement,
+  runtime: BrowserYoloRuntime,
+  detections: YoloDetection[],
+): Promise<void> {
+  const now = Date.now();
+  if (now - runtime.lastPublishedAt < BROWSER_YOLO_PUBLISH_MS) return;
+  runtime.lastPublishedAt = now;
+
+  const deviceId = surface.dataset.deviceId || state.device?.id || "raspberry-its";
+  const cameraUrl = surface.dataset.cameraUrl || "";
+  const breakdown = vehicleBreakdownFromDetections(detections);
+  const trafficLevel = trafficLevelForVehicleCount(breakdown.total);
+  let thumbnailUrl = readCameraPoster(runtime.key);
+  let thumbnailUpdatedAt = 0;
+  let cameraDataset: TrafficCameraDataset | undefined = runtime.datasetSnapshot1Url || runtime.datasetSnapshot2Url
+    ? {
+      snapshot1Url: runtime.datasetSnapshot1Url,
+      snapshot2Url: runtime.datasetSnapshot2Url,
+      updatedAt: runtime.lastDatasetAt,
+      source: "browser-yolo",
+      path: `${BROWSER_YOLO_DATASET_ROOT}/${deviceId}`,
+    }
+    : undefined;
+
+  if (now - runtime.lastThumbnailAt >= BROWSER_YOLO_THUMBNAIL_MS || !thumbnailUrl) {
+    try {
+      const freshThumbnail = makeCameraThumbnail(video, 320, 0.58);
+      if (freshThumbnail) {
+        thumbnailUrl = freshThumbnail;
+        thumbnailUpdatedAt = now;
+        runtime.lastThumbnailAt = now;
+        writeCameraPoster(runtime.key, freshThumbnail);
+      }
+    } catch (err) {
+      console.warn("[ITS] camera thumbnail failed:", err);
+    }
+  }
+
+  if (now - runtime.lastDatasetAt >= BROWSER_YOLO_DATASET_MS || !runtime.datasetSnapshot1Url || !runtime.datasetSnapshot2Url) {
+    try {
+      const datasetImage = makeCameraThumbnail(video, 640, 0.72);
+      if (datasetImage) {
+        runtime.lastDatasetAt = now;
+        runtime.datasetSnapshot1Url = datasetImage;
+        runtime.datasetSnapshot2Url = datasetImage;
+        cameraDataset = {
+          snapshot1Url: datasetImage,
+          snapshot2Url: datasetImage,
+          updatedAt: now,
+          source: "browser-yolo",
+          path: `${BROWSER_YOLO_DATASET_ROOT}/${deviceId}`,
+        };
+        await firebaseWritePath("PUT", `${BROWSER_YOLO_DATASET_ROOT}/${deviceId}`, {
+          updatedAt: now,
+          source: "browser-yolo",
+          deviceId,
+          cameraUrl,
+          nama1: datasetImage,
+          nama2: datasetImage,
+          snapshot1Url: datasetImage,
+          snapshot2Url: datasetImage,
+        });
+      }
+    } catch (err) {
+      console.warn("[ITS] camera dataset publish failed:", err);
+    }
+  }
+
+  const payload = {
+    source: "browser-yolo",
+    status: "online",
+    note: "YOLO berjalan di browser pengguna",
+    updatedAt: now,
+    viewerId: browserViewerId(),
+    cameraUrl,
+    modelUrl: BROWSER_YOLO_MODEL_URL,
+    fps: Number(runtime.fps.toFixed(2)),
+    frameWidth: video.videoWidth,
+    frameHeight: video.videoHeight,
+    objectCount: detections.length,
+    vehicleCount: breakdown.total,
+    vehicleBreakdown: breakdown,
+    trafficLevel,
+    thumbnailUrl,
+    thumbnailUpdatedAt,
+    cameraDataset,
+    detections: detections.slice(0, BROWSER_YOLO_MAX_DETECTIONS).map((det) => ({
+      label: det.label,
+      confidence: Number(det.confidence.toFixed(4)),
+      vehicle: Boolean(det.vehicle),
+      x: Number(det.x.toFixed(2)),
+      y: Number(det.y.toFixed(2)),
+      width: Number(det.width.toFixed(2)),
+      height: Number(det.height.toFixed(2)),
+    })),
+  };
+
+  await firebaseWritePath("PUT", `browserYolo/devices/${deviceId}`, payload);
+  syncLocalBrowserYoloDevice(deviceId, {
+    cameraThumbnailUrl: thumbnailUrl,
+    cameraDataset,
+    vehicleCount: breakdown.total,
+    vehicleBreakdown: breakdown,
+    detections,
+    objectCount: detections.length,
+    detectorStatus: "browser-yolo",
+    detectorNote: "YOLO berjalan di browser pengguna",
+    detectorUpdatedAt: now,
+    detectorFps: Number(runtime.fps.toFixed(2)),
+    detectorFrameWidth: video.videoWidth,
+    detectorFrameHeight: video.videoHeight,
+    detectorCameraSource: cameraUrl,
+    trafficLevel,
+  });
 }
 
 function newWebRtcSessionId(deviceId: string): string {
@@ -3761,9 +6045,13 @@ function resetWebRtcRuntime(): void {
     deviceId: "",
     signalPath: "",
     sessionId: "",
+    whepUrl: "",
+    whepSessionUrl: "",
+    whepOfferData: null,
     stream: null,
     pollTimer: 0,
     heartbeatTimer: 0,
+    restartTimer: 0,
     candidateSeq: 0,
     seenCameraCandidates: new Set<string>(),
     pendingCandidates: [],
@@ -3776,8 +6064,10 @@ function resetWebRtcRuntime(): void {
 
 function stopWebRtcSession(removeRemote = true): void {
   const sessionPath = state.webrtc.signalPath && state.webrtc.sessionId ? webRtcSessionPath() : "";
+  const whepSessionUrl = state.webrtc.whepSessionUrl;
   window.clearInterval(state.webrtc.pollTimer);
   window.clearInterval(state.webrtc.heartbeatTimer);
+  window.clearTimeout(state.webrtc.restartTimer);
   if (removeRemote && sessionPath) {
     void firebaseWritePath("PATCH", sessionPath, {
       viewerStatus: "closed",
@@ -3787,6 +6077,9 @@ function stopWebRtcSession(removeRemote = true): void {
         void firebaseWritePath("DELETE", sessionPath).catch(() => { /* ignore cleanup errors */ });
       })
       .catch(() => { /* ignore cleanup errors */ });
+  }
+  if (removeRemote && whepSessionUrl) {
+    void fetch(whepSessionUrl, { method: "DELETE" }).catch(() => { /* ignore WHEP cleanup errors */ });
   }
   state.webrtc.pc?.close();
   state.webrtc.stream?.getTracks().forEach((track) => track.stop());
@@ -3812,6 +6105,31 @@ function flushPendingViewerCandidates(): void {
   const pending = state.webrtc.pendingCandidates.splice(0);
   pending.forEach((candidate) => {
     void sendViewerCandidate(candidate).catch((err) => console.warn("[ITS] WebRTC candidate failed:", err));
+  });
+}
+
+async function sendWhepCandidate(candidate: RTCIceCandidateInit): Promise<void> {
+  if (!state.webrtc.whepSessionUrl || !state.webrtc.whepOfferData) {
+    state.webrtc.pendingCandidates.push(candidate);
+    return;
+  }
+  const fragment = generateWhepSdpFragment(state.webrtc.whepOfferData, [candidate]);
+  if (!fragment) return;
+  const res = await fetch(state.webrtc.whepSessionUrl, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/trickle-ice-sdpfrag",
+      "If-Match": "*",
+    },
+    body: fragment,
+  });
+  if (!res.ok && res.status !== 204) throw new Error(`WHEP ICE gagal: HTTP ${res.status}`);
+}
+
+function flushPendingWhepCandidates(): void {
+  const pending = state.webrtc.pendingCandidates.splice(0);
+  pending.forEach((candidate) => {
+    void sendWhepCandidate(candidate).catch((err) => console.warn("[ITS] WHEP ICE candidate failed:", err));
   });
 }
 
@@ -3843,7 +6161,145 @@ async function pollWebRtcSession(): Promise<void> {
   }
 }
 
+function scheduleWhepReconnect(device: DeviceRecord, whepUrl: string, reason: string): void {
+  if (state.webrtc.restartTimer) return;
+  scheduleCameraUrlRecovery(device, whepUrl, reason);
+  if (fallbackWhepSurfaces(device.id, whepUrl, `WebRTC ${reason}, memakai HLS live`)) {
+    setWebRtcStatus("failed", `WebRTC ${reason}, memakai HLS live`);
+    return;
+  }
+  setWebRtcStatus("failed", `WebRTC ${reason}, mencoba sambung ulang...`);
+  state.webrtc.restartTimer = window.setTimeout(() => {
+    state.webrtc.restartTimer = 0;
+    const currentDevice = state.devices.find((item) => item.id === device.id)
+      || (state.device?.id === device.id ? state.device : null)
+      || device;
+    if (whepEndpointUrl(publicCameraUrl(currentDevice)) !== whepUrl) return;
+    void startWhepWebRtcSession(currentDevice);
+  }, 2500);
+}
+
+async function startWhepWebRtcSession(device: DeviceRecord): Promise<void> {
+  const cameraUrl = publicCameraUrl(device);
+  const whepUrl = whepEndpointUrl(cameraUrl);
+  if (!whepUrl) {
+    setWebRtcStatus("failed", "URL WHEP kamera tidak valid");
+    return;
+  }
+  if (!("RTCPeerConnection" in window)) {
+    setWebRtcStatus("failed", "Browser tidak mendukung WebRTC");
+    return;
+  }
+  if (
+    state.webrtc.pc
+    && state.webrtc.deviceId === device.id
+    && state.webrtc.whepUrl === whepUrl
+    && state.webrtc.status !== "failed"
+  ) {
+    attachWebRtcStream();
+    return;
+  }
+
+  stopWebRtcSession(true);
+  const pc = new RTCPeerConnection({ iceServers: await requestWhepIceServers(whepUrl) });
+  const sessionId = newWebRtcSessionId(device.id);
+
+  Object.assign(state.webrtc, {
+    pc,
+    deviceId: device.id,
+    signalPath: "",
+    sessionId,
+    whepUrl,
+    whepSessionUrl: "",
+    whepOfferData: null,
+    stream: null,
+    pollTimer: 0,
+    heartbeatTimer: 0,
+    restartTimer: 0,
+    candidateSeq: 0,
+    seenCameraCandidates: new Set<string>(),
+    pendingCandidates: [],
+    sessionReady: false,
+    startedAt: Date.now(),
+    status: "connecting" as WebRtcStatus,
+    message: "Menghubungkan WebRTC live...",
+  });
+  updateWebRtcStatusElements();
+
+  pc.addTransceiver("video", { direction: "recvonly" });
+  pc.addTransceiver("audio", { direction: "recvonly" });
+  pc.ontrack = (event) => {
+    const [remoteStream] = event.streams;
+    const stream = remoteStream || state.webrtc.stream || new MediaStream();
+    if (!remoteStream && !stream.getTracks().includes(event.track)) stream.addTrack(event.track);
+    state.webrtc.stream = stream;
+    setWebRtcStatus("live");
+    attachWebRtcStream();
+  };
+  pc.onicecandidate = (event) => {
+    if (!event.candidate) return;
+    void sendWhepCandidate(event.candidate.toJSON()).catch((err) => {
+      console.warn("[ITS] WHEP ICE candidate publish failed:", err);
+    });
+  };
+  pc.onconnectionstatechange = () => {
+    if (pc.connectionState === "connected") setWebRtcStatus("live");
+    if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
+      scheduleWhepReconnect(device, whepUrl, pc.connectionState);
+    }
+  };
+  pc.oniceconnectionstatechange = () => {
+    if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
+      setWebRtcStatus("live");
+    }
+    if (pc.iceConnectionState === "failed") scheduleWhepReconnect(device, whepUrl, "ICE gagal");
+  };
+
+  try {
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    if (!pc.localDescription?.sdp) throw new Error("Local WebRTC offer kosong");
+    state.webrtc.whepOfferData = parseWhepOfferData(pc.localDescription.sdp);
+
+    const res = await fetch(whepUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/sdp" },
+      body: pc.localDescription.sdp,
+    });
+    if (!res.ok) throw new Error(`WHEP offer gagal: HTTP ${res.status}`);
+    state.webrtc.whepSessionUrl = resolveWhepSessionUrl(res.headers.get("Location"), whepUrl);
+    const answerSdp = await res.text();
+    await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
+    state.webrtc.sessionReady = true;
+    flushPendingWhepCandidates();
+    setWebRtcStatus("connecting", "Menunggu frame video WebRTC...");
+    attachWebRtcStream();
+  } catch (err) {
+    console.warn("[ITS] WHEP WebRTC start failed:", err);
+    setWebRtcStatus("failed", err instanceof Error ? err.message : "WebRTC WHEP gagal dimulai");
+    scheduleCameraUrlRecovery(device, whepUrl, err instanceof Error ? err.message : "WHEP gagal");
+    const fellBack = fallbackWhepSurfaces(device.id, whepUrl, "WebRTC gagal, memakai HLS live");
+    if (!fellBack) scheduleWhepReconnect(device, whepUrl, "gagal tersambung");
+  }
+}
+
 async function startWebRtcSession(device: DeviceRecord): Promise<void> {
+  if (device.cameraMode === "webrtc" && publicCameraUrl(device)) {
+    const key = `${device.id}:${whepEndpointUrl(publicCameraUrl(device))}`;
+    if (webRtcStartPromise && webRtcStartKey === key) {
+      await webRtcStartPromise;
+      return;
+    }
+    webRtcStartKey = key;
+    webRtcStartPromise = startWhepWebRtcSession(device).finally(() => {
+      if (webRtcStartKey === key) {
+        webRtcStartKey = "";
+        webRtcStartPromise = null;
+      }
+    });
+    await webRtcStartPromise;
+    return;
+  }
   if (!isWebRtcSignalingCamera(device)) return;
   if (!("RTCPeerConnection" in window)) {
     setWebRtcStatus("failed", "Browser tidak mendukung WebRTC");
@@ -3944,13 +6400,23 @@ async function startWebRtcSession(device: DeviceRecord): Promise<void> {
 }
 
 function syncCameraViews(device: DeviceRecord | null = state.device): void {
-  stopWebRtcSession(true);
+  const cameraUrl = publicCameraUrl(device);
+  const nextWhepUrl = device?.cameraMode === "webrtc" && cameraUrl ? whepEndpointUrl(cameraUrl) : "";
+  const shouldStop = Boolean(state.webrtc.pc) && (
+    !device
+    || device.cameraMode !== "webrtc"
+    || state.webrtc.deviceId !== device.id
+    || (state.webrtc.whepUrl && state.webrtc.whepUrl !== nextWhepUrl)
+  );
+  if (shouldStop) stopWebRtcSession(true);
+  requestAnimationFrame(() => initializeCameraSurfaces());
 }
 
 function renderWebRtcSurface(device: DeviceRecord, videoClass: string): string {
   const status = escapeHtml(webRtcStatusText());
+  const key = cameraSurfaceKey(device);
   return `
-    <div class="webrtc-video-wrap">
+    <div class="webrtc-video-wrap" data-camera-key="${escapeHtml(key)}">
       <video class="${videoClass} webrtc-video" data-webrtc-camera="${escapeHtml(device.id)}" autoplay playsinline muted></video>
       <div class="webrtc-status-bar">
         <span class="webrtc-dot" data-webrtc-dot data-status="${state.webrtc.status}"></span>
@@ -3963,7 +6429,51 @@ function renderWebRtcSurface(device: DeviceRecord, videoClass: string): string {
 function renderCameraSurface(device: DeviceRecord | null, imageClass: string, frameClass: string): string {
   const url = publicCameraUrl(device);
   if (url) {
-    return `<iframe class="${frameClass}" src="${escapeHtml(url)}" allow="autoplay; fullscreen" referrerpolicy="no-referrer" loading="lazy"></iframe>`;
+    const key = cameraSurfaceKey(device);
+    if (device?.cameraMode === "webrtc") {
+      const whepUrl = whepEndpointUrl(url);
+      const hlsUrl = publicCameraHlsUrl(device);
+      const status = escapeHtml(webRtcStatusText());
+      const poster = device.cameraThumbnailUrl || readCameraPoster(key);
+      const posterAttr = poster ? ` poster="${escapeHtml(poster)}"` : "";
+      return `<div class="${frameClass} camera-live-surface camera-webrtc-surface" data-camera-key="${escapeHtml(key)}" data-device-id="${escapeHtml(device.id)}" data-camera-url="${escapeHtml(url)}" data-camera-hls-url="${escapeHtml(hlsUrl)}" data-browser-yolo-surface>
+        <video class="${imageClass} camera-webrtc-video" data-camera-video data-webrtc-camera="${escapeHtml(device.id)}" data-whep-src="${escapeHtml(whepUrl)}" autoplay muted playsinline preload="auto" disablepictureinpicture${posterAttr}></video>
+        <canvas class="browser-yolo-canvas" data-browser-yolo-canvas></canvas>
+        <div class="camera-live-pill" aria-hidden="true"><span></span>LIVE</div>
+        <div class="browser-yolo-status" data-browser-yolo-status data-status="idle">Menghubungkan WebRTC...</div>
+        <div class="camera-video-buffer camera-webrtc-buffer" data-webrtc-status data-status="${state.webrtc.status}">${status}</div>
+        <div class="camera-custom-controls" data-camera-controls>
+          <button class="camera-control-button" data-camera-play aria-label="Jeda video"></button>
+          <div class="camera-controls-right">
+            <button class="camera-control-button camera-ai-button" data-camera-ai aria-label="Buka statistik AI">AI</button>
+            <button class="camera-control-button" data-camera-fullscreen aria-label="Fullscreen video">${fullscreenButtonIcon(false)}</button>
+          </div>
+        </div>
+      </div>`;
+    }
+    if (isLikelyImageUrl(url)) {
+      return `<img class="${imageClass}" src="${escapeHtml(url)}" alt="${escapeHtml(device?.label || "Raspberry camera")}" loading="lazy" data-camera-key="${escapeHtml(key)}">`;
+    }
+    if (isLikelyHlsUrl(url)) {
+      const playlist = hlsPlaylistUrl(url);
+      const poster = device?.cameraThumbnailUrl || readCameraPoster(key);
+      const posterAttr = poster ? ` poster="${escapeHtml(poster)}"` : "";
+      return `<div class="${frameClass} camera-hls-surface" data-camera-key="${escapeHtml(key)}" data-device-id="${escapeHtml(device?.id || "raspberry-its")}" data-camera-url="${escapeHtml(url)}" data-browser-yolo-surface>
+        <video class="${imageClass} camera-hls-video" data-camera-video data-hls-src="${escapeHtml(playlist)}" autoplay muted playsinline preload="auto" crossorigin="anonymous" disablepictureinpicture${posterAttr}></video>
+        <canvas class="browser-yolo-canvas" data-browser-yolo-canvas></canvas>
+        <div class="camera-live-pill" aria-hidden="true"><span></span>LIVE</div>
+        <div class="browser-yolo-status" data-browser-yolo-status data-status="idle">Memuat video...</div>
+        <div class="camera-video-buffer" data-camera-buffer></div>
+        <div class="camera-custom-controls" data-camera-controls>
+          <button class="camera-control-button" data-camera-play aria-label="Jeda video"></button>
+          <div class="camera-controls-right">
+            <button class="camera-control-button camera-ai-button" data-camera-ai aria-label="Buka statistik AI">AI</button>
+            <button class="camera-control-button" data-camera-fullscreen aria-label="Fullscreen video">${fullscreenButtonIcon(false)}</button>
+          </div>
+        </div>
+      </div>`;
+    }
+    return `<iframe class="${frameClass}" src="${escapeHtml(url)}" allow="autoplay; fullscreen" referrerpolicy="no-referrer" loading="eager" data-camera-key="${escapeHtml(key)}"></iframe>`;
   }
   return "";
 }
@@ -4370,18 +6880,28 @@ const ModeControl = L.Control.extend({
   onAdd(): HTMLElement {
     const container = L.DomUtil.create('div', 'mode-control');
     container.innerHTML = `
-      <button class="mode-btn" data-mode="street" title="Street">2D</button>
-      <button class="mode-btn" data-mode="3d" title="3D">3D</button>
-      <button class="mode-btn" data-mode="satellite" title="Satellite">Sat</button>
+      <button class="mode-btn" type="button" data-mode="street" aria-pressed="${state.baseMode === "street"}" title="Mode peta 2D">2D</button>
+      <button class="mode-btn" type="button" data-mode="3d" aria-pressed="${state.baseMode === "3d"}" title="Mode peta 3D">3D</button>
+      <button class="mode-btn" type="button" data-mode="satellite" aria-pressed="${state.baseMode === "satellite"}" title="Mode satelit">Sat</button>
+      <span class="mode-control-divider" aria-hidden="true"></span>
+      <button class="mode-btn mode-transport-btn" type="button" data-transport="rail" aria-pressed="${state.transportLayer === "rail"}" title="Tampilkan jalur kereta">Kereta</button>
     `;
     L.DomEvent.disableClickPropagation(container);
     L.DomEvent.disableScrollPropagation(container);
     container.querySelectorAll<HTMLButtonElement>('.mode-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
-        const m = (btn.dataset.mode as BaseMapMode) || 'street';
-        void setBaseMap(m);
+        const mode = btn.dataset.mode as BaseMapMode | undefined;
+        if (mode) {
+          void setBaseMap(mode);
+          return;
+        }
+        const transport = btn.dataset.transport as TransportLayerMode | undefined;
+        if (transport === "rail") {
+          setTransportLayer(state.transportLayer === "rail" ? "traffic" : "rail");
+        }
       });
     });
+    syncLayerControls();
     return container;
   }
 });
@@ -4494,9 +7014,7 @@ function updateNoticeTitle(update: ControllerUpdateInfo): string {
   return "Status update controller";
 }
 
-function maybeShowBrowserNotification(title: string, message: string): void {
-  if (!("Notification" in window)) return;
-  if (Notification.permission !== "granted") return;
+function showDirectBrowserNotification(title: string, message: string): void {
   try {
     const notification = new Notification(title, {
       body: message,
@@ -4507,6 +7025,25 @@ function maybeShowBrowserNotification(title: string, message: string): void {
   } catch {
     // Browser may block system notifications despite a granted permission.
   }
+}
+
+function maybeShowBrowserNotification(title: string, message: string): void {
+  if (!("Notification" in window)) return;
+  if (Notification.permission !== "granted") return;
+  if ("serviceWorker" in navigator) {
+    void navigator.serviceWorker.ready
+      .then((registration) => registration.showNotification(title, {
+        body: message,
+        tag: "its-controller-update",
+        silent: false,
+        icon: "/favicon.svg",
+        badge: "/favicon.svg",
+        data: { url: window.location.origin },
+      }))
+      .catch(() => showDirectBrowserNotification(title, message));
+    return;
+  }
+  showDirectBrowserNotification(title, message);
 }
 
 function requestBrowserNotificationPermission(): void {
@@ -4627,7 +7164,7 @@ function openAppInstaller(update: AppUpdateInfo, automatic = false): void {
 }
 
 async function fetchAppUpdateInfo(): Promise<AppUpdateInfo | null> {
-  const sources = [APP_UPDATE_DATABASE_URL, APP_UPDATE_MANIFEST_URL];
+  const sources = [...APP_UPDATE_DATABASE_URLS, APP_UPDATE_MANIFEST_URL];
   for (const url of sources) {
     try {
       const res = await fetch(url, { cache: "no-store" });
@@ -4780,6 +7317,10 @@ function focusFromIncomingUrl(rawUrl: string, allowDefer = true): boolean {
   const lat = Number(url.searchParams.get("lat"));
   const lng = Number(url.searchParams.get("lng"));
   const z = Number(url.searchParams.get("z"));
+  if (route === "licenses" || route === "license" || focus === "licenses" || focus === "lisensi") {
+    openMapLicensePage();
+    return true;
+  }
   if (mode === "street" || mode === "2d") {
     void setBaseMap("street");
   } else if (mode === "3d") {
@@ -5062,7 +7603,6 @@ function isTablet(): boolean {
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 type MobileTab = "peta" | "its" | "profil";
-type LayerMode = "street" | "satellite" | "3d";
 
 const mobileState = {
   activeTab: "peta" as MobileTab,
@@ -5165,20 +7705,40 @@ function openLayerModal(): void {
     <div class="m-layer-backdrop"></div>
     <div class="m-layer-sheet">
       <div class="m-sheet-handle-bar"></div>
-      <div class="m-layer-title">Pilih Tampilan Peta</div>
-      <div class="m-layer-options">
-        <button class="m-layer-opt ${state.baseMode === 'street' ? 'active' : ''}" data-mode="street">
-          <div class="m-layer-icon">🗺️</div>
-          <span>Normal</span>
-        </button>
-        <button class="m-layer-opt ${state.baseMode === 'satellite' ? 'active' : ''}" data-mode="satellite">
-          <div class="m-layer-icon">🛰️</div>
-          <span>Satelit</span>
-        </button>
-        <button class="m-layer-opt ${state.baseMode === '3d' ? 'active' : ''}" data-mode="3d">
-          <div class="m-layer-icon">🏙️</div>
-          <span>3D</span>
-        </button>
+      <div class="m-layer-title">Lapisan Maps</div>
+      <div class="m-layer-section">
+        <h2 class="m-layer-heading">Mode Peta</h2>
+        <div class="m-layer-options">
+          <button class="m-layer-opt ${state.baseMode === 'street' ? 'active' : ''}" type="button" data-mode="street" aria-pressed="${state.baseMode === 'street'}">
+            <div class="m-layer-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M4 7.5 9 5l6 2.5 5-2.5v11.5L15 19l-6-2.5L4 19V7.5Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 5v11.5M15 7.5V19" stroke="currentColor" stroke-width="1.8"/></svg>
+            </div>
+            <span>2D</span>
+          </button>
+          <button class="m-layer-opt ${state.baseMode === '3d' ? 'active' : ''}" type="button" data-mode="3d" aria-pressed="${state.baseMode === '3d'}">
+            <div class="m-layer-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M5 10.5 12 6l7 4.5-7 4.5-7-4.5Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M5 14l7 4.5 7-4.5M12 15v3.5" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+            </div>
+            <span>3D</span>
+          </button>
+          <button class="m-layer-opt ${state.baseMode === 'satellite' ? 'active' : ''}" type="button" data-mode="satellite" aria-pressed="${state.baseMode === 'satellite'}">
+            <div class="m-layer-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M8.5 15.5 4 20m11.5-4.5L20 20M5 8l11 11M9 4l11 11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><rect x="7.5" y="3.5" width="7" height="11" rx="1.6" transform="rotate(-45 7.5 3.5)" stroke="currentColor" stroke-width="1.8"/></svg>
+            </div>
+            <span>Sat</span>
+          </button>
+        </div>
+      </div>
+      <div class="m-layer-section">
+        <h2 class="m-layer-heading">Transportasi</h2>
+        <div class="m-layer-options m-layer-options-transport">
+          <button class="m-layer-opt ${state.transportLayer === 'rail' ? 'active' : ''}" type="button" data-transport="rail" aria-pressed="${state.transportLayer === 'rail'}">
+            <div class="m-layer-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M7 5h10a2 2 0 0 1 2 2v7.5a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z" stroke="currentColor" stroke-width="1.8"/><path d="M8 9h8M8 13h8M8.5 20l2-3.5M15.5 20l-2-3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            </div>
+            <span>Kereta</span>
+          </button>
+        </div>
       </div>
     </div>
   `;
@@ -5187,10 +7747,14 @@ function openLayerModal(): void {
 
   overlay.querySelectorAll<HTMLButtonElement>(".m-layer-opt").forEach(btn => {
     btn.addEventListener("click", async () => {
-      const mode = btn.dataset.mode as LayerMode;
-      overlay.querySelectorAll(".m-layer-opt").forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-      await setBaseMap(mode);
+      const mode = btn.dataset.mode as BaseMapMode | undefined;
+      const transport = btn.dataset.transport as TransportLayerMode | undefined;
+      if (mode) {
+        await setBaseMap(mode);
+      } else if (transport === "rail") {
+        setTransportLayer(state.transportLayer === "rail" ? "traffic" : "rail");
+      }
+      syncLayerControls();
       setTimeout(closeLayerModal, 280);
     });
   });
@@ -5216,10 +7780,16 @@ function closeLayerModal(): void {
 // ─── 3. Generic Sheet Swipe Handler ──────────────────────────────────────────
 
 function setupSheetSwipe(sheetEl: HTMLElement, onClose: () => void): void {
+  if (sheetEl.dataset.swipeSetup === "true") {
+    return;
+  }
+  sheetEl.dataset.swipeSetup = "true";
+
   let startX = 0;
   let startY = 0;
   let current = 0;
   let dragging = false;
+  let activePointerId = -1;
 
   const isDesktopSheet = () => window.matchMedia("(min-width: 900px)").matches;
   const dragHandles = Array.from(
@@ -5229,11 +7799,18 @@ function setupSheetSwipe(sheetEl: HTMLElement, onClose: () => void): void {
   const beginDrag = (e: PointerEvent) => {
     const target = e.target as HTMLElement | null;
     if (target?.closest("button, a, input, textarea, select")) return;
+    e.preventDefault();
+    e.stopPropagation();
     dragging = true;
+    activePointerId = e.pointerId;
     current = 0;
     startX = e.clientX;
     startY = e.clientY;
     sheetEl.style.transition = "none";
+    sheetEl.classList.add("is-dragging");
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerUp);
     try {
       (e.currentTarget as HTMLElement | null)?.setPointerCapture?.(e.pointerId);
     } catch {
@@ -5242,20 +7819,27 @@ function setupSheetSwipe(sheetEl: HTMLElement, onClose: () => void): void {
   };
 
   const onPointerMove = (e: PointerEvent) => {
-    if (!dragging) return;
+    if (!dragging || e.pointerId !== activePointerId) return;
+    e.preventDefault();
+    e.stopPropagation();
     const desktop = isDesktopSheet();
     const delta = desktop ? e.clientX - startX : e.clientY - startY;
     current = desktop ? Math.min(0, delta) : Math.max(0, delta);
     if (Math.abs(current) < 4) return;
-    sheetEl.classList.add("is-dragging");
     sheetEl.style.transform = desktop ? `translateX(${current}px)` : `translateY(${current}px)`;
   };
 
-  const onPointerUp = () => {
-    if (!dragging) return;
+  const onPointerUp = (e?: PointerEvent) => {
+    if (!dragging || (e && e.pointerId !== activePointerId)) return;
+    e?.preventDefault();
+    e?.stopPropagation();
     dragging = false;
+    activePointerId = -1;
     sheetEl.classList.remove("is-dragging");
     sheetEl.style.transition = "";
+    window.removeEventListener("pointermove", onPointerMove);
+    window.removeEventListener("pointerup", onPointerUp);
+    window.removeEventListener("pointercancel", onPointerUp);
     const desktop = isDesktopSheet();
     const shouldClose = desktop ? current < -110 : current > 80;
     if (shouldClose) {
@@ -5266,7 +7850,7 @@ function setupSheetSwipe(sheetEl: HTMLElement, onClose: () => void): void {
     }
   };
 
-  const listenerTargets = dragHandles.length ? dragHandles : [sheetEl];
+  const listenerTargets = [sheetEl, ...dragHandles.filter((target) => target !== sheetEl)];
   listenerTargets.forEach((target) => {
     target.addEventListener("pointerdown", beginDrag);
     target.addEventListener("pointermove", onPointerMove);
@@ -5414,12 +7998,292 @@ function focusITSVideoSection(): void {
   });
 }
 
+function detachReusableMobileCameraSurface(nextKey: string): HTMLElement | null {
+  if (!nextKey) return null;
+  const scroll = document.getElementById("m-its-scroll");
+  const current = scroll?.querySelector<HTMLElement>("[data-camera-key]");
+  if (!current || current.dataset.cameraKey !== nextKey) return null;
+  const holder = document.createElement("div");
+  holder.appendChild(current);
+  return current;
+}
+
+function restoreReusableMobileCameraSurface(nextKey: string, preserved: HTMLElement | null): void {
+  if (!nextKey || !preserved) return;
+  const scroll = document.getElementById("m-its-scroll");
+  const fresh = Array.from(scroll?.querySelectorAll<HTMLElement>("[data-camera-key]") || [])
+    .find((element) => element.dataset.cameraKey === nextKey);
+  fresh?.replaceWith(preserved);
+}
+
+function activeCameraFullscreenElement(): HTMLElement | null {
+  const fullscreen = document.fullscreenElement as HTMLElement | null;
+  if (!fullscreen) return null;
+  if (fullscreen.matches("[data-browser-yolo-surface], [data-camera-key]")) return fullscreen;
+  return fullscreen.closest<HTMLElement>("[data-browser-yolo-surface], [data-camera-key]");
+}
+
+function trafficLightPlainText(color: TrafficColor): string {
+  if (color === "red") return "Lampu merah";
+  if (color === "yellow") return "Lampu kuning";
+  return "Lampu hijau";
+}
+
+function trafficWidgetImages(device: DeviceRecord | null): string[] {
+  const online = Boolean(device && device.status === "online" && navigator.onLine);
+  const candidates = online
+    ? [
+      device?.cameraDataset?.snapshot1Url,
+      device?.cameraDataset?.snapshot2Url,
+      device?.cameraThumbnailUrl,
+      device ? readCameraPoster(cameraSurfaceKey(device)) : "",
+    ]
+    : [];
+  const unique = candidates
+    .filter((url): url is string => Boolean(url && url.trim()))
+    .filter((url, index, list) => list.indexOf(url) === index);
+  return unique.length ? unique.slice(0, 2) : [TRAFFIC_WIDGET_FALLBACK_IMAGE_URL];
+}
+
+function vehicleStatIcon(kind: keyof VehicleBreakdown | "total"): string {
+  const common = `fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"`;
+  if (kind === "motorcycle") {
+    return `<svg viewBox="0 0 24 24" aria-hidden="true"><path ${common} d="M6 17a3 3 0 1 0 0 .1M18 17a3 3 0 1 0 0 .1M7 17h4l2-6h3l2 6M9 10h4M13 11l-2-3H8"/></svg>`;
+  }
+  if (kind === "bus") {
+    return `<svg viewBox="0 0 24 24" aria-hidden="true"><path ${common} d="M5 17V7a3 3 0 0 1 3-3h8a3 3 0 0 1 3 3v10M5 9h14M7 19h.1M17 19h.1M7 13h4M13 13h4"/></svg>`;
+  }
+  if (kind === "truck") {
+    return `<svg viewBox="0 0 24 24" aria-hidden="true"><path ${common} d="M3 7h11v10H3zM14 11h4l3 4v2h-7zM7 19a2 2 0 1 0 0 .1M18 19a2 2 0 1 0 0 .1"/></svg>`;
+  }
+  if (kind === "bicycle") {
+    return `<svg viewBox="0 0 24 24" aria-hidden="true"><path ${common} d="M6 17a4 4 0 1 0 0 .1M18 17a4 4 0 1 0 0 .1M8 17l4-8 3 8M10 9h4M12 9l-2-3h3"/></svg>`;
+  }
+  if (kind === "total") {
+    return `<svg viewBox="0 0 24 24" aria-hidden="true"><path ${common} d="M5 19V5M10 19v-8M15 19v-5M20 19V9"/></svg>`;
+  }
+  return `<svg viewBox="0 0 24 24" aria-hidden="true"><path ${common} d="M4 13l2-5h12l2 5M6 13h12v5H6zM8 18h.1M16 18h.1M7 10h10"/></svg>`;
+}
+
+function renderTrafficObjectWidget(device: DeviceRecord | null, traffic: TrafficState | null): string {
+  const images = trafficWidgetImages(device);
+  const breakdown = device?.vehicleBreakdown || { car: 0, motorcycle: 0, bus: 0, truck: 0, bicycle: 0, total: 0 };
+  const total = Math.max(breakdown.total || 0, traffic?.vehicleCount || device?.vehicleCount || 0);
+  const color = traffic?.color || "red";
+  const duration = traffic?.duration || device?.trafficDuration || 0;
+  const location = traffic?.roadName || device?.roadName || device?.roadHint || device?.label || "Lokasi sistem belum tersedia";
+  const aiStatus = device?.detectorStatus || (device?.status === "online" ? "menunggu deteksi" : "offline");
+  const updated = device?.detectorUpdatedAt ? formatAge(normalizeEpoch(device.detectorUpdatedAt)) : "belum ada update";
+  const cards: Array<[keyof VehicleBreakdown | "total", string, number]> = [
+    ["car", "Mobil", breakdown.car],
+    ["motorcycle", "Motor", breakdown.motorcycle],
+    ["bus", "Bus", breakdown.bus],
+    ["truck", "Truk", breakdown.truck],
+    ["bicycle", "Sepeda", breakdown.bicycle],
+    ["total", "Jumlah", total],
+  ];
+
+  return `
+    <div class="traffic-object-widget" data-traffic-object-widget>
+      <div class="traffic-object-hero">
+        <div class="traffic-object-carousel" data-carousel-track>
+          ${images.map((url, index) => `
+            <img class="traffic-object-slide${index === 0 ? " active" : ""}"
+                 src="${escapeHtml(url)}"
+                 alt="${index === 0 ? "nama 1" : "nama 2"} traffic object detection"
+                 loading="${index === 0 ? "eager" : "lazy"}">
+          `).join("")}
+        </div>
+        <div class="traffic-object-shade"></div>
+        <div class="traffic-object-topbar">
+          <span class="traffic-object-pin"></span>
+          <span>${escapeHtml(location)}</span>
+        </div>
+        <div class="traffic-object-title">
+          <strong>Traffic Object Detection</strong>
+          <span>${escapeHtml(aiStatus)} - ${escapeHtml(updated)}</span>
+        </div>
+        <div class="traffic-object-modes">
+          <span>${vehicleStatIcon("car")} Mobil</span>
+          <span>${vehicleStatIcon("bus")} Bus</span>
+          <span>${vehicleStatIcon("truck")} Truk</span>
+          <span>${vehicleStatIcon("bicycle")} Sepeda</span>
+        </div>
+        <div class="traffic-object-signal signal-${color}">
+          <span></span>
+          <b>${escapeHtml(trafficLightPlainText(color))}</b>
+          <em>${duration ? `${Math.round(duration)} detik` : "sinkron lampu"}</em>
+        </div>
+      </div>
+
+      <div class="traffic-object-cards">
+        ${cards.map(([kind, label, value]) => `
+          <div class="traffic-object-card">
+            <span class="traffic-object-card-icon">${vehicleStatIcon(kind)}</span>
+            <span class="traffic-object-card-label">${escapeHtml(label)}</span>
+            <strong>${Math.max(0, Math.round(value || 0))}</strong>
+          </div>
+        `).join("")}
+      </div>
+
+      <div class="traffic-object-location">
+        <span>Lokasi sistem</span>
+        <strong>${escapeHtml(location)}</strong>
+      </div>
+    </div>
+  `;
+}
+
+function setupTrafficObjectCarousels(root: ParentNode = document): void {
+  root.querySelectorAll<HTMLElement>("[data-traffic-object-widget]").forEach((widget) => {
+    if (trafficObjectCarouselTimers.has(widget)) return;
+    const slides = Array.from(widget.querySelectorAll<HTMLImageElement>(".traffic-object-slide"));
+    if (slides.length <= 1) return;
+    let index = 0;
+    const timer = window.setInterval(() => {
+      if (!widget.isConnected) {
+        window.clearInterval(timer);
+        return;
+      }
+      slides[index]?.classList.remove("active");
+      index = (index + 1) % slides.length;
+      slides[index]?.classList.add("active");
+    }, 3200);
+    trafficObjectCarouselTimers.set(widget, timer);
+  });
+}
+
+function aiEngineLabel(mode?: AiEngineMode): string {
+  if (mode === "grove-vision-ai") return "Grove Vision AI V2";
+  if (mode === "raspberry-yolo") return "YOLO Raspberry";
+  return "YOLO web browser";
+}
+
+function cameraSourceLabel(mode?: CameraSourceMode): string {
+  if (mode === "grove-vision-ai") return "Grove Vision AI / XIAO";
+  if (mode === "raspberry-hls") return "Raspberry HLS";
+  return "Raspberry WebRTC";
+}
+
+function effectiveRuntimeConfig(device: DeviceRecord): Required<Pick<DeviceRuntimeConfig, "aiEngine" | "cameraSource">> & DeviceRuntimeConfig {
+  const aiEngine = device.runtimeConfig?.aiEngine || "browser-yolo";
+  const cameraSource = device.runtimeConfig?.cameraSource
+    || (device.cameraMode === "webrtc" ? "raspberry-webrtc" : "raspberry-hls");
+  return { ...device.runtimeConfig, aiEngine, cameraSource };
+}
+
+function renderAiCameraControl(device: DeviceRecord): string {
+  const config = effectiveRuntimeConfig(device);
+  const aiOptions: Array<[AiEngineMode, string]> = [
+    ["browser-yolo", "YOLO web"],
+    ["raspberry-yolo", "YOLO Raspberry"],
+    ["grove-vision-ai", "Grove Vision AI"],
+  ];
+  const cameraOptions: Array<[CameraSourceMode, string]> = [
+    ["raspberry-webrtc", "Raspberry WebRTC"],
+    ["raspberry-hls", "Raspberry HLS"],
+    ["grove-vision-ai", "Grove Vision AI"],
+  ];
+  const optionButtons = <T extends string>(items: Array<[T, string]>, active: T, attr: string) => items.map(([value, label]) => `
+    <button type="button"
+            class="m-ai-option${value === active ? " active" : ""}"
+            ${attr}="${escapeHtml(value)}"
+            aria-pressed="${value === active}">
+      ${escapeHtml(label)}
+    </button>
+  `).join("");
+  const groveOn = config.aiEngine === "grove-vision-ai" || config.cameraSource === "grove-vision-ai";
+  const updated = config.updatedAt ? formatAge(normalizeEpoch(config.updatedAt)) : "belum dikirim";
+  return `
+    <div class="m-its-section">
+      <div class="m-its-section-title">Control AI & Kamera</div>
+      <div class="m-ai-control" data-ai-camera-control data-device-id="${escapeHtml(device.id)}">
+        <div class="m-ai-control-row">
+          <span>AI engine</span>
+          <div class="m-ai-options">${optionButtons(aiOptions, config.aiEngine, "data-ai-engine")}</div>
+        </div>
+        <div class="m-ai-control-row">
+          <span>Sumber kamera</span>
+          <div class="m-ai-options">${optionButtons(cameraOptions, config.cameraSource, "data-camera-source")}</div>
+        </div>
+        <div class="m-ai-control-status">
+          <strong>${escapeHtml(aiEngineLabel(config.aiEngine))}</strong>
+          <span>${escapeHtml(cameraSourceLabel(config.cameraSource))} · ${groveOn ? "Grove mode diminta" : "Raspberry mode"} · ${escapeHtml(updated)}</span>
+        </div>
+        <div class="m-ai-control-note">
+          Grove Vision AI V2 dipakai sebagai edge AI sensor. XIAO ESP32C3 dapat menjadi bridge UART/Wi-Fi ke Raspberry; driver hardware aktif setelah controller membaca config ini.
+        </div>
+      </div>
+    </div>`;
+}
+
+async function saveAiCameraControl(device: DeviceRecord, partial: Partial<DeviceRuntimeConfig>): Promise<void> {
+  const next: DeviceRuntimeConfig = {
+    ...effectiveRuntimeConfig(device),
+    ...partial,
+    updatedAt: Date.now(),
+    requestedBy: "web",
+  };
+  const groveRequested = next.aiEngine === "grove-vision-ai" || next.cameraSource === "grove-vision-ai";
+  next.groveVisionAi = {
+    enabled: groveRequested,
+    transport: device.runtimeConfig?.groveVisionAi?.transport || "uart",
+    serialPath: device.runtimeConfig?.groveVisionAi?.serialPath || "/dev/ttyACM0",
+    host: device.runtimeConfig?.groveVisionAi?.host,
+    port: device.runtimeConfig?.groveVisionAi?.port,
+    model: device.runtimeConfig?.groveVisionAi?.model || "SenseCraft AI YOLOv8/custom vehicle",
+  };
+
+  await firebaseWritePath("PATCH", `deviceControl/${device.id}`, { runtimeConfig: next });
+  await firebaseWritePath("PATCH", `devices/${device.id}`, { runtimeConfig: next });
+
+  const applyLocal = (item: DeviceRecord) => item.id === device.id ? { ...item, runtimeConfig: next } : item;
+  state.devices = state.devices.map(applyLocal);
+  if (state.device?.id === device.id) state.device = applyLocal(state.device);
+  showGlobalNotice("success", "Opsi AI tersimpan", `${aiEngineLabel(next.aiEngine)} · ${cameraSourceLabel(next.cameraSource)}`);
+  renderITSSheetContent();
+}
+
+function setupAiCameraControl(root: ParentNode): void {
+  root.querySelectorAll<HTMLElement>("[data-ai-camera-control]").forEach((control) => {
+    if (control.dataset.ready === "true") return;
+    control.dataset.ready = "true";
+    const deviceId = control.dataset.deviceId || state.device?.id || "";
+    const device = state.devices.find((item) => item.id === deviceId) || (state.device?.id === deviceId ? state.device : null);
+    if (!device) return;
+    control.querySelectorAll<HTMLButtonElement>("[data-ai-engine]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const aiEngine = button.dataset.aiEngine;
+        if (!isAiEngineMode(aiEngine)) return;
+        void saveAiCameraControl(device, { aiEngine }).catch((err) => {
+          showGlobalNotice("error", "Gagal menyimpan opsi AI", err instanceof Error ? err.message : "Firebase tidak menerima update");
+        });
+      });
+    });
+    control.querySelectorAll<HTMLButtonElement>("[data-camera-source]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const cameraSource = button.dataset.cameraSource;
+        if (!isCameraSourceMode(cameraSource)) return;
+        void saveAiCameraControl(device, { cameraSource }).catch((err) => {
+          showGlobalNotice("error", "Gagal menyimpan opsi kamera", err instanceof Error ? err.message : "Firebase tidak menerima update");
+        });
+      });
+    });
+  });
+}
+
 function renderITSSheetContent(): void {
+  if (activeCameraFullscreenElement()) {
+    syncCameraViews(state.device);
+    return;
+  }
   const scroll = document.getElementById("m-its-scroll");
   if (!scroll) return;
 
   const device = state.device;
   const traffic = device ? trafficStateForDevice(device) : null;
+  const nextCameraKey = cameraSurfaceKey(device);
+  const preservedCameraSurface = detachReusableMobileCameraSurface(nextCameraKey);
   const cameraSurface = renderCameraSurface(device, "m-camera-img", "m-camera-frame");
   const breakdown = device?.vehicleBreakdown;
   const detectorStatus = device?.detectorStatus
@@ -5436,6 +8300,11 @@ function renderITSSheetContent(): void {
   const bulbColor = traffic ? colorMap[traffic.color] : "#9ca3af";
 
   scroll.innerHTML = `
+    <div class="m-its-section">
+      <div class="m-its-section-title">Traffic Object Detection</div>
+      ${renderTrafficObjectWidget(device, traffic)}
+    </div>
+
     <div class="m-its-section" id="m-its-video">
       <div class="m-its-section-title">Video Realtime</div>
       <div class="m-its-camera-box">
@@ -5446,13 +8315,7 @@ function renderITSSheetContent(): void {
                </svg>
                <span>Belum ada kamera</span>
              </div>`}
-        ${cameraSurface ? renderDetectionOverlay(device) : ""}
-        <button class="m-camera-fullscreen" aria-label="Fullscreen">
-          <svg viewBox="0 0 16 16" fill="none" width="14" height="14">
-            <path d="M1 6V1h5M10 1h5v5M15 10v5h-5M6 15H1v-5"
-                  stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-          </svg>
-        </button>
+        ${cameraSurface && device?.cameraMode !== "webrtc" ? renderDetectionOverlay(device) : ""}
       </div>
     </div>
 
@@ -5473,6 +8336,8 @@ function renderITSSheetContent(): void {
       ${device ? renderDetectionChips(device.detections) : ""}
       ${detectorNote ? `<div class="m-detector-note">${escapeHtml(detectorNote)}</div>` : ""}
     </div>
+
+    ${device ? renderAiCameraControl(device) : ""}
 
     ${traffic ? `
     <div class="m-its-section">
@@ -5509,6 +8374,9 @@ function renderITSSheetContent(): void {
     <div style="height:24px"></div>
   `;
 
+  restoreReusableMobileCameraSurface(nextCameraKey, preservedCameraSurface);
+  setupTrafficObjectCarousels(scroll);
+  setupAiCameraControl(scroll);
   syncCameraViews(device);
   attachWebRtcStream();
   requestAnimationFrame(() => drawTrafficChart());
@@ -5723,6 +8591,16 @@ function initMobileUI(): void {
 }
 initMobileUI();
 void refreshSnapshot();
+const preloadBrowserYolo = () => {
+  void loadBrowserYoloSession().catch((err) => {
+    console.warn("[ITS] browser YOLO preload failed:", err);
+  });
+};
+if (typeof (window as any).requestIdleCallback === "function") {
+  (window as any).requestIdleCallback(preloadBrowserYolo, { timeout: 3500 });
+} else {
+  window.setTimeout(preloadBrowserYolo, 1500);
+}
 // Also fetch nearby POIs immediately so tablet filters have data even if devices are empty
 void refreshOverpassLayer();
 void refreshRoadLabelLayer();
@@ -5796,8 +8674,8 @@ window.addEventListener('appinstalled', () => {
 });
 
 setupNativeDeepLinks();
+focusFromIncomingUrl(window.location.href);
 createOpenAndroidButton();
 window.setTimeout(() => {
   void checkAppUpdateManifest();
 }, 0);
-

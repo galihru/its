@@ -24,11 +24,16 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 
 public class WidgetRealtimeService extends Service {
     private static final String CHANNEL_ID = "its_widget_realtime";
     private static final int NOTIFICATION_ID = 7201;
-    private static final String FIREBASE_STREAM_URL = "https://itstelkom-default-rtdb.asia-southeast1.firebasedatabase.app/devices.json";
+    private static final String[] FIREBASE_STREAM_URLS = new String[] {
+        "https://itstelkom-default-rtdb.asia-southeast1.firebasedatabase.app/devices.json",
+        "https://itstelkom-default-rtdb.asia-southeast1.firebasedatabase.app/trafficObjectDetectionDataset/devices/raspberry-its.json"
+    };
     private static final String PREFS_NAME = "its_widget_prefs";
     private static final String PREF_USER_LAT = "user_lat";
     private static final String PREF_USER_LNG = "user_lng";
@@ -36,7 +41,7 @@ public class WidgetRealtimeService extends Service {
     private static final long RECONNECT_DELAY_MS = 3_000L;
 
     private volatile boolean running;
-    private Thread listenerThread;
+    private final List<Thread> listenerThreads = new ArrayList<>();
     private HttpURLConnection activeConnection;
     private volatile String lastEventFingerprint = "";
     private LocationManager locationManager;
@@ -79,8 +84,11 @@ public class WidgetRealtimeService extends Service {
         createChannel();
         startLocationUpdates();
         running = true;
-        listenerThread = new Thread(this::listenLoop, "its-widget-realtime");
-        listenerThread.start();
+        for (String streamUrl : FIREBASE_STREAM_URLS) {
+            Thread listenerThread = new Thread(() -> listenLoop(streamUrl), "its-widget-realtime");
+            listenerThread.start();
+            listenerThreads.add(listenerThread);
+        }
     }
 
     @Override
@@ -94,9 +102,12 @@ public class WidgetRealtimeService extends Service {
         running = false;
         stopLocationUpdates();
         closeConnection();
-        if (listenerThread != null) {
-            listenerThread.interrupt();
+        for (Thread listenerThread : listenerThreads) {
+            if (listenerThread != null) {
+                listenerThread.interrupt();
+            }
         }
+        listenerThreads.clear();
         super.onDestroy();
     }
 
@@ -105,11 +116,11 @@ public class WidgetRealtimeService extends Service {
         return null;
     }
 
-    private void listenLoop() {
+    private void listenLoop(String streamUrl) {
         while (running) {
             HttpURLConnection connection = null;
             try {
-                connection = openStreamConnection();
+                connection = openStreamConnection(streamUrl);
                 activeConnection = connection;
                 drainStream(connection);
             } catch (Exception err) {
@@ -131,8 +142,8 @@ public class WidgetRealtimeService extends Service {
         }
     }
 
-    private HttpURLConnection openStreamConnection() throws Exception {
-        HttpURLConnection connection = (HttpURLConnection) new URL(FIREBASE_STREAM_URL + "?ts=" + System.currentTimeMillis()).openConnection();
+    private HttpURLConnection openStreamConnection(String streamUrl) throws Exception {
+        HttpURLConnection connection = (HttpURLConnection) new URL(streamUrl + "?ts=" + System.currentTimeMillis()).openConnection();
         connection.setConnectTimeout(15_000);
         connection.setReadTimeout(0);
         connection.setUseCaches(false);
@@ -193,6 +204,14 @@ public class WidgetRealtimeService extends Service {
         Intent mapsUpdate = new Intent(this, MapsWidgetProvider.class);
         mapsUpdate.setAction(android.appwidget.AppWidgetManager.ACTION_APPWIDGET_UPDATE);
         sendBroadcast(mapsUpdate);
+
+        Intent trafficUpdate = new Intent(this, TrafficDetectionWidgetProvider.class);
+        trafficUpdate.setAction(android.appwidget.AppWidgetManager.ACTION_APPWIDGET_UPDATE);
+        sendBroadcast(trafficUpdate);
+
+        Intent alertFullDataUpdate = new Intent(this, AlertFullDataWidgetProvider.class);
+        alertFullDataUpdate.setAction(android.appwidget.AppWidgetManager.ACTION_APPWIDGET_UPDATE);
+        sendBroadcast(alertFullDataUpdate);
     }
 
     private void startLocationUpdates() {

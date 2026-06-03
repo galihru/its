@@ -45,7 +45,7 @@ public class ChartWidgetProvider extends AppWidgetProvider {
     private static final String FIREBASE_DEVICE_URL = "https://itstelkom-default-rtdb.asia-southeast1.firebasedatabase.app/devices/raspberry-its.json";
     private static final String STATE_SNAPSHOT_URL = "https://itstelkom.web.app/data/its-state.json";
     private static final String PRIMARY_DEVICE_ID = "raspberry-its";
-    private static final long REFRESH_INTERVAL_MS = 15_000L;
+    private static final long REFRESH_INTERVAL_MS = 10_000L;
     private static final int POINT_LIMIT = 20;
     private static final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor();
 
