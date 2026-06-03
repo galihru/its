@@ -62,7 +62,7 @@ jobs:
           # This workflow belongs only in galihru/its. It must not be submitted
           # to the target repository as part of the upstream PR.
           git rm -f --ignore-unmatch .github/workflows/auto-pr-to-hanifa.yml
-          if ! git diff --quiet; then
+          if ! git diff --cached --quiet; then
             git commit -m "chore(ci): exclude fork-only auto PR workflow"
           fi
 
