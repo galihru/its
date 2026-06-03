@@ -1,0 +1,126 @@
+name: Auto PR to Hanifa
+
+on:
+  workflow_run:
+    workflows: ["Build Android APK"]
+    types: [completed]
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/auto-pr-to-hanifa.yml"
+
+concurrency:
+  group: auto-pr-to-hanifa
+  cancel-in-progress: true
+
+jobs:
+  create-pr:
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'push' ||
+      (
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.head_branch == 'main'
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      TARGET_REPO: hanifasepthi/its
+      TARGET_BRANCH: main
+      PR_BRANCH: auto-pr/hanifa-main-sync
+      GH_TOKEN: ${{ secrets.HANIFA_PR_TOKEN || secrets.GH_TOKEN || github.token }}
+      BUILD_RUN_URL: ${{ github.event.workflow_run.html_url }}
+      BUILD_HEAD_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+    steps:
+      - name: Checkout fork main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prepare fork PR branch
+        id: prepare
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+          git remote add target "https://github.com/${TARGET_REPO}.git"
+          git fetch --no-tags origin main
+          git fetch --no-tags origin "${PR_BRANCH}:refs/remotes/origin/${PR_BRANCH}" || true
+          git fetch --no-tags target "${TARGET_BRANCH}:refs/remotes/target/${TARGET_BRANCH}"
+
+          git checkout -B "${PR_BRANCH}" origin/main
+
+          # This workflow belongs only in galihru/its. It must not be submitted
+          # to the target repository as part of the upstream PR.
+          git rm -f --ignore-unmatch .github/workflows/auto-pr-to-hanifa.yml
+          if ! git diff --quiet; then
+            git commit -m "chore(ci): exclude fork-only auto PR workflow"
+          fi
+
+          if git diff --quiet "refs/remotes/target/${TARGET_BRANCH}" HEAD; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            echo "No upstream diff to submit."
+            exit 0
+          fi
+
+          echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            "HEAD:${PR_BRANCH}" \
+            --force-with-lease
+
+      - name: Create or update upstream PR
+        if: steps.prepare.outputs.has_changes == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          HEAD_REF="${GITHUB_REPOSITORY_OWNER}:${PR_BRANCH}"
+          PR_NUMBER="$(gh pr list \
+            --repo "${TARGET_REPO}" \
+            --base "${TARGET_BRANCH}" \
+            --head "${HEAD_REF}" \
+            --state open \
+            --json number \
+            --jq '.[0].number // empty')"
+
+          BODY_FILE="$(mktemp)"
+          {
+            echo "Auto PR dari ${GITHUB_REPOSITORY} ke ${TARGET_REPO}."
+            echo
+            echo "Perubahan ini dibuat dari fork galihru agar Hanifa cukup review dan merge PR upstream."
+            echo
+            echo "- Source branch: ${HEAD_REF}"
+            echo "- Target branch: ${TARGET_REPO}:${TARGET_BRANCH}"
+            echo "- Head SHA: ${BUILD_HEAD_SHA}"
+            if [ -n "${BUILD_RUN_URL}" ]; then
+              echo "- Build APK: ${BUILD_RUN_URL}"
+            else
+              echo "- Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            fi
+            echo
+            echo "Catatan: workflow auto-PR sengaja tidak ikut dikirim ke target repo."
+          } > "$BODY_FILE"
+
+          if [ -n "${PR_NUMBER}" ]; then
+            gh pr edit "${PR_NUMBER}" \
+              --repo "${TARGET_REPO}" \
+              --title "[auto] Sync ITS changes from galihru" \
+              --body-file "$BODY_FILE"
+            echo "Updated PR #${PR_NUMBER}"
+          else
+            gh pr create \
+              --repo "${TARGET_REPO}" \
+              --base "${TARGET_BRANCH}" \
+              --head "${HEAD_REF}" \
+              --title "[auto] Sync ITS changes from galihru" \
+              --body-file "$BODY_FILE"
+          fi
