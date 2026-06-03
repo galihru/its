@@ -49,10 +49,10 @@ const manifest = {
     chart: "its://chart",
   },
   releaseNotes: [
-    "Build APK otomatis saat kode diupload ke GitHub.",
-    "APK dipublish ke Firebase Hosting dan metadata ditulis ke database /apk.",
-    "Website menampilkan modal update Android dengan download APK terbaru.",
-    "Deep link its://map dan its://chart tetap terhubung ke aplikasi ITS.",
+    "Modal update APK menampilkan logo, nama aplikasi, versi saat ini, versi terbaru, dan catatan pembaruan.",
+    "Notifikasi Android muncul saat ada APK ITS versi baru dan membuka modal update ketika ditekan.",
+    "Widget Alert dan Full Data ikut menampilkan info update APK dari database realtime.",
+    "APK terbaru dipublish otomatis ke Firebase Hosting dan metadata update ditulis ke database /apk.",
   ],
 };
 

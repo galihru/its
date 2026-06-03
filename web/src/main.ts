@@ -101,6 +101,16 @@ type RelatedApplication = {
 type NavigatorWithRelatedApps = Navigator & {
   getInstalledRelatedApps?: () => Promise<RelatedApplication[]>;
 };
+type ItsNativeApkBridge = {
+  installApk?: (url: string, fileName?: string) => void;
+  notifyUpdate?: (title: string, message: string, targetUrl?: string) => void;
+};
+
+declare global {
+  interface Window {
+    ItsApkInstaller?: ItsNativeApkBridge;
+  }
+}
 
 type DeviceRecord = {
   id: string;
@@ -384,8 +394,8 @@ const APP_NAME = "ITS";
 const APP_PACKAGE_ID = "id.ac.telkomuniversity.its";
 const APP_OWNER_NAME = "Hanifa Septhi Larasati";
 const APP_INSTITUTION = "Telkom University";
-const APP_VERSION = "1.0.0";
-const APP_VERSION_CODE = 1;
+const APP_VERSION = (import.meta.env.VITE_APP_VERSION as string | undefined) || "1.0.0";
+const APP_VERSION_CODE = Number.parseInt((import.meta.env.VITE_APP_VERSION_CODE as string | undefined) || "1", 10) || 1;
 const APP_PUBLIC_URL = "https://itstelkom.web.app/";
 const ANDROID_DEEP_LINK_SCHEME = "its";
 const APP_UPDATE_MANIFEST_URL = "./app-update.json";
@@ -7014,12 +7024,14 @@ function updateNoticeTitle(update: ControllerUpdateInfo): string {
   return "Status update controller";
 }
 
-function showDirectBrowserNotification(title: string, message: string): void {
+function showDirectBrowserNotification(title: string, message: string, tag = "its-controller-update", targetUrl = window.location.origin): void {
   try {
     const notification = new Notification(title, {
       body: message,
-      tag: "its-controller-update",
+      tag,
       silent: false,
+      icon: "/favicon.svg",
+      data: { url: targetUrl },
     });
     window.setTimeout(() => notification.close(), 7000);
   } catch {
@@ -7027,23 +7039,33 @@ function showDirectBrowserNotification(title: string, message: string): void {
   }
 }
 
-function maybeShowBrowserNotification(title: string, message: string): void {
+function maybeShowBrowserNotification(title: string, message: string, tag = "its-controller-update", targetUrl = window.location.origin): void {
+  const nativeNotifier = window.ItsApkInstaller?.notifyUpdate;
+  if (Capacitor.isNativePlatform() && typeof nativeNotifier === "function") {
+    try {
+      nativeNotifier(title, message, targetUrl);
+      return;
+    } catch {
+      // Fall through to browser notification if the native bridge is unavailable.
+    }
+  }
+
   if (!("Notification" in window)) return;
   if (Notification.permission !== "granted") return;
   if ("serviceWorker" in navigator) {
     void navigator.serviceWorker.ready
       .then((registration) => registration.showNotification(title, {
         body: message,
-        tag: "its-controller-update",
+        tag,
         silent: false,
         icon: "/favicon.svg",
         badge: "/favicon.svg",
-        data: { url: window.location.origin },
+        data: { url: targetUrl },
       }))
-      .catch(() => showDirectBrowserNotification(title, message));
+      .catch(() => showDirectBrowserNotification(title, message, tag, targetUrl));
     return;
   }
-  showDirectBrowserNotification(title, message);
+  showDirectBrowserNotification(title, message, tag, targetUrl);
 }
 
 function requestBrowserNotificationPermission(): void {
@@ -7138,10 +7160,31 @@ function appDownloadUrl(update: AppUpdateInfo): string {
   return update.downloadUrl || update.apkUrl || update.latestUrl || APP_DOWNLOAD_FALLBACK_URL;
 }
 
+function nativeInstallApk(update: AppUpdateInfo, url: string): boolean {
+  const installer = window.ItsApkInstaller?.installApk;
+  if (!Capacitor.isNativePlatform() || typeof installer !== "function") return false;
+  try {
+    installer(url, update.fileName || "its-latest.apk");
+    return true;
+  } catch (err) {
+    console.warn("[ITS] native APK installer failed", err);
+    return false;
+  }
+}
+
 function openAppInstaller(update: AppUpdateInfo, automatic = false): void {
   const url = appDownloadUrl(update);
   if (!url) {
     showGlobalNotice("warning", "Link update belum siap", "APK terbaru belum tersedia di Firebase");
+    return;
+  }
+
+  if (nativeInstallApk(update, url)) {
+    showGlobalNotice(
+      "info",
+      automatic ? "Menyiapkan update ITS" : "Install APK terbaru",
+      "Android akan membuka installer setelah file APK selesai diunduh",
+    );
     return;
   }
 
@@ -7249,6 +7292,36 @@ function showAppUpdateModal(update: AppUpdateInfo): void {
     </section>
   `;
 
+  modal.innerHTML = `
+    <div class="app-update-backdrop"></div>
+    <section class="app-update-sheet" role="dialog" aria-modal="true" aria-labelledby="app-update-title">
+      <div class="app-update-handle"></div>
+      <div class="app-update-head">
+        <div class="app-update-logo-wrap">
+          <img class="app-update-logo" src="${escapeHtml(logoUrl)}" alt="${escapeHtml(appName)}">
+        </div>
+        <div class="app-update-heading-copy">
+          <h2 id="app-update-title">${escapeHtml(appName)}</h2>
+          <div class="app-update-owner">${escapeHtml(ownerName)} - ${escapeHtml(institution)}</div>
+          <div class="app-update-version-line" aria-label="Versi aplikasi">
+            <span>${escapeHtml(localVersion)}</span>
+            <b>&gt;</b>
+            <strong>${escapeHtml(latestVersion)}</strong>
+          </div>
+        </div>
+      </div>
+      <div class="app-update-notes">
+        <h3>Catatan update</h3>
+        <ul>${noteItems}</ul>
+      </div>
+      ${meta ? `<div class="app-update-meta">${escapeHtml(meta)}</div>` : ""}
+      <div class="app-update-actions">
+        <button class="app-update-primary" type="button" data-action="download">Install terbaru</button>
+        <button class="app-update-secondary" type="button" data-action="later">Nanti</button>
+      </div>
+    </section>
+  `;
+
   modal.querySelector(".app-update-backdrop")?.addEventListener("click", closeAppUpdateModal);
   modal.querySelector<HTMLButtonElement>('[data-action="later"]')?.addEventListener("click", closeAppUpdateModal);
   modal.querySelector<HTMLButtonElement>('[data-action="download"]')?.addEventListener("click", () => {
@@ -7272,25 +7345,52 @@ function showAppUpdateModal(update: AppUpdateInfo): void {
   }
 }
 
-async function checkAppUpdateManifest(): Promise<void> {
+function appUpdateTargetUrl(): string {
+  return `${window.location.origin}${window.location.pathname}?update=1`;
+}
+
+function compareVersionNames(remoteVersion: string, localVersion: string): number {
+  const remoteParts = remoteVersion.replace(/^v/i, "").split(/[.-]/).map((part) => Number.parseInt(part, 10) || 0);
+  const localParts = localVersion.replace(/^v/i, "").split(/[.-]/).map((part) => Number.parseInt(part, 10) || 0);
+  const length = Math.max(remoteParts.length, localParts.length);
+  for (let i = 0; i < length; i += 1) {
+    const remote = remoteParts[i] || 0;
+    const local = localParts[i] || 0;
+    if (remote !== local) return remote > local ? 1 : -1;
+  }
+  return 0;
+}
+
+async function checkAppUpdateManifest(forceShow = false): Promise<void> {
   try {
     const update = await fetchAppUpdateInfo();
     if (!update) return;
 
     const remoteCode = Number(update.versionCode);
-    const hasNewCode = Number.isFinite(remoteCode) && remoteCode > APP_VERSION_CODE;
-    const hasNewName = Boolean(update.versionName && update.versionName !== APP_VERSION);
-    if (!hasNewCode && !hasNewName) return;
+    const hasRemoteCode = Number.isFinite(remoteCode);
+    const hasNewCode = hasRemoteCode && remoteCode > APP_VERSION_CODE;
+    const hasNewName = !hasRemoteCode && Boolean(update.versionName && compareVersionNames(update.versionName, APP_VERSION) > 0);
+    if (!hasNewCode && !hasNewName) {
+      if (forceShow) {
+        showGlobalNotice("success", "APK ITS sudah terbaru", `Versi terpasang ${APP_VERSION}`);
+      }
+      return;
+    }
 
     const key = `${update.versionCode || ""}:${update.versionName || ""}:${appDownloadUrl(update)}`;
-    if (state.lastAppUpdateKey === key) return;
+    if (!forceShow && state.lastAppUpdateKey === key) return;
     state.lastAppUpdateKey = key;
 
     const versionLabel = update.versionName || (Number.isFinite(remoteCode) ? String(remoteCode) : "baru");
     const title = update.force ? "Update wajib ITS" : "Update aplikasi tersedia";
-    const message = `Versi ${versionLabel} siap didownload`;
+    const notes = (update.releaseNotes || []).filter(Boolean);
+    const message = notes[0] || `Versi ${versionLabel} siap diinstall`;
     showAppUpdateModal(update);
-    maybeShowBrowserNotification(title, message);
+    showGlobalNotice("info", `Update ITS v${versionLabel}`, message, {
+      actionLabel: "Lihat",
+      onAction: () => showAppUpdateModal(update),
+    });
+    maybeShowBrowserNotification(title, message, "its-app-update", appUpdateTargetUrl());
   } catch (err) {
     console.warn("[ITS] app update check failed", err);
   }
@@ -7314,6 +7414,10 @@ function focusFromIncomingUrl(rawUrl: string, allowDefer = true): boolean {
   const route = routeFromIncomingUrl(url);
   const focus = (url.searchParams.get("focus") || url.searchParams.get("view") || "").toLowerCase();
   const mode = (url.searchParams.get("mode") || "").toLowerCase();
+  const wantsUpdate = url.searchParams.has("update") || route === "update" || focus === "update" || focus === "apk";
+  if (wantsUpdate) {
+    void checkAppUpdateManifest(true);
+  }
   const lat = Number(url.searchParams.get("lat"));
   const lng = Number(url.searchParams.get("lng"));
   const z = Number(url.searchParams.get("z"));
@@ -8677,5 +8781,5 @@ setupNativeDeepLinks();
 focusFromIncomingUrl(window.location.href);
 createOpenAndroidButton();
 window.setTimeout(() => {
-  void checkAppUpdateManifest();
+  void checkAppUpdateManifest(new URL(window.location.href).searchParams.has("update"));
 }, 0);
