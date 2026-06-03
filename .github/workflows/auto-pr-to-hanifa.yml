@@ -56,6 +56,7 @@ jobs:
           git fetch --no-tags origin main
           git fetch --no-tags origin "${PR_BRANCH}:refs/remotes/origin/${PR_BRANCH}" || true
           git fetch --no-tags target "${TARGET_BRANCH}:refs/remotes/target/${TARGET_BRANCH}"
+          REMOTE_PR_SHA="$(git rev-parse --verify "refs/remotes/origin/${PR_BRANCH}" 2>/dev/null || true)"
 
           git checkout -B "${PR_BRANCH}" origin/main
 
@@ -73,9 +74,14 @@ jobs:
           fi
 
           echo "has_changes=true" >> "$GITHUB_OUTPUT"
-          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
-            "HEAD:${PR_BRANCH}" \
-            --force-with-lease
+          if [ -n "${REMOTE_PR_SHA}" ]; then
+            git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+              "HEAD:${PR_BRANCH}" \
+              --force-with-lease="refs/heads/${PR_BRANCH}:${REMOTE_PR_SHA}"
+          else
+            git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+              "HEAD:${PR_BRANCH}"
+          fi
 
       - name: Create or update upstream PR
         if: steps.prepare.outputs.has_changes == 'true'
