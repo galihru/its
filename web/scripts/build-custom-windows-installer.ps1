@@ -10,9 +10,9 @@ $appZip = Join-Path $payloadDir "app.zip"
 $uninstallerPayload = Join-Path $payloadDir "ITS Maps Uninstall.exe"
 $uninstallerPublish = Join-Path $webRoot "windows-native\ItsMapsUninstaller\bin\Release\net9.0-windows\win-x64\publish\ITS Maps Uninstall.exe"
 $installerPublish = Join-Path $webRoot "windows-native\ItsMapsInstaller\bin\Release\net9.0-windows\win-x64\publish\ITS Maps Windows Setup.exe"
-$customSetup = Join-Path $webRoot "release\ITS-Maps-Windows-Custom-Setup-1.0.12-x64.exe"
-$publicUpdateArtifact = Join-Path $webRoot "public\artifacts\apps\ITS-Maps-Windows-Custom-Setup-1.0.12-x64.download"
-$distUpdateArtifact = Join-Path $webRoot "dist\artifacts\apps\ITS-Maps-Windows-Custom-Setup-1.0.12-x64.download"
+$customSetup = Join-Path $webRoot "release\ITS-Maps-Windows-Custom-Setup-1.0.13-x64.exe"
+$publicUpdateArtifact = Join-Path $webRoot "public\artifacts\apps\ITS-Maps-Windows-Custom-Setup-1.0.13-x64.download"
+$distUpdateArtifact = Join-Path $webRoot "dist\artifacts\apps\ITS-Maps-Windows-Custom-Setup-1.0.13-x64.download"
 $packageJson = Join-Path $webRoot "package.json"
 $packageJsonOriginal = Get-Content -LiteralPath $packageJson -Raw
 $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
@@ -33,6 +33,13 @@ function Invoke-Native {
 }
 
 try {
+  if (Test-Path $publicUpdateArtifact) {
+    Remove-Item -LiteralPath $publicUpdateArtifact -Force
+  }
+  if (Test-Path $distUpdateArtifact) {
+    Remove-Item -LiteralPath $distUpdateArtifact -Force
+  }
+
   Write-Host "Building web assets..."
   Invoke-Native npm run build
 
@@ -60,15 +67,13 @@ try {
 
   New-Item -ItemType Directory -Force -Path (Join-Path $webRoot "release") | Out-Null
   Copy-Item -LiteralPath $installerPublish -Destination $customSetup -Force
-  New-Item -ItemType Directory -Force -Path (Split-Path $publicUpdateArtifact -Parent) | Out-Null
   New-Item -ItemType Directory -Force -Path (Split-Path $distUpdateArtifact -Parent) | Out-Null
-  Copy-Item -LiteralPath $customSetup -Destination $publicUpdateArtifact -Force
   Copy-Item -LiteralPath $customSetup -Destination $distUpdateArtifact -Force
 
   Write-Host "Custom setup ready:"
   Write-Host $customSetup
   Write-Host "Update artifact ready:"
-  Write-Host $publicUpdateArtifact
+  Write-Host $distUpdateArtifact
 }
 finally {
   [System.IO.File]::WriteAllText($packageJson, $packageJsonOriginal, $utf8NoBom)

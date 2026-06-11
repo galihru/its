@@ -1556,8 +1556,34 @@ button {
   background: #05070a;
 }
 
+.win-camera-media video.fallback-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .win-camera-media iframe {
   object-fit: initial;
+}
+
+.win-camera-fallback-frame {
+  position: absolute !important;
+  inset: 0;
+}
+
+.win-camera-media-message {
+  position: absolute;
+  left: 18px;
+  bottom: 88px;
+  z-index: 6;
+  max-width: min(560px, calc(100% - 36px));
+  padding: 8px 11px;
+  border-radius: 8px;
+  background: rgba(4, 8, 18, 0.72);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.28);
 }
 
 .win-camera-placeholder {

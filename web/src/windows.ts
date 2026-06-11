@@ -172,10 +172,12 @@ const DEFAULT_CONFIG: Required<AppConfig> = {
 const FIREBASE_DEVICES_URL =
   "https://itstelkom-default-rtdb.asia-southeast1.firebasedatabase.app/devices.json";
 const FIREBASE_ROOT_URL = FIREBASE_DEVICES_URL.replace(/\/devices\.json$/, "");
+const FIREBASE_TRAFFIC_DATASET_ROOT = `${FIREBASE_ROOT_URL}/trafficObjectDetectionDataset/devices`;
+const FIREBASE_BROWSER_YOLO_ROOT = `${FIREBASE_ROOT_URL}/browserYolo/devices`;
 const OFFLINE_AFTER_MS = 60_000;
 const HLS_JS_URL = "https://cdn.jsdelivr.net/npm/hls.js@1.5.20/dist/hls.min.js";
 const TILE_URL = "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
-const DEFAULT_CENTER: [number, number] = [-6.342896, 106.738318];
+const DEFAULT_CENTER: [number, number] = [-6.180487, 106.90368];
 const DEFAULT_ZOOM = 16;
 const HISTORY_STORAGE_KEY = "its-windows-traffic-history:v1";
 const CLIENT_ID_STORAGE_KEY = "its-windows-client-id:v1";
@@ -226,6 +228,7 @@ const state = {
   hlsScriptPromise: null as Promise<void> | null,
   cameraKey: "",
   ambientTimer: 0,
+  cameraReadyTimer: 0,
   maps: {
     homeUser: null as L.Map | null,
     homeRaspi: null as L.Map | null,
@@ -605,7 +608,7 @@ function settingsPanelHtml(): string {
       <h3>Pembaruan aplikasi</h3>
       <div class="win-info-table">
         ${infoRow("Status", updateStatusLine())}
-        ${infoRow("Versi saat ini", state.updateStatus.current || "1.0.12")}
+        ${infoRow("Versi saat ini", state.updateStatus.current || "1.0.13")}
         ${infoRow("Versi terbaru", state.updateStatus.latest || "-")}
         ${infoRow("Progress", typeof state.updateStatus.progress === "number" ? `${state.updateStatus.progress}%` : "-")}
         ${infoRow("Histori terakhir", updateHistoryLine())}
@@ -789,7 +792,7 @@ function invalidateMaps(): void {
 async function refreshData(): Promise<void> {
   try {
     await refreshConfig();
-    const devices = await fetchDevices();
+    const devices = await enrichDevices(await fetchDevices());
     state.devices = devices;
     state.device = selectActiveDevice(devices);
     state.desktopClients = await fetchDesktopClients().catch(() => []);
@@ -836,6 +839,74 @@ async function fetchDevices(): Promise<DeviceRecord[]> {
     }
   }
   throw new Error("No valid devices found");
+}
+
+async function enrichDevices(devices: DeviceRecord[]): Promise<DeviceRecord[]> {
+  return Promise.all(devices.map(async (device) => {
+    const id = encodeURIComponent(device.id);
+    const [trafficDataset, browserYolo] = await Promise.all([
+      fetchJson<unknown>(`${FIREBASE_TRAFFIC_DATASET_ROOT}/${id}.json`).catch(() => null),
+      fetchJson<unknown>(`${FIREBASE_BROWSER_YOLO_ROOT}/${id}.json`).catch(() => null),
+    ]);
+    return mergeDeviceTelemetry(device, trafficDataset, browserYolo);
+  }));
+}
+
+function mergeDeviceTelemetry(device: DeviceRecord, trafficRaw: unknown, yoloRaw: unknown): DeviceRecord {
+  const traffic = objectRecord(trafficRaw);
+  const yolo = objectRecord(yoloRaw);
+  const trafficDataset = normalizeCameraDataset(traffic);
+  const yoloDataset = normalizeCameraDataset(objectRecord(yolo.cameraDataset));
+  const yoloUpdatedAt = normalizeEpoch(finiteNumber(yolo.updatedAt) ?? finiteNumber(yolo.thumbnailUpdatedAt) ?? 0);
+  const trafficUpdatedAt = normalizeEpoch(finiteNumber(traffic.updatedAt) ?? 0);
+  const mergedDataset = mergeCameraDataset(device.cameraDataset, trafficDataset, yoloDataset);
+  const yoloBreakdown = normalizeVehicleBreakdown(yolo.vehicleBreakdown);
+  const trafficBreakdown = normalizeVehicleBreakdown(traffic.vehicleBreakdown);
+  const yoloCameraUrl = usablePublicMediaUrl(stringValue(yolo.cameraUrl));
+  const trafficCameraUrl = usablePublicMediaUrl(stringValue(traffic.cameraUrl));
+  const yoloThumbnail = stringValue(yolo.thumbnailUrl);
+  const trafficThumbnail = stringValue(traffic.thumbnailUrl);
+  const yoloStatus = stringValue(yolo.status);
+  const trafficDetectorStatus = stringValue(traffic.detectorStatus);
+
+  return {
+    ...device,
+    cameraUrl: device.cameraUrl || yoloCameraUrl || trafficCameraUrl,
+    cameraThumbnailUrl: device.cameraThumbnailUrl || yoloThumbnail || trafficThumbnail || mergedDataset?.snapshot1Url || mergedDataset?.snapshot2Url,
+    cameraDataset: mergedDataset,
+    cameraUpdatedAt: Math.max(device.cameraUpdatedAt || 0, yoloUpdatedAt, trafficUpdatedAt) || device.cameraUpdatedAt,
+    detectorStatus: yoloStatus || trafficDetectorStatus || device.detectorStatus,
+    detectorNote: stringValue(yolo.note) || stringValue(traffic.detectorNote) || device.detectorNote,
+    detectorUpdatedAt: Math.max(device.detectorUpdatedAt || 0, yoloUpdatedAt, trafficUpdatedAt) || device.detectorUpdatedAt,
+    detectorFps: finiteNumber(yolo.fps) ?? device.detectorFps,
+    detectorFrameWidth: finiteNumber(yolo.frameWidth) ?? finiteNumber(traffic.detectorFrameWidth) ?? device.detectorFrameWidth,
+    detectorFrameHeight: finiteNumber(yolo.frameHeight) ?? finiteNumber(traffic.detectorFrameHeight) ?? device.detectorFrameHeight,
+    vehicleBreakdown: yoloBreakdown || trafficBreakdown || device.vehicleBreakdown,
+    vehicleCount: finiteNumber(yolo.vehicleCount)
+      ?? finiteNumber(traffic.vehicleCount)
+      ?? device.vehicleCount,
+    objectCount: Math.max(
+      device.objectCount || 0,
+      Math.round(finiteNumber(yolo.objectCount) ?? 0),
+      Math.round(finiteNumber(traffic.objectCount) ?? 0),
+    ),
+    trafficColor: isTrafficColor(traffic.trafficColor) ? traffic.trafficColor : device.trafficColor,
+    trafficDuration: finiteNumber(traffic.trafficDurationSec) ?? finiteNumber(traffic.trafficDuration) ?? device.trafficDuration,
+    trafficSource: stringValue(traffic.source) || device.trafficSource,
+  };
+}
+
+function mergeCameraDataset(...datasets: Array<TrafficCameraDataset | undefined>): TrafficCameraDataset | undefined {
+  const merged: TrafficCameraDataset = {};
+  datasets.forEach((dataset) => {
+    if (!dataset) return;
+    if (!merged.snapshot1Url && dataset.snapshot1Url) merged.snapshot1Url = dataset.snapshot1Url;
+    if (!merged.snapshot2Url && dataset.snapshot2Url && dataset.snapshot2Url !== merged.snapshot1Url) merged.snapshot2Url = dataset.snapshot2Url;
+    if (!merged.updatedAt || (dataset.updatedAt || 0) > merged.updatedAt) merged.updatedAt = dataset.updatedAt;
+    if (!merged.source && dataset.source) merged.source = dataset.source;
+    if (!merged.path && dataset.path) merged.path = dataset.path;
+  });
+  return merged.snapshot1Url || merged.snapshot2Url || merged.updatedAt ? merged : undefined;
 }
 
 async function fetchDesktopClients(): Promise<DesktopClientRecord[]> {
@@ -1591,8 +1662,13 @@ function cameraMediaHtml(device: DeviceRecord | null): string {
   }
   if (url || hlsUrl) {
     const src = hlsUrl || url;
+    const pageAttr = url ? ` data-page-src="${escapeHtml(url)}"` : "";
     const posterAttr = poster ? ` poster="${escapeHtml(poster)}"` : "";
-    return `<video data-camera-video muted playsinline autoplay preload="auto" disablepictureinpicture crossorigin="anonymous"${posterAttr} data-src="${escapeHtml(src)}"></video>`;
+    return `
+      <video data-camera-video muted playsinline autoplay preload="auto" disablepictureinpicture crossorigin="anonymous"${posterAttr} data-src="${escapeHtml(src)}"${pageAttr}></video>
+      <iframe class="win-camera-fallback-frame" data-camera-iframe hidden src="about:blank" allow="autoplay; camera; microphone; fullscreen" referrerpolicy="no-referrer"></iframe>
+      <div class="win-camera-media-message" data-camera-media-message hidden></div>
+    `;
   }
   if (poster) {
     return `<img src="${escapeHtml(poster)}" alt="${escapeHtml(device?.label || "Kamera Raspberry")}" data-camera-image crossorigin="anonymous">`;
@@ -1629,6 +1705,9 @@ function setupCameraSurface(): void {
     setupVideo(video);
     video.addEventListener("play", syncPlayButton);
     video.addEventListener("pause", syncPlayButton);
+    video.addEventListener("loadeddata", () => hideCameraFrameFallback(video));
+    video.addEventListener("canplay", () => hideCameraFrameFallback(video));
+    video.addEventListener("error", () => showCameraFrameFallback(video, "Video HLS belum dapat diputar, membuka halaman kamera Raspberry..."));
     startCameraAmbient(video, surface);
   } else {
     const image = frame.querySelector<HTMLImageElement>("[data-camera-image]");
@@ -1652,6 +1731,7 @@ function toggleCameraFullscreen(surface: HTMLElement, frame: HTMLElement): void 
 function setupVideo(video: HTMLVideoElement): void {
   const src = video.dataset.src || "";
   if (!src) return;
+  scheduleCameraFallback(video);
   if (isLikelyHlsUrl(src)) {
     const playlist = hlsPlaylistUrl(src);
     if (video.canPlayType("application/vnd.apple.mpegurl")) {
@@ -1669,6 +1749,9 @@ function setupVideo(video: HTMLVideoElement): void {
         });
         state.hlsInstance.loadSource(playlist);
         state.hlsInstance.attachMedia(video);
+        state.hlsInstance.on?.(Hls.Events.ERROR, (_event: unknown, data: { fatal?: boolean }) => {
+          if (data?.fatal) showCameraFrameFallback(video, "HLS live gagal, membuka halaman kamera Raspberry...");
+        });
       } else {
         video.src = playlist;
       }
@@ -1676,11 +1759,63 @@ function setupVideo(video: HTMLVideoElement): void {
     }).catch((err) => {
       console.warn("[ITS Windows] HLS failed:", err);
       video.src = playlist;
+      window.setTimeout(() => showCameraFrameFallback(video, "hls.js tidak tersedia, membuka halaman kamera Raspberry..."), 1200);
     });
     return;
   }
   video.src = src;
   void video.play().catch(() => undefined);
+}
+
+function scheduleCameraFallback(video: HTMLVideoElement): void {
+  window.clearTimeout(state.cameraReadyTimer);
+  state.cameraReadyTimer = window.setTimeout(() => {
+    if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || !video.videoWidth) {
+      showCameraFrameFallback(video, "Stream belum mengirim frame, membuka halaman kamera Raspberry...");
+    }
+  }, 8000);
+}
+
+function showCameraFrameFallback(video: HTMLVideoElement, message: string): void {
+  const frame = video.closest<HTMLElement>("[data-camera-frame]");
+  const iframe = frame?.querySelector<HTMLIFrameElement>("[data-camera-iframe]");
+  const messageEl = frame?.querySelector<HTMLElement>("[data-camera-media-message]");
+  const pageUrl = usablePublicMediaUrl(video.dataset.pageSrc);
+  if (!frame || !iframe || !pageUrl) {
+    if (messageEl) {
+      messageEl.hidden = false;
+      messageEl.textContent = message;
+    }
+    return;
+  }
+  if (iframe.src !== pageUrl) iframe.src = pageUrl;
+  iframe.hidden = false;
+  video.classList.add("fallback-hidden");
+  if (messageEl) {
+    messageEl.hidden = false;
+    messageEl.textContent = message;
+  }
+  const poster = latestCameraSnapshot(state.device);
+  const surface = frame.closest<HTMLElement>("[data-camera-surface]");
+  if (surface) {
+    const image = poster ? new Image() : null;
+    if (image) {
+      image.src = poster;
+      syncImageAmbient(surface, image, "camera");
+    } else {
+      applyAmbientColors(surface, "camera", { r: 85, g: 142, b: 255 }, { r: 68, g: 218, b: 177 });
+    }
+  }
+}
+
+function hideCameraFrameFallback(video: HTMLVideoElement): void {
+  window.clearTimeout(state.cameraReadyTimer);
+  const frame = video.closest<HTMLElement>("[data-camera-frame]");
+  const iframe = frame?.querySelector<HTMLIFrameElement>("[data-camera-iframe]");
+  const messageEl = frame?.querySelector<HTMLElement>("[data-camera-media-message]");
+  video.classList.remove("fallback-hidden");
+  if (iframe) iframe.hidden = true;
+  if (messageEl) messageEl.hidden = true;
 }
 
 function loadHlsScript(): Promise<void> {
@@ -1699,7 +1834,9 @@ function loadHlsScript(): Promise<void> {
 
 function resetCameraRuntime(): void {
   window.clearInterval(state.ambientTimer);
+  window.clearTimeout(state.cameraReadyTimer);
   state.ambientTimer = 0;
+  state.cameraReadyTimer = 0;
   if (state.hlsInstance?.destroy) {
     try { state.hlsInstance.destroy(); } catch { /* ignore */ }
   }
@@ -2152,8 +2289,15 @@ function normalizeCameraDataset(raw: unknown): TrafficCameraDataset | undefined 
   if (!raw || typeof raw !== "object") return undefined;
   const record = raw as Record<string, unknown>;
   const dataset = {
-    snapshot1Url: stringValue(record.snapshot1Url) || stringValue(record.nama1) || stringValue(record.image1),
-    snapshot2Url: stringValue(record.snapshot2Url) || stringValue(record.nama2) || stringValue(record.image2),
+    snapshot1Url: stringValue(record.snapshot1Url)
+      || stringValue(record.nama1)
+      || stringValue(record.image1)
+      || stringValue(record.imageUrl)
+      || stringValue(record.snapshotUrl)
+      || stringValue(record.thumbnailUrl),
+    snapshot2Url: stringValue(record.snapshot2Url)
+      || stringValue(record.nama2)
+      || stringValue(record.image2),
     updatedAt: finiteNumber(record.updatedAt),
     source: stringValue(record.source),
     path: stringValue(record.path),
@@ -2236,11 +2380,11 @@ function aiStatusText(device: DeviceRecord | null): string {
 }
 
 function publicCameraUrl(device: DeviceRecord | null): string {
-  return device?.cameraUrl?.trim() || device?.webrtcUrl?.trim() || "";
+  return usablePublicMediaUrl(device?.cameraUrl) || usablePublicMediaUrl(device?.webrtcUrl) || "";
 }
 
 function publicCameraHlsUrl(device: DeviceRecord | null): string {
-  const explicit = device?.cameraHlsUrl?.trim();
+  const explicit = usablePublicMediaUrl(device?.cameraHlsUrl);
   if (explicit) return explicit;
   const url = publicCameraUrl(device);
   return url && isLikelyHlsUrl(url) ? hlsPlaylistUrl(url) : "";
@@ -2417,6 +2561,17 @@ function formatAbsoluteTime(v: number): string {
 
 function stringValue(v: unknown): string | undefined {
   return typeof v === "string" && v.trim() ? v.trim() : undefined;
+}
+
+function objectRecord(v: unknown): Record<string, unknown> {
+  return v && typeof v === "object" ? v as Record<string, unknown> : {};
+}
+
+function usablePublicMediaUrl(v: unknown): string | undefined {
+  const value = stringValue(v);
+  if (!value) return undefined;
+  if (/^https?:\/\/(?:127\.0\.0\.1|0\.0\.0\.0|localhost)(?::|\/|$)/i.test(value)) return undefined;
+  return value;
 }
 
 function isDeviceStatus(v: unknown): v is DeviceStatus {

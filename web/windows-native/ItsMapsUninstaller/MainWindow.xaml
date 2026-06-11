@@ -387,7 +387,7 @@
         </StackPanel>
       </Grid>
 
-      <TextBlock Text="ITS Maps Windows 1.0.12"
+      <TextBlock Text="ITS Maps Windows 1.0.13"
                  HorizontalAlignment="Left"
                  VerticalAlignment="Bottom"
                  Margin="72,0,0,42"

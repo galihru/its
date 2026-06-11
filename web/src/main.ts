@@ -3,6 +3,9 @@ import "leaflet/dist/leaflet.css";
 import "leaflet-rotate";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./style.css";
+import WIN_PREVIEW_WELCOME from "./windows/welcome.png";
+import WIN_PREVIEW_OPTIONS from "./windows/pilihopsiinstaller.png";
+import WIN_PREVIEW_DONE from "./windows/selesaiinstaller.png";
 
 // ─── Type augmentation untuk leaflet-rotate ─────────────────────
 declare module "leaflet" {
@@ -55,6 +58,7 @@ type DeviceRecord = {
   lastSeenText?: string;
   note?: string;
   cameraUrl?: string;
+  cameraHlsUrl?: string;
   cameraMode?: CameraMode;
   webrtcEnabled?: boolean;
   webrtcPath?: string;
@@ -157,7 +161,7 @@ const DEFAULT_CONFIG: Required<AppConfig> = {
 
 // DEFAULT_CENTER — fallback jika tidak ada device. Akan di-override saat snapshot dimuat.
 // User harus set ITS_LATITUDE & ITS_LONGITUDE di env var controller untuk lokasi yang tepat.
-const DEFAULT_CENTER: L.LatLngExpression = [0, 0]; // Neutral; peta akan auto-pan ke marker pertama
+const DEFAULT_CENTER: L.LatLngExpression = [-6.180487, 106.90368];
 const DEFAULT_ZOOM = 17;
 const OFFLINE_AFTER_MS = 60_000;
 const FIREBASE_DEVICES_URL =
@@ -1649,17 +1653,21 @@ function markerAnchorBySize(size: number): [number, number] {
 // FIX: normalizeOneDevice — parser untuk satu raw device object langsung,
 // tidak membungkus ulang dalam Snapshot sehingga tidak ada double-wrapping.
 function normalizeOneDevice(raw: SnapshotDevice): DeviceRecord | null {
-  const lat = typeof raw.position?.lat === "number" ? raw.position.lat
+  let lat = typeof raw.position?.lat === "number" ? raw.position.lat
     : typeof raw.position?.y === "number" ? raw.position.y : null;
-  const lng = typeof raw.position?.lng === "number" ? raw.position.lng
+  let lng = typeof raw.position?.lng === "number" ? raw.position.lng
     : typeof raw.position?.x === "number" ? raw.position.x : null;
   if (lat === null || lng === null) return null;
+  if (Math.abs(lat) < 0.000001 && Math.abs(lng) < 0.000001) {
+    [lat, lng] = DEFAULT_CENTER as [number, number];
+  }
   const lastSeen = normalizeEpoch(typeof raw.lastSeen === "number" ? raw.lastSeen : 0);
   const rawStatus = isDeviceStatus(raw.status) ? raw.status : "offline";
   const status = lastSeen > 0 && Date.now() - lastSeen > OFFLINE_AFTER_MS ? "offline" : rawStatus;
   const rawRecord = raw as Record<string, unknown>;
   const rawCameraMode = rawRecord.cameraMode;
   const cameraUrl = raw.cameraUrl?.trim() || undefined;
+  const cameraHlsUrl = typeof rawRecord.cameraHlsUrl === "string" ? rawRecord.cameraHlsUrl.trim() || undefined : undefined;
   const webrtcUrl = typeof rawRecord.webrtcUrl === "string" ? rawRecord.webrtcUrl.trim() || undefined : undefined;
   const cameraMode = isCameraMode(rawCameraMode)
     ? rawCameraMode
@@ -1680,6 +1688,7 @@ function normalizeOneDevice(raw: SnapshotDevice): DeviceRecord | null {
     lastSeenText: raw.lastSeenText?.trim() || undefined,
     note: raw.note?.trim() || undefined,
     cameraUrl,
+    cameraHlsUrl,
     cameraMode,
     webrtcEnabled: typeof rawRecord.webrtcEnabled === "boolean" ? rawRecord.webrtcEnabled : undefined,
     webrtcPath: typeof rawRecord.webrtcPath === "string" ? rawRecord.webrtcPath.trim() || undefined : undefined,
@@ -2377,7 +2386,37 @@ async function setBaseMap(mode: BaseMapMode): Promise<void> {
 // ─── Camera tile ────────────────────────────────────────────────
 
 function publicCameraUrl(device: DeviceRecord | null): string {
-  return device?.cameraUrl?.trim() || device?.webrtcUrl?.trim() || "";
+  return usablePublicMediaUrl(device?.cameraUrl) || usablePublicMediaUrl(device?.webrtcUrl) || "";
+}
+
+function publicCameraHlsUrl(device: DeviceRecord | null): string {
+  return usablePublicMediaUrl(device?.cameraHlsUrl) || "";
+}
+
+function publicCameraPageUrl(device: DeviceRecord | null): string {
+  return publicCameraUrl(device) || hlsPageUrl(publicCameraHlsUrl(device));
+}
+
+function usablePublicMediaUrl(value: unknown): string {
+  const url = typeof value === "string" ? value.trim() : "";
+  if (!url) return "";
+  if (/^https?:\/\/(?:127\.0\.0\.1|0\.0\.0\.0|localhost)(?::|\/|$)/i.test(url)) return "";
+  return url;
+}
+
+function hlsPageUrl(value: string): string {
+  if (!value) return "";
+  try {
+    const url = new URL(value, window.location.href);
+    if (/\/index\.m3u8$/i.test(url.pathname)) {
+      url.pathname = url.pathname.replace(/index\.m3u8$/i, "");
+      url.search = "";
+      return url.toString();
+    }
+  } catch {
+    // Keep the caller fallback empty when URL parsing fails.
+  }
+  return "";
 }
 
 function isLikelyImageUrl(url: string): boolean {
@@ -2386,7 +2425,7 @@ function isLikelyImageUrl(url: string): boolean {
 
 function cameraModeFor(device: DeviceRecord | null): CameraMode | null {
   if (!device || device.status === "offline") return null;
-  if (publicCameraUrl(device)) return device.cameraMode || "mjpeg";
+  if (publicCameraPageUrl(device) || publicCameraHlsUrl(device)) return device.cameraMode || "mjpeg";
   if (device.cameraMode === "webrtc" || device.webrtcEnabled || device.cameraReady) return "webrtc";
   return null;
 }
@@ -2695,11 +2734,15 @@ function renderWebRtcSurface(device: DeviceRecord, videoClass: string): string {
 }
 
 function renderCameraSurface(device: DeviceRecord | null, imageClass: string, frameClass: string): string {
-  const url = publicCameraUrl(device);
+  const url = publicCameraPageUrl(device);
+  const hlsUrl = publicCameraHlsUrl(device);
   if (url) {
     return isLikelyImageUrl(url)
       ? `<img class="${imageClass}" src="${escapeHtml(url)}" alt="Camera preview">`
       : `<iframe class="${frameClass}" src="${escapeHtml(url)}" allow="autoplay; camera; microphone; fullscreen" referrerpolicy="no-referrer" loading="lazy"></iframe>`;
+  }
+  if (hlsUrl) {
+    return `<video class="${imageClass}" src="${escapeHtml(hlsUrl)}" autoplay playsinline muted controls></video>`;
   }
   if (device && isWebRtcSignalingCamera(device)) return renderWebRtcSurface(device, imageClass);
   return "";
@@ -2708,7 +2751,7 @@ function renderCameraSurface(device: DeviceRecord | null, imageClass: string, fr
 function renderCameraTile(): void {
   if (!state.cameraPreview) return;
   const device = state.device;
-  const url = publicCameraUrl(device);
+  const url = publicCameraPageUrl(device);
   state.cameraPreview.innerHTML = url && isLikelyImageUrl(url)
     ? `<img class="camera-thumb-img" src="${escapeHtml(url)}" alt="Camera preview">`
     : device && (url || isWebRtcSignalingCamera(device))
@@ -4136,9 +4179,10 @@ window.addEventListener('appinstalled', () => {
 
 type ItsNavigatorWithStandalone = Navigator & { standalone?: boolean };
 
-const ITS_WINDOWS_INSTALL_URL = "https://itstelkom.web.app/artifacts/apps/ITS-Maps-Windows-Custom-Setup-1.0.12-x64.download";
-const ITS_WINDOWS_INSTALL_NAME = "ITS-Maps-Windows-Custom-Setup-1.0.12-x64.exe";
+const ITS_WINDOWS_INSTALL_URL = "https://itstelkom.web.app/artifacts/apps/ITS-Maps-Windows-Custom-Setup-1.0.13-x64.download";
+const ITS_WINDOWS_INSTALL_NAME = "ITS-Maps-Windows-Custom-Setup-1.0.13-x64.exe";
 const ITS_APP_CHOICE_KEY = "its.maps.open-choice.v1";
+const ITS_WINDOWS_PREVIEWS = [WIN_PREVIEW_WELCOME, WIN_PREVIEW_OPTIONS, WIN_PREVIEW_DONE];
 
 function itsIsStandaloneDisplay(): boolean {
   return window.matchMedia("(display-mode: standalone)").matches || Boolean((navigator as ItsNavigatorWithStandalone).standalone);
@@ -4172,6 +4216,38 @@ function itsDownloadWindowsInstaller(): void {
   document.body.appendChild(link);
   link.click();
   link.remove();
+}
+
+function itsCreateWindowsDownloadButton(): void {
+  if (document.getElementById("windows-download-app")) return;
+  const host = document.createElement("div");
+  host.id = "windows-download-app";
+  host.className = "windows-download-app";
+  host.innerHTML = `
+    <button type="button" class="windows-download-trigger" aria-label="Download aplikasi Windows">
+      <span>Windows</span>
+      <strong>Download .exe</strong>
+    </button>
+    <div class="windows-download-preview" aria-hidden="true">
+      <div class="windows-download-carousel">
+        ${ITS_WINDOWS_PREVIEWS.map((src, index) => `<img src="${src}" alt="" class="${index === 0 ? "active" : ""}">`).join("")}
+      </div>
+      <div>
+        <strong>ITS Maps Windows</strong>
+        <span>Installer custom, auto-update, kamera, peta, dan notifikasi desktop.</span>
+      </div>
+    </div>
+  `;
+  host.querySelector<HTMLButtonElement>(".windows-download-trigger")?.addEventListener("click", itsDownloadWindowsInstaller);
+  document.body.appendChild(host);
+  let index = 0;
+  window.setInterval(() => {
+    const images = host.querySelectorAll<HTMLImageElement>(".windows-download-carousel img");
+    if (!images.length) return;
+    images[index]?.classList.remove("active");
+    index = (index + 1) % images.length;
+    images[index]?.classList.add("active");
+  }, 2400);
 }
 
 function itsShowOpenChoicePrompt(): void {
@@ -4212,4 +4288,5 @@ function itsShowOpenChoicePrompt(): void {
 }
 
 itsCreateSplash();
+itsCreateWindowsDownloadButton();
 window.setTimeout(itsShowOpenChoicePrompt, 1400);

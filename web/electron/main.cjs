@@ -3,12 +3,14 @@ const { execFile, spawn } = require("node:child_process");
 const fs = require("node:fs");
 const https = require("node:https");
 const path = require("node:path");
+const { pathToFileURL } = require("node:url");
 
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
 const APP_UPDATE_URL = "https://itstelkom.web.app/app-update.json";
-const WINDOWS_EXE_NAME = "ITS-Maps-Windows-Custom-Setup-1.0.12-x64.exe";
+const WINDOWS_EXE_NAME = "ITS-Maps-Windows-Custom-Setup-1.0.13-x64.exe";
 const UPDATE_HISTORY_FILE = "update-history.json";
 let mainWindow = null;
+let splashWindow = null;
 let updateTimer = null;
 let forceQuit = false;
 
@@ -165,6 +167,82 @@ function notifyUpdate(title, body) {
   new Notification({ title, body, icon: iconPath() }).show();
 }
 
+function createSplashWindow() {
+  splashWindow = new BrowserWindow({
+    width: 460,
+    height: 280,
+    resizable: false,
+    movable: true,
+    frame: false,
+    show: false,
+    center: true,
+    alwaysOnTop: false,
+    backgroundColor: "#101820",
+    icon: iconPath(),
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+
+  const logo = pathToFileURL(iconPath()).toString();
+  const html = `
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; font-family: "Segoe UI", Arial, sans-serif; }
+    body {
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(circle at 22% 18%, rgba(45, 140, 255, 0.48), transparent 38%),
+        radial-gradient(circle at 84% 82%, rgba(55, 221, 134, 0.28), transparent 36%),
+        linear-gradient(135deg, #101820, #1d2735 58%, #0d131b);
+      color: white;
+    }
+    .card {
+      width: 100%;
+      height: 100%;
+      display: grid;
+      place-items: center;
+      gap: 14px;
+      padding: 34px;
+      border: 1px solid rgba(255,255,255,0.11);
+    }
+    img { width: 86px; height: 86px; object-fit: contain; filter: drop-shadow(0 20px 34px rgba(45,140,255,.48)); }
+    strong { font-size: 28px; font-weight: 900; letter-spacing: 0; }
+    span { color: #bfdbfe; font-size: 13px; font-weight: 800; }
+    .bar { width: 190px; height: 5px; border-radius: 99px; overflow: hidden; background: rgba(255,255,255,.14); }
+    .bar::before { content: ""; display: block; width: 42%; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #27d889, #2d8cff); animation: move 1.25s ease-in-out infinite; }
+    @keyframes move { 0% { transform: translateX(-110%); } 100% { transform: translateX(260%); } }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <img src="${logo}" alt="ITS Maps">
+    <strong>ITS Maps Windows</strong>
+    <span>Menyiapkan peta, kamera, dan sinkronisasi realtime...</span>
+    <div class="bar"></div>
+  </div>
+</body>
+</html>`;
+  splashWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`).catch(() => {});
+  splashWindow.once("ready-to-show", () => splashWindow?.show());
+  splashWindow.on("closed", () => {
+    splashWindow = null;
+  });
+}
+
+function closeSplashWindow() {
+  const splash = splashWindow;
+  splashWindow = null;
+  if (splash && !splash.isDestroyed()) splash.close();
+}
+
 async function checkForUpdates({ autoInstall = false } = {}) {
   const current = app.getVersion();
   const checking = { status: "checking", message: "Memeriksa pembaruan", current };
@@ -250,7 +328,10 @@ function createWindow() {
   });
 
   mainWindow.once("ready-to-show", () => {
-    mainWindow?.show();
+    setTimeout(() => {
+      closeSplashWindow();
+      mainWindow?.show();
+    }, 450);
   });
 
   mainWindow.on("closed", () => {
@@ -299,6 +380,7 @@ app.whenReady().then(() => {
   ipcMain.handle("its:check-update", (_event, options) => checkForUpdates(options || {}));
   ipcMain.handle("its:get-update-history", () => readUpdateHistory());
 
+  createSplashWindow();
   createWindow();
   setTimeout(() => void checkForUpdates({ autoInstall: true }), 10_000);
   updateTimer = setInterval(() => void checkForUpdates({ autoInstall: true }), 6 * 60 * 60 * 1000);

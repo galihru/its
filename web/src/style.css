@@ -158,6 +158,105 @@ body {
   box-shadow: 0 14px 34px rgba(37, 99, 235, 0.32);
 }
 
+.windows-download-app {
+  position: fixed;
+  right: 14px;
+  bottom: 18px;
+  z-index: 50950;
+  color: #fff;
+}
+
+.windows-download-trigger {
+  display: grid;
+  gap: 2px;
+  min-width: 142px;
+  padding: 10px 13px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  background:
+    radial-gradient(circle at 12% 0, rgba(55, 221, 134, 0.26), transparent 44%),
+    #1f6fff;
+  color: #fff;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 16px 38px rgba(15, 23, 42, 0.32);
+}
+
+.windows-download-trigger span {
+  font-size: 10px;
+  font-weight: 900;
+  opacity: 0.82;
+}
+
+.windows-download-trigger strong {
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.windows-download-preview {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 10px);
+  width: 310px;
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.88);
+  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.38);
+  opacity: 0;
+  transform: translateY(8px) scale(0.98);
+  pointer-events: none;
+  transition: opacity 180ms ease, transform 180ms ease;
+  backdrop-filter: blur(18px);
+}
+
+.windows-download-app:hover .windows-download-preview,
+.windows-download-app:focus-within .windows-download-preview {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.windows-download-carousel {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 16 / 9;
+  border-radius: 10px;
+  background: #0f172a;
+}
+
+.windows-download-carousel img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 260ms ease;
+}
+
+.windows-download-carousel img.active {
+  opacity: 1;
+}
+
+.windows-download-preview strong,
+.windows-download-preview span {
+  display: block;
+}
+
+.windows-download-preview strong {
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.windows-download-preview span {
+  margin-top: 3px;
+  color: #cbd5e1;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 @media (display-mode: standalone) {
   .pwa-install-btn {
     display: none !important;
@@ -181,6 +280,10 @@ body {
 
   .open-app-choice-actions button {
     flex: 1;
+  }
+
+  .windows-download-app {
+    display: none;
   }
 }
 
@@ -1330,6 +1433,18 @@ body {
 
 .camera-card {
   min-width: 220px;
+  position: relative;
+  overflow: hidden;
+  padding: 8px;
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(59, 130, 246, 0.28), transparent 42%),
+    radial-gradient(circle at 82% 72%, rgba(34, 197, 94, 0.18), transparent 36%),
+    rgba(15, 23, 42, 0.92);
+  box-shadow:
+    0 0 42px rgba(59, 130, 246, 0.24),
+    0 22px 55px rgba(15, 23, 42, 0.3);
+  backdrop-filter: blur(14px);
 }
 
 .camera-image {

@@ -1,7 +1,7 @@
 {
   "name": "its-maps-web",
   "private": true,
-  "version": "1.0.12",
+  "version": "1.0.13",
   "productName": "ITS Maps Windows",
   "description": "Aplikasi Windows ITS Maps untuk sinkronisasi Raspberry Pi, website, peta realtime, grafik lalu lintas, kamera, dan auto-update.",
   "author": {
@@ -104,7 +104,7 @@
     },
     "extraMetadata": {
       "name": "its-maps-windows",
-      "version": "1.0.12"
+      "version": "1.0.13"
     }
   }
 }

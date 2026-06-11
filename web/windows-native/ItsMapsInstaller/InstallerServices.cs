@@ -11,7 +11,7 @@ internal sealed record InstallerProgress(double Percent, string Message);
 internal sealed class InstallerServices
 {
     private const string ProductName = "ITS Maps Windows";
-    private const string Version = "1.0.12";
+    private const string Version = "1.0.13";
     private const string Publisher = "Hanifa Septhi Larasati - Telkom University";
     private const string RegistryKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\ITS Maps Windows";
 
