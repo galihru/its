@@ -6,6 +6,12 @@ import "./style.css";
 import WIN_PREVIEW_WELCOME from "./windows/welcome.png";
 import WIN_PREVIEW_OPTIONS from "./windows/pilihopsiinstaller.png";
 import WIN_PREVIEW_DONE from "./windows/selesaiinstaller.png";
+import ITS_APP_ICON from "./icon/its.png";
+
+const APP_SCREENSHOT_MODULES = import.meta.glob("./ss/**/*.{png,jpg,jpeg,webp,avif,svg}", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
 
 // ─── Type augmentation untuk leaflet-rotate ─────────────────────
 declare module "leaflet" {
@@ -211,7 +217,93 @@ function escapeStaticHtml(value: string): string {
 }
 
 function terminalStatic(commands: string[]): string {
-  return `<pre class="static-terminal"><code>${commands.map((command) => `$ ${escapeStaticHtml(command)}`).join("\n")}</code></pre>`;
+  return `
+    <div class="static-terminal" data-static-terminal>
+      <div class="static-terminal-output" data-terminal-output>
+        <div>ITS Maps terminal siap. Ketik <strong>help</strong> lalu Enter.</div>
+        ${commands.map((command) => `<div><span>$</span> ${escapeStaticHtml(command)}</div>`).join("")}
+      </div>
+      <form class="static-terminal-form" data-terminal-form>
+        <span>$</span>
+        <input data-terminal-input autocomplete="off" spellcheck="false" aria-label="Terminal command" placeholder="help">
+        <button type="submit">Run</button>
+      </form>
+      <div class="static-terminal-chips">
+        ${["help", "npm run build", "npm run desktop:custom-installer", "firebase deploy", "open /new"].map((command) => `<button type="button" data-terminal-command="${escapeStaticHtml(command)}">${escapeStaticHtml(command)}</button>`).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function staticTerminalResponse(command: string): string[] {
+  const normalized = command.trim().replace(/\s+/g, " ");
+  if (!normalized) return ["Ketik command dulu, contoh: help"];
+  if (normalized === "help") {
+    return [
+      "Command: npm ci, npm run dev, npm run build, npm run desktop:open, npm run desktop:custom-installer, firebase deploy.",
+      "Command navigasi: open /documentation, open /document, open /new, open /.",
+      "Command info: docs, structure, notifications, map, installer, clear.",
+    ];
+  }
+  if (normalized === "clear") return ["__CLEAR__"];
+  if (normalized === "docs") {
+    return [
+      "Dokumentasi mencakup website, PWA/native browser install, notifikasi publik, map Carto+OSM, modal download aplikasi, Windows Electron, service worker, Firebase, dan installer custom.",
+    ];
+  }
+  if (normalized === "structure") {
+    return [
+      "web/src/main.ts: website, peta, PWA, notifikasi, dokumentasi, release notes, modal aplikasi.",
+      "web/src/windows.ts: renderer Electron Windows.",
+      "web/electron/main.cjs: window native, update, notification click, permissions.",
+      "web/scripts/build-custom-windows-installer.ps1: build web, package Electron, publish .NET installer, copy artifact update.",
+    ];
+  }
+  if (normalized === "notifications") {
+    return [
+      "Service worker: /sw.js.",
+      "Payload push memakai data.url, lalu notificationclick membuka link tersebut.",
+      "Fallback update publik membaca /app-update.json saat izin notifikasi sudah granted.",
+    ];
+  }
+  if (normalized === "map") {
+    return [
+      "2D tile: CARTO Voyager.",
+      "Data nama jalan/bangunan/POI: OSM melalui tile dan Overpass.",
+      "3D: MapLibre/OpenFreeMap, satelit: Esri World Imagery.",
+      "Lisensi dibuka dari tombol Lisensi Peta di attribution.",
+    ];
+  }
+  if (normalized === "installer") {
+    return [
+      "Installer lokal: web/release/ITS-Maps-Windows-Custom-Setup-1.0.13-x64.exe.",
+      "Update artifact: web/dist/artifacts/apps/ITS-Maps-Windows-Custom-Setup-1.0.13-x64.download.",
+      "GitHub Actions workflow: Build Windows EXE.",
+    ];
+  }
+  if (normalized === "npm ci") return ["Menginstal dependency sesuai package-lock.json...", "OK: dependency siap."];
+  if (normalized === "npm run dev") return ["Vite dev server: http://localhost:5173", "Gunakan Ctrl+C di terminal asli untuk berhenti."];
+  if (normalized === "npm run build") return ["tsc selesai.", "vite build selesai.", "Output: web/dist"];
+  if (normalized === "npm run desktop:open") return ["Membuka Electron dengan renderer dari web/dist/desktop/renderer.html."];
+  if (normalized === "npm run desktop:custom-installer") {
+    return [
+      "Build web assets...",
+      "Package Electron app directory...",
+      "Publish native custom setup...",
+      "Custom setup ready: web/release/ITS-Maps-Windows-Custom-Setup-1.0.13-x64.exe",
+    ];
+  }
+  if (normalized === "firebase deploy") return ["Deploy target: hosting:itstelkom", "Hosting URL: https://itstelkom.web.app"];
+  if (normalized.startsWith("open ")) {
+    const target = normalized.slice(5).trim();
+    const safeTargets = new Set(["/", "/document", "/documentation", "/new"]);
+    if (safeTargets.has(target)) {
+      window.setTimeout(() => { window.location.href = target; }, 180);
+      return [`Membuka ${target} ...`];
+    }
+    return [`Route ${target} tidak dikenal. Coba open /documentation atau open /new.`];
+  }
+  return [`Command tidak dikenal: ${normalized}`, "Ketik help untuk daftar command."];
 }
 
 function renderStaticSitePage(root: HTMLElement, route: "document" | "new"): void {
@@ -232,8 +324,11 @@ function renderStaticSitePage(root: HTMLElement, route: "document" | "new"): voi
           ${(isDocs ? [
             ["Mulai", "#mulai"],
             ["Arsitektur", "#arsitektur"],
-            ["Splash", "#splash"],
+            ["Peta", "#peta"],
+            ["Aplikasi", "#aplikasi"],
+            ["Windows", "#windows"],
             ["Notifikasi", "#notifikasi"],
+            ["Build", "#build"],
             ["Terminal", "#terminal"],
           ] : [
             ["Highlights", "#highlights"],
@@ -272,25 +367,61 @@ function docsPageHtml(): string {
     <header class="static-hero" id="mulai">
       <span>Documentation</span>
       <h1>ITS Maps Windows</h1>
-      <p>Panduan singkat untuk menjalankan website, aplikasi Windows, splash dinamis, titlebar, notifikasi, dan installer update.</p>
+      <p>Dokumentasi teknis untuk website, PWA/native browser install, aplikasi Windows, peta Carto + data OSM, kamera realtime, notifikasi publik, dan installer update.</p>
     </header>
     <section class="static-section" id="arsitektur">
       <h2>Arsitektur</h2>
       <div class="static-card-grid">
-        <article><strong>src/main.ts</strong><p>Dashboard website, route /document, /documentation, /new, PWA, dan notifikasi publik.</p></article>
-        <article><strong>src/windows.ts</strong><p>Renderer Electron untuk Home, Peta, Kamera, panel dokumentasi, dan panel pembaruan.</p></article>
+        <article><strong>src/main.ts</strong><p>Website utama: Leaflet map, mobile sheet, POI Overpass, AR/camera sheet, route /document, /documentation, /new, service worker registration, public notification, modal download aplikasi, dan modal Lisensi Peta.</p></article>
+        <article><strong>src/style.css</strong><p>Style website: splash putih, layout mobile/desktop, sheet swipeable, toolbar peta, carousel preview aplikasi, dokumentasi, dan terminal interaktif.</p></article>
+        <article><strong>src/windows.ts</strong><p>Renderer Electron: Home, Peta, Kamera, Statistics, Setting, History, Documentation, What's New, titlebar custom, dan integrasi update status dari main process.</p></article>
+        <article><strong>src/windows.css</strong><p>Style aplikasi Windows: warna Windows/accent, panel kanan, sheet, titlebar, map, kamera, dokumentasi, lisensi, dan terminal panel.</p></article>
         <article><strong>electron/main.cjs</strong><p>Native window, splash awal, auto-update, permission lokasi/media/notifikasi, dan klik notifikasi.</p></article>
         <article><strong>public/sw.js</strong><p>Cache offline, push notification, dan routing saat notifikasi ditekan.</p></article>
+        <article><strong>scripts/build-custom-windows-installer.ps1</strong><p>Build web, package Electron, publish uninstaller .NET, zip payload aplikasi, publish custom setup, dan copy artifact .download untuk update.</p></article>
+        <article><strong>src/ss</strong><p>Folder screenshot preview aplikasi. Gambar baru di subfolder windows atau mobile otomatis masuk carousel melalui import.meta.glob.</p></article>
       </div>
     </section>
-    <section class="static-section" id="splash">
-      <h2>Splash Dinamis</h2>
-      <p>Splash tidak lagi memakai gradient/glow berat. Durasi mengikuti pemuatan data: konfigurasi, data Raspberry, telemetry, peta, dan kamera. Jika data gagal dimuat, aplikasi tetap masuk mode offline.</p>
+    <section class="static-section" id="peta">
+      <h2>Peta</h2>
+      <p>Mode 2D memakai CARTO Voyager agar tampilan lebih bersih dan tidak terlalu mentah seperti OSM default. Data nama jalan, nama bangunan, area, dan POI tetap berasal dari OpenStreetMap serta Overpass API. Mode 3D memakai MapLibre/OpenFreeMap, sedangkan satelit memakai Esri World Imagery.</p>
+      <div class="static-doc-list">
+        <article><strong>Lisensi Peta</strong><span>Attribution bawah peta diganti menjadi tombol Lisensi Peta. Saat dibuka, modal menjelaskan OSM, CARTO, Overpass, Esri, dan MapLibre/OpenFreeMap.</span></article>
+        <article><strong>POI viewport</strong><span>POI diambil berdasarkan bounds peta, diberi prioritas Indonesia, lalu marker disusun ulang ketika peta bergerak.</span></article>
+        <article><strong>Mobile ITS sheet</strong><span>Ketika sheet ITS aktif, tinggi peta, tombol zoom, home, lokasi, dan tombol aplikasi mengikuti offset sheet agar tidak tertutup.</span></article>
+      </div>
+    </section>
+    <section class="static-section" id="aplikasi">
+      <h2>Modal Aplikasi</h2>
+      <p>Tombol download menyesuaikan device: Windows menampilkan .exe, Android menampilkan .apk, dan iOS menampilkan .app/PWA guidance. Desktop membuka panel kanan agar peta menyusut dengan animasi; mobile membuka bottom sheet yang bisa di-swipe turun.</p>
+      <div class="static-doc-list">
+        <article><strong>Ringkasan</strong><span>Icon aplikasi, nama, versi, carousel preview, deskripsi singkat, tombol Download, dan menu detail.</span></article>
+        <article><strong>Detail</strong><span>Tombol kembali, icon aplikasi, nama, versi, deskripsi panjang, serta daftar akses aplikasi dan alasan penggunaannya.</span></article>
+        <article><strong>Preview otomatis</strong><span>Screenshot dibaca dari web/src/ss/windows dan web/src/ss/mobile. Tambahkan gambar baru di folder itu tanpa mengubah kode.</span></article>
+      </div>
+    </section>
+    <section class="static-section" id="windows">
+      <h2>Windows App</h2>
+      <p>Aplikasi Windows adalah renderer Electron yang memakai data Firebase realtime, kamera HLS/WebRTC, map Carto/3D/satelit, panel history, panel pembaruan, dokumentasi, dan auto-update via custom setup.</p>
+      <div class="static-doc-list">
+        <article><strong>Titlebar</strong><span>Ikon dokumentasi, update, minimize, maximize, close, dan tooltip disediakan di titlebar custom.</span></article>
+        <article><strong>Splash</strong><span>Splash putih sederhana dan durasi mengikuti kesiapan data, mirip aplikasi desktop modern.</span></article>
+        <article><strong>Installer</strong><span>File .exe dibuat oleh PowerShell builder dan artifact .download dipakai website serta auto-update.</span></article>
+      </div>
     </section>
     <section class="static-section" id="notifikasi">
       <h2>Notifikasi Publik</h2>
-      <p>Website mendaftarkan service worker, meminta izin notifikasi, dan service worker siap menerima push event. Saat notifikasi ditekan, link tujuan dari payload dibuka dengan benar.</p>
+      <p>Website mendaftarkan service worker, meminta izin notifikasi, dan service worker siap menerima push event. Saat notifikasi ditekan, link tujuan dari payload dibuka dengan benar, misalnya /new untuk catatan pembaruan.</p>
       <button class="static-action" type="button" data-enable-notifications>Aktifkan notifikasi</button>
+    </section>
+    <section class="static-section" id="build">
+      <h2>Build & Deploy</h2>
+      <p>Build web memakai TypeScript dan Vite. Build Windows custom menjalankan build web, packaging Electron, publish .NET installer/uninstaller, lalu menyiapkan artifact update. Firebase deploy memakai folder web/dist sebagai hosting live.</p>
+      <div class="static-doc-list">
+        <article><strong>Local web</strong><span>npm run build menghasilkan web/dist dan bisa dicek dengan npm run preview.</span></article>
+        <article><strong>Local Windows</strong><span>npm run desktop:custom-installer menghasilkan web/release/ITS-Maps-Windows-Custom-Setup-1.0.13-x64.exe.</span></article>
+        <article><strong>GitHub</strong><span>Workflow Build Windows EXE berjalan otomatis setelah branch dipush dan mengupload artifact installer.</span></article>
+      </div>
     </section>
     <section class="static-section" id="terminal">
       <h2>Terminal</h2>
@@ -343,6 +474,7 @@ function bindStaticModal(): void {
   });
   document.querySelector<HTMLButtonElement>("[data-close-static-modal]")?.addEventListener("click", close);
   document.querySelector<HTMLButtonElement>("[data-enable-notifications]")?.addEventListener("click", requestPublicNotificationPermission);
+  bindStaticTerminals();
   if (!panel) return;
   let startX = 0;
   let startY = 0;
@@ -373,6 +505,40 @@ function bindStaticModal(): void {
   };
   panel.addEventListener("pointerup", finish);
   panel.addEventListener("pointercancel", finish);
+}
+
+function bindStaticTerminals(): void {
+  document.querySelectorAll<HTMLElement>("[data-static-terminal]").forEach((terminal) => {
+    const output = terminal.querySelector<HTMLElement>("[data-terminal-output]");
+    const form = terminal.querySelector<HTMLFormElement>("[data-terminal-form]");
+    const input = terminal.querySelector<HTMLInputElement>("[data-terminal-input]");
+    if (!output || !form || !input || terminal.dataset.bound === "true") return;
+    terminal.dataset.bound = "true";
+    const append = (line: string, kind = "") => {
+      if (line === "__CLEAR__") {
+        output.innerHTML = "";
+        return;
+      }
+      const row = document.createElement("div");
+      if (kind) row.className = kind;
+      row.textContent = line;
+      output.appendChild(row);
+      output.scrollTop = output.scrollHeight;
+    };
+    const run = (command: string) => {
+      const value = command.trim();
+      append(`$ ${value}`, "static-terminal-command");
+      staticTerminalResponse(value).forEach((line) => append(line));
+      input.value = "";
+    };
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      run(input.value);
+    });
+    terminal.querySelectorAll<HTMLButtonElement>("[data-terminal-command]").forEach((button) => {
+      button.addEventListener("click", () => run(button.dataset.terminalCommand || ""));
+    });
+  });
 }
 
 const app = document.querySelector<HTMLDivElement>("#app");
@@ -466,7 +632,7 @@ const state = {
 // ─── Tile layers ────────────────────────────────────────────────
 
 const CARTO_TILE_URL = "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
-const CARTO_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>';
+const CARTO_ATTRIBUTION = '<button type="button" class="map-license-link" data-map-license>Lisensi Peta</button>';
 
 const streetLayer = L.tileLayer(CARTO_TILE_URL, {
   maxZoom: 20,
@@ -647,7 +813,7 @@ function poiVisual(kind: PoiKind): { icon: string; color: string } {
 
 function poiMarkerSizeByZoom(): number {
   const zoom = map.getZoom();
-  return clamp(16 + (zoom - 13) * 1.2, 16, 28);
+  return clamp(18 + (zoom - 13) * 1.6, 18, 34);
 }
 
 function makePoiIcon(poi: PoiRecord, size: number): L.DivIcon {
@@ -698,6 +864,7 @@ function renderPoiModal(poi: PoiRecord): string {
 
 function openPoiModal(poi: PoiRecord): void {
   closeModal();
+  closePromptPanels();
   state.activeModalPoiId = poi.id;
   const overlay = createSwipeableSheetModal(
     "m-poi-modal",
@@ -735,10 +902,13 @@ function openPoiModal(poi: PoiRecord): void {
     }
   });
 
-  // populate image from Unsplash (fallback) and compute distance/ETA via OSRM
+  // Compute distance/ETA via OSRM. Image source stays from POI data/library so it
+  // remains deterministic in desktop and mobile previews.
   const heroImg = sheet.querySelector<HTMLImageElement>(".poi-hero-image");
   if (heroImg) {
-    heroImg.src = `https://source.unsplash.com/featured/?${encodeURIComponent(poi.title)}`;
+    heroImg.onerror = () => {
+      heroImg.src = POI_LIBRARY[poi.kind]?.imageUrl || POI_LIBRARY.other.imageUrl;
+    };
   }
 
   const distanceEl = sheet.querySelector<HTMLElement>("[data-field=poi-distance]");
@@ -1912,31 +2082,40 @@ function vehicleBreakdownText(breakdown?: VehicleBreakdown): string {
   return parts.length ? parts.map(([label, value]) => `${label} ${value}`).join(" / ") : "0 kendaraan";
 }
 
-function detectionSummaryText(detections?: YoloDetection[]): string {
-  if (!detections?.length) return "Belum ada objek";
-  const counts = new Map<string, number>();
-  detections.forEach((d) => counts.set(d.label, (counts.get(d.label) || 0) + 1));
-  return [...counts.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
-    .map(([label, count]) => `${detectionLabel(label)} ${count}`)
-    .join(" / ");
+function vehicleStatsForDevice(device?: DeviceRecord | null, traffic?: TrafficState | null): VehicleBreakdown {
+  const source = device?.vehicleBreakdown;
+  const total = Math.max(0, Math.round(
+    source?.total
+    ?? device?.vehicleCount
+    ?? traffic?.vehicleCount
+    ?? 0,
+  ));
+  return {
+    car: Math.max(0, Math.round(source?.car ?? 0)),
+    motorcycle: Math.max(0, Math.round(source?.motorcycle ?? 0)),
+    bicycle: Math.max(0, Math.round(source?.bicycle ?? 0)),
+    bus: Math.max(0, Math.round(source?.bus ?? 0)),
+    truck: Math.max(0, Math.round(source?.truck ?? 0)),
+    total,
+  };
 }
 
-function topDetectionText(detections?: YoloDetection[]): string {
-  const top = detections?.[0];
-  if (!top) return "-";
-  return `${detectionLabel(top.label)} ${(top.confidence * 100).toFixed(0)}%`;
-}
-
-function renderDetectionChips(detections?: YoloDetection[]): string {
-  if (!detections?.length) return `<div class="m-detection-empty">Belum ada objek terdeteksi</div>`;
-  return `<div class="m-detection-chips">
-    ${detections.slice(0, 12).map((d) => `
-      <span class="m-detection-chip${d.vehicle ? " is-vehicle" : ""}">
-        ${escapeHtml(detectionLabel(d.label))}
-        <strong>${(d.confidence * 100).toFixed(0)}%</strong>
-      </span>
+function renderVehicleStatsGrid(device?: DeviceRecord | null, traffic?: TrafficState | null, className = "m-vehicle-stats-grid"): string {
+  const stats = vehicleStatsForDevice(device, traffic);
+  const items = [
+    ["Mobil", stats.car],
+    ["Motor", stats.motorcycle],
+    ["Sepeda", stats.bicycle],
+    ["Bus", stats.bus],
+    ["Truck", stats.truck],
+    ["Total", stats.total],
+  ];
+  return `<div class="${className}">
+    ${items.map(([label, value]) => `
+      <div>
+        <span>${escapeHtml(String(label))}</span>
+        <strong>${Number(value)}</strong>
+      </div>
     `).join("")}
   </div>`;
 }
@@ -2156,16 +2335,7 @@ function makeTrafficLightSvg(state: TrafficState, size: number): string {
 function renderDeviceModal(device: DeviceRecord, traffic: TrafficState): string {
   const road = escapeHtml(traffic.roadName);
   const recommendation = escapeHtml(traffic.recommendation);
-  const detector = device.detectorStatus
-    ? `${device.detectorStatus}${device.detectorFps ? ` (${device.detectorFps.toFixed(1)} FPS)` : ""}`
-    : "-";
-  const breakdown = escapeHtml(vehicleBreakdownText(device.vehicleBreakdown));
-  const objects = escapeHtml(detectionSummaryText(device.detections));
-  const topObject = escapeHtml(topDetectionText(device.detections));
-  const detectorNote = escapeHtml(device.detectorNote || "-");
-  const detectorSource = escapeHtml(device.detectorCameraSource || "-");
-  const gpio = escapeHtml(`${device.gpioBackend || "-"}${device.gpioReady === false ? " / error" : ""}`);
-  const gpioNote = escapeHtml(device.gpioNote || "-");
+  const statsGrid = renderVehicleStatsGrid(device, traffic, "modal-vehicle-grid");
   return `
     <div class="modal-header">
       <button class="modal-close" data-action="close">×</button>
@@ -2186,23 +2356,50 @@ function renderDeviceModal(device: DeviceRecord, traffic: TrafficState): string 
         <div class="info-row"><span class="label">Status</span><span class="value status-${device.status}" data-field="device-status">${escapeHtml(device.status)}</span></div>
         <div class="info-row"><span class="label">Last Seen</span><span class="value" data-field="device-last-seen">${escapeHtml(device.lastSeenText || formatTime(device.lastSeen))}</span></div>
         <div class="info-row"><span class="label">Age</span><span class="value" data-field="device-age">${formatAge(device.lastSeen)}</span></div>
-        <div class="info-row"><span class="label">Road</span><span class="value" data-field="device-road">${road}</span></div>
-        <div class="info-row"><span class="label">AI Detector</span><span class="value">${escapeHtml(detector)}</span></div>
-        <div class="info-row"><span class="label">AI Source</span><span class="value">${detectorSource}</span></div>
-        <div class="info-row"><span class="label">AI Note</span><span class="value">${detectorNote}</span></div>
-        <div class="info-row"><span class="label">Objek</span><span class="value">${objects}</span></div>
-        <div class="info-row"><span class="label">Akurasi Tertinggi</span><span class="value">${topObject}</span></div>
+        <div class="info-row"><span class="label">Jalan</span><span class="value" data-field="device-road">${road}</span></div>
       </div>
       <div class="modal-tab-pane" data-tab="traffic">
+        ${statsGrid}
         <div class="info-row"><span class="label">Jalan</span><span class="value" data-field="traffic-road">${road}</span></div>
-        <div class="info-row"><span class="label">Jumlah Kendaraan</span><span class="value" data-field="traffic-count">${traffic.vehicleCount}</span></div>
-        <div class="info-row"><span class="label">Rincian</span><span class="value">${breakdown}</span></div>
         <div class="info-row"><span class="label">Durasi Lampu</span><span class="value" data-field="traffic-duration">${traffic.duration}s (${traffic.color})</span></div>
         <div class="info-row"><span class="label">Rekomendasi</span><span class="value" data-field="traffic-recommendation">${recommendation}</span></div>
-        <div class="info-row"><span class="label">GPIO</span><span class="value">${gpio}</span></div>
-        <div class="info-row"><span class="label">GPIO Note</span><span class="value">${gpioNote}</span></div>
       </div>
     </div>`;
+}
+
+function usesDesktopSidePanel(): boolean {
+  return window.matchMedia("(min-width: 721px)").matches;
+}
+
+function setSidePanelWidth(widthPx: number): void {
+  const width = usesDesktopSidePanel() ? Math.max(0, Math.round(widthPx)) : 0;
+  document.documentElement.style.setProperty("--side-panel-active-width", `${width}px`);
+  document.body.classList.toggle("side-panel-open", width > 0);
+  window.dispatchEvent(new Event("resize"));
+}
+
+function setSidePanelWidthFromSheet(sheetEl: HTMLElement | null): void {
+  if (!sheetEl || !usesDesktopSidePanel()) return;
+  setSidePanelWidth(sheetEl.getBoundingClientRect().width);
+}
+
+function clearSidePanelWidth(delayMs = 260): void {
+  setSidePanelWidth(0);
+  window.setTimeout(() => {
+    if (!document.querySelector("#windows-download-modal.open, #map-license-modal.open, #m-device-modal.open, #m-poi-modal.open")) {
+      document.body.classList.remove("side-panel-open", "app-download-panel-open", "map-license-panel-open", "map-modal-panel-open");
+      document.documentElement.style.removeProperty("--side-panel-active-width");
+    }
+  }, delayMs);
+}
+
+function closePromptPanels(): void {
+  const downloadModal = document.getElementById("windows-download-modal");
+  if (downloadModal) downloadModal.remove();
+  const licenseModal = document.getElementById("map-license-modal");
+  if (licenseModal) licenseModal.remove();
+  document.body.classList.remove("app-download-panel-open", "map-license-panel-open");
+  clearSidePanelWidth(0);
 }
 
 function closeModal(): void {
@@ -2211,6 +2408,8 @@ function closeModal(): void {
   state.activeModalPoiId = null;
   window.clearInterval(state.trafficRefreshTimer);
   state.trafficRefreshTimer = 0;
+  document.body.classList.remove("map-modal-panel-open");
+  clearSidePanelWidth();
 }
 
 function setSheetActiveTab(sheet: HTMLElement, tabName: string): void {
@@ -2233,7 +2432,14 @@ function createSwipeableSheetModal(id: string, sheetClass: string, bodyHtml: str
     <div class="${sheetClass}">${bodyHtml}</div>
   `;
   document.body.appendChild(overlay);
-  requestAnimationFrame(() => overlay.classList.add("open"));
+  requestAnimationFrame(() => {
+    overlay.classList.add("open");
+    const sheet = overlay.querySelector<HTMLElement>(`.${sheetClass.split(" ")[0]}`);
+    if (id === "m-device-modal" || id === "m-poi-modal") {
+      document.body.classList.add("map-modal-panel-open");
+      setSidePanelWidthFromSheet(sheet);
+    }
+  });
   L.DomEvent.disableClickPropagation(overlay);
   L.DomEvent.disableScrollPropagation(overlay);
   return overlay;
@@ -2241,6 +2447,7 @@ function createSwipeableSheetModal(id: string, sheetClass: string, bodyHtml: str
 
 function openModal(device: DeviceRecord): void {
   closeModal();
+  closePromptPanels();
   state.activeModalDeviceId = device.id;
   state.activeModalPoiId = null;
   const traffic = trafficStateForDevice(device);
@@ -3167,6 +3374,178 @@ function openCameraPreview(): void {
   attachWebRtcStream();
 }
 
+function openVideoFullscreen(device: DeviceRecord | null): void {
+  if (document.getElementById("video-fullscreen-modal")) return;
+  const activeDevice = device ?? state.device ?? null;
+  const traffic = activeDevice ? trafficStateForDevice(activeDevice) : null;
+  const surface = renderCameraSurface(activeDevice, "video-fullscreen-media", "video-fullscreen-frame");
+  const ambient = traffic?.color === "red" ? "#7f1d1d" : traffic?.color === "yellow" ? "#854d0e" : "#064e3b";
+  const overlay = document.createElement("div");
+  overlay.id = "video-fullscreen-modal";
+  overlay.className = "video-fullscreen";
+  overlay.style.setProperty("--video-ambient-a", ambient);
+  overlay.innerHTML = `
+    <div class="video-fullscreen-shell">
+      <section class="video-fullscreen-stage" aria-label="Video realtime">
+        <div class="video-fullscreen-ambient" aria-hidden="true"></div>
+        <div class="video-fullscreen-surface" data-video-surface>
+          ${surface || `<div class="video-fullscreen-empty">Kamera realtime belum tersedia</div>`}
+          ${activeDevice ? renderDetectionOverlay(activeDevice) : ""}
+        </div>
+        <div class="video-fullscreen-status">
+          <span class="webrtc-dot" data-status="${state.webrtc.status}"></span>
+          <strong>${escapeHtml(activeDevice?.label || "Video Realtime")}</strong>
+        </div>
+        <div class="video-fullscreen-caption">${escapeHtml(webRtcStatusText())}</div>
+        <button type="button" class="video-fullscreen-play" data-video-play aria-label="Putar video">▶</button>
+        <div class="video-fullscreen-controls">
+          <button type="button" class="video-fullscreen-ai" data-video-ai>AI</button>
+          <button type="button" class="video-fullscreen-fit" data-video-fit aria-label="Fit to screen">⌖</button>
+          <button type="button" class="video-fullscreen-close" data-video-close aria-label="Tutup">x</button>
+        </div>
+      </section>
+      <aside class="video-ai-panel" aria-label="AI kendaraan">
+        <div class="video-ai-handle" data-swipe-handle aria-hidden="true"></div>
+        <header>
+          <div>
+            <span>AI YOLO</span>
+            <strong>${escapeHtml(webRtcStatusText())}</strong>
+          </div>
+          <button type="button" data-video-ai-close aria-label="Tutup AI">x</button>
+        </header>
+        ${renderVehicleStatsGrid(activeDevice, traffic, "video-ai-stats")}
+      </aside>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  mapRoot.classList.add("hidden");
+  document.getElementById("m-bottom-nav")?.classList.add("hidden");
+
+  let scale = 1;
+  const pointers = new Map<number, PointerEvent>();
+  let startDistance = 0;
+  let startScale = 1;
+  const surfaceEl = overlay.querySelector<HTMLElement>("[data-video-surface]");
+  const aiPanel = overlay.querySelector<HTMLElement>(".video-ai-panel");
+  const setScale = (next: number) => {
+    scale = clamp(next, 0.82, 1.55);
+    overlay.style.setProperty("--video-scale", scale.toFixed(3));
+  };
+  const setAiWidth = (widthPx: number) => {
+    if (!usesDesktopSidePanel()) return;
+    overlay.style.setProperty("--video-ai-live-width", `${Math.max(0, Math.round(widthPx))}px`);
+  };
+  const closeVideo = () => {
+    overlay.classList.remove("open", "ai-open");
+    mapRoot.classList.remove("hidden");
+    document.getElementById("m-bottom-nav")?.classList.remove("hidden");
+    window.setTimeout(() => overlay.remove(), 220);
+  };
+  const openAi = () => {
+    if (aiPanel) aiPanel.style.transform = "";
+    overlay.classList.add("ai-open");
+    requestAnimationFrame(() => setAiWidth(aiPanel?.getBoundingClientRect().width || 0));
+  };
+  const closeAi = () => {
+    overlay.classList.remove("ai-open");
+    if (aiPanel) aiPanel.style.transform = "";
+    setAiWidth(0);
+  };
+
+  surfaceEl?.addEventListener("wheel", (event) => {
+    event.preventDefault();
+    setScale(scale + (event.deltaY < 0 ? 0.08 : -0.08));
+  }, { passive: false });
+  surfaceEl?.addEventListener("pointerdown", (event) => {
+    pointers.set(event.pointerId, event);
+    surfaceEl.setPointerCapture?.(event.pointerId);
+    if (pointers.size === 2) {
+      const [a, b] = [...pointers.values()];
+      startDistance = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+      startScale = scale;
+    }
+  });
+  surfaceEl?.addEventListener("pointermove", (event) => {
+    if (!pointers.has(event.pointerId)) return;
+    pointers.set(event.pointerId, event);
+    if (pointers.size === 2 && startDistance > 0) {
+      event.preventDefault();
+      const [a, b] = [...pointers.values()];
+      const nextDistance = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+      setScale(startScale * (nextDistance / startDistance));
+    }
+  });
+  const clearPointer = (event: PointerEvent) => pointers.delete(event.pointerId);
+  surfaceEl?.addEventListener("pointerup", clearPointer);
+  surfaceEl?.addEventListener("pointercancel", clearPointer);
+
+  overlay.querySelector<HTMLButtonElement>("[data-video-play]")?.addEventListener("click", () => {
+    overlay.querySelectorAll<HTMLVideoElement>("video").forEach((video) => {
+      void video.play().catch(() => undefined);
+    });
+  });
+  overlay.querySelector<HTMLButtonElement>("[data-video-fit]")?.addEventListener("click", () => setScale(1));
+  overlay.querySelector<HTMLButtonElement>("[data-video-ai]")?.addEventListener("click", openAi);
+  overlay.querySelector<HTMLButtonElement>("[data-video-ai-close]")?.addEventListener("click", closeAi);
+  overlay.querySelector<HTMLButtonElement>("[data-video-close]")?.addEventListener("click", closeVideo);
+
+  if (aiPanel) {
+    setupVideoAiSwipe(aiPanel, () => closeAi(), setAiWidth);
+  }
+  syncCameraViews(activeDevice);
+  attachWebRtcStream();
+  window.setTimeout(() => overlay.classList.add("open"), 20);
+}
+
+function setupVideoAiSwipe(sheetEl: HTMLElement, onClose: () => void, onWidthChange: (widthPx: number) => void): void {
+  let startAxis = 0;
+  let currentAxis = 0;
+  let pointerId = -1;
+  let startedAt = 0;
+  let dragging = false;
+
+  sheetEl.addEventListener("pointerdown", (event) => {
+    const target = event.target as HTMLElement;
+    const startsOnHandle = Boolean(target.closest("[data-swipe-handle], header"));
+    if (!startsOnHandle && target.closest("button, a, input, label, select, textarea")) return;
+    const horizontal = usesDesktopSidePanel();
+    startAxis = horizontal ? event.clientX : event.clientY;
+    currentAxis = 0;
+    pointerId = event.pointerId;
+    startedAt = performance.now();
+    dragging = true;
+    sheetEl.dataset.swipeAxis = horizontal ? "x" : "y";
+    sheetEl.style.transition = "none";
+    sheetEl.setPointerCapture?.(event.pointerId);
+  });
+
+  sheetEl.addEventListener("pointermove", (event) => {
+    if (!dragging || event.pointerId !== pointerId) return;
+    const horizontal = sheetEl.dataset.swipeAxis === "x";
+    const axis = horizontal ? event.clientX : event.clientY;
+    currentAxis = Math.max(0, axis - startAxis);
+    if (currentAxis > 2) event.preventDefault();
+    sheetEl.style.transform = horizontal ? `translateX(${currentAxis}px)` : `translateY(${currentAxis}px)`;
+    if (horizontal) onWidthChange(Math.max(0, sheetEl.getBoundingClientRect().width - currentAxis));
+  });
+
+  const finish = (event: PointerEvent) => {
+    if (!dragging || event.pointerId !== pointerId) return;
+    dragging = false;
+    pointerId = -1;
+    sheetEl.style.transition = "";
+    const velocity = currentAxis / Math.max(1, performance.now() - startedAt);
+    if (currentAxis > 56 || velocity > 0.55) {
+      onClose();
+    } else {
+      sheetEl.style.transform = "";
+      onWidthChange(sheetEl.getBoundingClientRect().width);
+    }
+  };
+  sheetEl.addEventListener("pointerup", finish);
+  sheetEl.addEventListener("pointercancel", finish);
+}
+
 // Tablet & POI interactions
 const TABLET_CATEGORIES = ["all", "hospital", "worship", "mall", "campus", "parking"] as const;
 const TABLET_CATEGORY_LABELS: Record<(typeof TABLET_CATEGORIES)[number], string> = {
@@ -3943,7 +4322,7 @@ function openLayerModal(): void {
       <div class="m-layer-options">
         <button class="m-layer-opt ${state.baseMode === 'street' ? 'active' : ''}" data-mode="street">
           <div class="m-layer-icon">🗺️</div>
-          <span>OpenStreetMap</span>
+          <span>Carto 2D</span>
         </button>
         <button class="m-layer-opt ${state.baseMode === 'satellite' ? 'active' : ''}" data-mode="satellite">
           <div class="m-layer-icon">🛰️</div>
@@ -3990,27 +4369,39 @@ function closeLayerModal(): void {
 // ─── 3. Generic Sheet Swipe Handler ──────────────────────────────────────────
 
 function setupSheetSwipe(sheetEl: HTMLElement, onClose: () => void): void {
-  let startY = 0;
-  let currentY = 0;
+  let startAxis = 0;
+  let currentAxis = 0;
   let dragging = false;
   let pointerId = -1;
+  let startedAt = 0;
 
   const onPointerDown = (e: PointerEvent) => {
     const target = e.target as HTMLElement;
-    if (target.closest("button, a, input, label, select, textarea")) return;
-    startY = e.clientY;
-    currentY = 0;
+    const startsOnHandle = Boolean(target.closest(".m-sheet-handle-bar, .m-layer-title, .modal-header, .poi-modal-header"));
+    if (!startsOnHandle && target.closest("button, a, input, label, select, textarea")) return;
+    if (!startsOnHandle && sheetEl.scrollTop > 0) return;
+    const horizontal = usesDesktopSidePanel();
+    startAxis = horizontal ? e.clientX : e.clientY;
+    currentAxis = 0;
     dragging = true;
     pointerId = e.pointerId;
+    startedAt = performance.now();
+    sheetEl.dataset.swipeAxis = horizontal ? "x" : "y";
     sheetEl.style.transition = "none";
     sheetEl.setPointerCapture?.(e.pointerId);
   };
 
   const onPointerMove = (e: PointerEvent) => {
     if (!dragging || e.pointerId !== pointerId) return;
-    const delta = e.clientY - startY;
-    currentY = Math.max(0, delta);
-    sheetEl.style.transform = `translateY(${currentY}px)`;
+    const horizontal = sheetEl.dataset.swipeAxis === "x";
+    const axis = horizontal ? e.clientX : e.clientY;
+    currentAxis = Math.max(0, axis - startAxis);
+    if (currentAxis > 2) e.preventDefault();
+    sheetEl.style.transform = horizontal ? `translateX(${currentAxis}px)` : `translateY(${currentAxis}px)`;
+    if (horizontal && document.body.classList.contains("map-modal-panel-open")) {
+      const remaining = Math.max(0, sheetEl.getBoundingClientRect().width - currentAxis);
+      setSidePanelWidth(remaining);
+    }
   };
 
   const onPointerEnd = (e: PointerEvent) => {
@@ -4018,10 +4409,15 @@ function setupSheetSwipe(sheetEl: HTMLElement, onClose: () => void): void {
     dragging = false;
     pointerId = -1;
     sheetEl.style.transition = "";
-    if (currentY > 80) {
+    const elapsed = Math.max(1, performance.now() - startedAt);
+    const velocity = currentAxis / elapsed;
+    if (currentAxis > 56 || velocity > 0.55) {
       onClose();
     } else {
       sheetEl.style.transform = "";
+      if (sheetEl.dataset.swipeAxis === "x" && document.body.classList.contains("map-modal-panel-open")) {
+        setSidePanelWidthFromSheet(sheetEl);
+      }
     }
   };
 
@@ -4048,7 +4444,7 @@ function getMapEl(): HTMLElement | null {
 
 function setMobileToolbarSheetOffset(heightPx: number): void {
   const offset = isMobile()
-    ? Math.min(Math.max(0, Math.round(heightPx - 160)), 340, Math.max(0, window.innerHeight - 420))
+    ? Math.max(0, Math.round(heightPx > 0 ? heightPx + 64 : 0))
     : 0;
   document.documentElement.style.setProperty("--m-sheet-offset", `${offset}px`);
 }
@@ -4123,6 +4519,7 @@ function createITSSheet(): HTMLElement {
   sheet.addEventListener("touchmove", (e: TouchEvent) => {
     const target = e.target as HTMLElement;
     if (!target.closest(".m-its-handle-zone")) return;
+    e.preventDefault();
     const delta = e.touches[0].clientY - touchStartY;
     const rawY = touchStartTranslate + delta;
     const minY = window.innerHeight - ITS_SNAP.full() - 64;
@@ -4131,7 +4528,7 @@ function createITSSheet(): HTMLElement {
     sheet.style.transform = `translateY(${clampedY}px)`;
     const sheetH = window.innerHeight - 64 - clampedY;
     setMapHeight(Math.max(0, sheetH));
-  }, { passive: true });
+  }, { passive: false });
 
   sheet.addEventListener("touchend", () => {
     const matrix = new DOMMatrix(getComputedStyle(sheet).transform);
@@ -4141,7 +4538,7 @@ function createITSSheet(): HTMLElement {
     const fullH = ITS_SNAP.full();
 
     let snap: "closed" | "peek" | "full";
-    if (sheetH < peekH * 0.4) {
+    if (sheetH < peekH * 0.55) {
       closeITSSheet();
       setTimeout(() => {
         document.querySelectorAll(".m-nav-tab").forEach(b => b.classList.remove("active"));
@@ -4185,14 +4582,7 @@ function renderITSSheetContent(): void {
   const device = state.device;
   const traffic = device ? trafficStateForDevice(device) : null;
   const cameraSurface = renderCameraSurface(device, "m-camera-img", "m-camera-frame");
-  const breakdown = device?.vehicleBreakdown;
-  const detectorStatus = device?.detectorStatus
-    ? `${device.detectorStatus}${device.detectorFps ? ` / ${device.detectorFps.toFixed(1)} FPS` : ""}`
-    : "-";
-  const objectCount = device?.objectCount ?? device?.detections?.length ?? 0;
-  const topObject = topDetectionText(device?.detections);
-  const detectorNote = device?.detectorNote || "";
-  const gpioText = device ? `${device.gpioBackend || "-"}${device.gpioReady === false ? " / error" : ""}` : "-";
+  const statsGrid = renderVehicleStatsGrid(device, traffic);
 
   const colorMap: Record<string, string> = {
     red: "#ef4444", yellow: "#facc15", green: "#22c55e",
@@ -4221,21 +4611,8 @@ function renderITSSheetContent(): void {
     </div>
 
     <div class="m-its-section">
-      <div class="m-its-section-title">Data Scan</div>
-      <div class="m-its-chart-wrap">
-        <canvas id="m-traffic-chart" width="320" height="180"></canvas>
-      </div>
-      ${device ? `<div class="m-ai-scan-grid">
-        <div><span>AI</span><strong>${escapeHtml(detectorStatus)}</strong></div>
-        <div><span>Objek</span><strong>${objectCount}</strong></div>
-        <div><span>Top</span><strong>${escapeHtml(topObject)}</strong></div>
-        <div><span>Kendaraan</span><strong>${traffic?.vehicleCount ?? 0}</strong></div>
-        <div><span>GPIO</span><strong>${escapeHtml(gpioText)}</strong></div>
-        <div><span>Mobil</span><strong>${breakdown?.car ?? 0}</strong></div>
-        <div><span>Motor</span><strong>${breakdown?.motorcycle ?? 0}</strong></div>
-      </div>` : ""}
-      ${device ? renderDetectionChips(device.detections) : ""}
-      ${detectorNote ? `<div class="m-detector-note">${escapeHtml(detectorNote)}</div>` : ""}
+      <div class="m-its-section-title">Data Kendaraan</div>
+      ${statsGrid}
     </div>
 
     ${traffic ? `
@@ -4276,6 +4653,7 @@ function renderITSSheetContent(): void {
   syncCameraViews(device);
   attachWebRtcStream();
   requestAnimationFrame(() => drawTrafficChart());
+  scroll.querySelector<HTMLButtonElement>(".m-camera-fullscreen")?.addEventListener("click", () => openVideoFullscreen(device));
 
   scroll.querySelectorAll<HTMLDivElement>(".m-device-row").forEach(row => {
     row.addEventListener("click", () => {
@@ -4545,10 +4923,197 @@ if ('serviceWorker' in navigator) {
 // PWA install UI is intentionally left to the browser, so Chrome/Edge can show
 // their native install and notification affordances without an extra app button.
 
+function promptUsesDesktopSidePanel(): boolean {
+  return window.matchMedia("(min-width: 721px)").matches;
+}
+
+function setPromptSidePanelWidth(widthPx: number): void {
+  const width = promptUsesDesktopSidePanel() ? Math.max(0, Math.round(widthPx)) : 0;
+  document.documentElement.style.setProperty("--side-panel-active-width", `${width}px`);
+  document.body.classList.toggle("side-panel-open", width > 0);
+  window.dispatchEvent(new Event("resize"));
+}
+
+function setPromptSidePanelWidthFromSheet(sheetEl: HTMLElement | null): void {
+  if (!sheetEl || !promptUsesDesktopSidePanel()) return;
+  setPromptSidePanelWidth(sheetEl.getBoundingClientRect().width);
+}
+
+function clearPromptSidePanelWidth(delayMs = 260): void {
+  setPromptSidePanelWidth(0);
+  window.setTimeout(() => {
+    if (!document.querySelector("#windows-download-modal.open, #map-license-modal.open, #m-device-modal.open, #m-poi-modal.open")) {
+      document.body.classList.remove("side-panel-open", "app-download-panel-open", "map-license-panel-open", "map-modal-panel-open");
+      document.documentElement.style.removeProperty("--side-panel-active-width");
+    }
+  }, delayMs);
+}
+
+function closeFloatingMapPanels(): void {
+  document.querySelectorAll("#windows-download-modal, #map-license-modal, #m-device-modal, #m-poi-modal").forEach((modal) => modal.remove());
+  document.body.classList.remove("app-download-panel-open", "map-license-panel-open", "map-modal-panel-open");
+  clearPromptSidePanelWidth(0);
+}
+
+document.addEventListener("click", (event) => {
+  const target = event.target as HTMLElement | null;
+  if (target?.closest("[data-map-license]")) {
+    event.preventDefault();
+    event.stopPropagation();
+    itsShowMapLicenseModal();
+  }
+});
+
+function itsShowMapLicenseModal(): void {
+  if (document.getElementById("map-license-modal")) return;
+  closeFloatingMapPanels();
+  const modal = document.createElement("div");
+  modal.id = "map-license-modal";
+  modal.className = "map-license-modal";
+  modal.innerHTML = `
+    <section class="map-license-sheet" role="dialog" aria-modal="true" aria-labelledby="map-license-title">
+      <div class="map-license-grip" data-swipe-handle aria-hidden="true"></div>
+      <header class="map-license-head">
+        <div>
+          <span>ITS Maps</span>
+          <h2 id="map-license-title">Lisensi Peta</h2>
+        </div>
+        <button type="button" aria-label="Tutup Lisensi Peta" title="Tutup" data-license-close>x</button>
+      </header>
+      <div class="map-license-list">
+        <article>
+          <strong>OpenStreetMap</strong>
+          <p>Data nama jalan, bangunan, area, koordinat, dan POI berasal dari kontributor OpenStreetMap. Data digunakan sesuai Open Database License (ODbL).</p>
+          <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">openstreetmap.org/copyright</a>
+        </article>
+        <article>
+          <strong>CARTO Voyager</strong>
+          <p>Tile 2D memakai CARTO Voyager sebagai basemap visual berbasis data OpenStreetMap agar tampilan peta lebih bersih.</p>
+          <a href="https://carto.com/attributions" target="_blank" rel="noopener">carto.com/attributions</a>
+        </article>
+        <article>
+          <strong>Overpass API</strong>
+          <p>POI diambil berdasarkan viewport peta untuk menampilkan fasilitas sekitar seperti sekolah, tempat ibadah, rumah sakit, terminal, dan area publik.</p>
+          <a href="https://overpass-api.de/" target="_blank" rel="noopener">overpass-api.de</a>
+        </article>
+        <article>
+          <strong>Esri World Imagery & OpenFreeMap</strong>
+          <p>Mode satelit memakai Esri World Imagery. Mode 3D memakai MapLibre dengan style OpenFreeMap untuk bangunan dan orientasi visual.</p>
+        </article>
+      </div>
+    </section>
+  `;
+  document.body.appendChild(modal);
+  let closeLicenseModal: () => void = () => undefined;
+  const keyHandler = (keyEvent: KeyboardEvent) => {
+    if (keyEvent.key === "Escape") closeLicenseModal();
+  };
+  closeLicenseModal = () => {
+    window.removeEventListener("keydown", keyHandler);
+    modal.classList.remove("open");
+    document.body.classList.remove("map-license-panel-open");
+    clearPromptSidePanelWidth();
+    window.setTimeout(() => modal.remove(), 220);
+  };
+  modal.addEventListener("click", (clickEvent) => {
+    if (clickEvent.target === modal) closeLicenseModal();
+  });
+  modal.querySelector<HTMLButtonElement>("[data-license-close]")?.addEventListener("click", closeLicenseModal);
+  const sheet = modal.querySelector<HTMLElement>(".map-license-sheet");
+  if (sheet) setupPromptSheetSwipe(sheet, closeLicenseModal);
+  window.addEventListener("keydown", keyHandler);
+  window.setTimeout(() => {
+    modal.classList.add("open");
+    document.body.classList.add("map-license-panel-open");
+    setPromptSidePanelWidthFromSheet(sheet);
+  }, 20);
+}
+
 const ITS_WINDOWS_INSTALL_URL = "https://itstelkom.web.app/artifacts/apps/ITS-Maps-Windows-Custom-Setup-1.0.13-x64.download";
 const ITS_WINDOWS_INSTALL_NAME = "ITS-Maps-Windows-Custom-Setup-1.0.13-x64.exe";
-const ITS_WINDOWS_APP_VERSION = "1.0.13";
-const ITS_WINDOWS_PREVIEWS = [WIN_PREVIEW_WELCOME, WIN_PREVIEW_OPTIONS, WIN_PREVIEW_DONE];
+const ITS_ANDROID_INSTALL_URL = "https://itstelkom.web.app/artifacts/apps/ITS.apk";
+const ITS_ANDROID_INSTALL_NAME = "ITS.apk";
+const ITS_IOS_INSTALL_URL = "https://itstelkom.web.app/?install=ios";
+const ITS_APP_VERSION = "1.0.13";
+const ITS_FALLBACK_PREVIEWS = [WIN_PREVIEW_WELCOME, WIN_PREVIEW_OPTIONS, WIN_PREVIEW_DONE];
+const ITS_APP_ACCESS_ITEMS = [
+  ["Lokasi", "Dipakai untuk marker user realtime, jarak ke POI, tombol lokasi terkini, dan sinkronisasi posisi antar perangkat."],
+  ["Kamera", "Dipakai untuk halaman kamera realtime, AR camera sheet, dan preview lalu lintas dari Raspberry Pi."],
+  ["Notifikasi", "Dipakai untuk update publik, catatan pembaruan, status Raspberry, dan informasi penting tanpa membuka website."],
+  ["Jaringan", "Dipakai untuk mengambil tile peta, data Firebase, Overpass POI, HLS/WebRTC, dan artifact update aplikasi."],
+  ["Penyimpanan", "Dipakai oleh installer Windows atau browser untuk menyimpan aplikasi, cache peta, dan file update."],
+];
+
+type AppDownloadPlatform = "windows" | "android" | "ios";
+type AppDownloadInfo = {
+  platform: AppDownloadPlatform;
+  platformName: string;
+  extension: ".exe" | ".apk" | ".app";
+  fileName: string;
+  url: string;
+  previewFolder: "windows" | "mobile";
+  shortDescription: string;
+  longDescription: string;
+};
+
+function appScreenshotUrls(folder: "windows" | "mobile"): string[] {
+  const prefix = `./ss/${folder}/`;
+  return Object.entries(APP_SCREENSHOT_MODULES)
+    .filter(([path]) => path.startsWith(prefix))
+    .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
+    .map(([, url]) => url);
+}
+
+function detectAppDownloadPlatform(): AppDownloadPlatform {
+  const ua = navigator.userAgent || "";
+  const platform = navigator.platform || "";
+  if (/iPad|iPhone|iPod/i.test(ua) || (/Mac/i.test(platform) && navigator.maxTouchPoints > 1)) return "ios";
+  if (/android/i.test(ua) || window.innerWidth <= 720 || navigator.maxTouchPoints > 1) return "android";
+  return "windows";
+}
+
+function getAppDownloadInfo(): AppDownloadInfo {
+  const platform = detectAppDownloadPlatform();
+  if (platform === "android") {
+    return {
+      platform,
+      platformName: "Android",
+      extension: ".apk",
+      fileName: ITS_ANDROID_INSTALL_NAME,
+      url: ITS_ANDROID_INSTALL_URL,
+      previewFolder: "mobile",
+      shortDescription: "Aplikasi Android ITS Maps untuk peta realtime, kamera, notifikasi, dan kontrol Raspberry Pi.",
+      longDescription: "ITS Maps Android membawa peta realtime berbasis data OSM, lokasi user, kamera Raspberry Pi, notifikasi publik, dan ringkasan data lalu lintas ke layar sentuh. Build APK dipakai untuk instalasi manual di perangkat Android.",
+    };
+  }
+  if (platform === "ios") {
+    return {
+      platform,
+      platformName: "iOS",
+      extension: ".app",
+      fileName: "ITS-Maps-iOS.app",
+      url: ITS_IOS_INSTALL_URL,
+      previewFolder: "mobile",
+      shortDescription: "Mode iOS ITS Maps memakai pengalaman app-like dengan Safari/PWA dan tampilan mobile.",
+      longDescription: "ITS Maps di iOS berjalan sebagai pengalaman web app yang dapat dipasang dari Safari. Fitur peta, notifikasi yang didukung browser, preview kamera, dan dokumentasi tetap mengikuti tampilan mobile yang sama.",
+    };
+  }
+  return {
+    platform,
+    platformName: "Windows",
+    extension: ".exe",
+    fileName: ITS_WINDOWS_INSTALL_NAME,
+    url: ITS_WINDOWS_INSTALL_URL,
+    previewFolder: "windows",
+    shortDescription: "Installer Windows ITS Maps dengan peta Carto, data OSM, kamera realtime, notifikasi desktop, dan pembaruan aplikasi.",
+    longDescription: "ITS Maps Windows adalah aplikasi desktop Electron untuk memantau Raspberry Pi, peta realtime, kamera, grafik lalu lintas, history, update otomatis, dokumentasi, dan panel What's New. Installer custom menyiapkan aplikasi native dan artifact .download dipakai untuk pembaruan.",
+  };
+}
+
+function appPreviewImages(info: AppDownloadInfo): string[] {
+  const screenshots = appScreenshotUrls(info.previewFolder);
+  return screenshots.length ? screenshots : ITS_FALLBACK_PREVIEWS;
+}
 
 function itsCreateSplash(): void {
   if (document.getElementById("its-splash")) return;
@@ -4591,10 +5156,10 @@ function itsCreateSplash(): void {
   window.setTimeout(hide, 3200);
 }
 
-function itsDownloadWindowsInstaller(): void {
+function itsDownloadApp(info: AppDownloadInfo): void {
   const link = document.createElement("a");
-  link.href = ITS_WINDOWS_INSTALL_URL;
-  link.download = ITS_WINDOWS_INSTALL_NAME;
+  link.href = info.url;
+  link.download = info.fileName;
   link.rel = "noopener";
   document.body.appendChild(link);
   link.click();
@@ -4603,14 +5168,27 @@ function itsDownloadWindowsInstaller(): void {
 
 function itsCreateWindowsDownloadButton(): void {
   if (document.getElementById("windows-download-app")) return;
+  const info = getAppDownloadInfo();
+  const previews = appPreviewImages(info);
   const host = document.createElement("div");
   host.id = "windows-download-app";
   host.className = "windows-download-app";
   host.innerHTML = `
-    <button type="button" class="windows-download-trigger" aria-label="Download ITS Maps Windows" title="Download ITS Maps Windows" data-tooltip="Download ITS Maps Windows">
-      <img src="/icons/icon-96.png" alt="">
+    <button type="button" class="windows-download-trigger" aria-label="Download ITS Maps ${info.platformName}" title="Download ITS Maps ${info.platformName}" data-tooltip="Download ITS Maps ${info.platformName}">
+      <img src="${ITS_APP_ICON}" alt="">
+      <strong class="windows-download-trigger-label">Download ${info.extension}</strong>
       <span class="windows-download-badge" aria-hidden="true"></span>
     </button>
+    <div class="windows-download-hover-card" aria-hidden="true">
+      <div class="windows-download-hover-head">
+        <img src="${ITS_APP_ICON}" alt="">
+        <div>
+          <strong>ITS Maps ${info.platformName}</strong>
+          <span>Versi ${ITS_APP_VERSION}</span>
+        </div>
+      </div>
+      <img class="windows-download-hover-preview" src="${previews[0] || "/screenshots/desktop-map.png"}" alt="">
+    </div>
   `;
   host.querySelector<HTMLButtonElement>(".windows-download-trigger")?.addEventListener("click", itsShowWindowsDownloadModal);
   document.body.appendChild(host);
@@ -4618,45 +5196,81 @@ function itsCreateWindowsDownloadButton(): void {
 
 function itsShowWindowsDownloadModal(): void {
   if (document.getElementById("windows-download-modal")) return;
+  closeFloatingMapPanels();
+  const licenseModal = document.getElementById("map-license-modal");
+  if (licenseModal) licenseModal.remove();
+  document.body.classList.remove("map-license-panel-open");
+  const info = getAppDownloadInfo();
+  const previews = appPreviewImages(info);
   const modal = document.createElement("div");
   modal.id = "windows-download-modal";
   modal.className = "windows-download-modal";
   modal.innerHTML = `
     <section class="windows-download-sheet" role="dialog" aria-modal="true" aria-labelledby="windows-download-title">
+      <div class="windows-download-grip" data-swipe-handle aria-hidden="true"></div>
       <button type="button" class="windows-download-close" aria-label="Tutup" title="Tutup" data-windows-close>x</button>
-      <div class="windows-download-head">
-        <img class="windows-download-icon" src="/icons/icon-192.png" alt="">
-        <div>
-          <h2 id="windows-download-title">ITS Maps Windows</h2>
-          <p>Versi ${ITS_WINDOWS_APP_VERSION}</p>
+      <div class="windows-download-view windows-download-summary active" data-download-view="summary">
+        <div class="windows-download-head">
+          <img class="windows-download-icon" src="${ITS_APP_ICON}" alt="">
+          <div>
+            <h2 id="windows-download-title">ITS Maps ${info.platformName}</h2>
+            <p>Versi ${ITS_APP_VERSION}</p>
+          </div>
         </div>
-      </div>
-      <div class="windows-download-modal-carousel" aria-label="Preview aplikasi Windows">
-        ${ITS_WINDOWS_PREVIEWS.map((src, index) => `<img src="${src}" alt="Preview ITS Maps Windows ${index + 1}" class="${index === 0 ? "active" : ""}">`).join("")}
-        <div class="windows-download-dots">
-          ${ITS_WINDOWS_PREVIEWS.map((_, index) => `<button type="button" aria-label="Preview ${index + 1}" class="${index === 0 ? "active" : ""}"></button>`).join("")}
+        <div class="windows-download-modal-actions">
+          <button type="button" class="windows-download-primary" data-windows-download>Download ${info.extension}</button>
         </div>
+        <div class="windows-download-section-title">Gambar Preview</div>
+        <div class="windows-download-modal-carousel" aria-label="Preview aplikasi ${info.platformName}">
+          ${previews.map((src, index) => `<img src="${src}" alt="Preview ITS Maps ${info.platformName} ${index + 1}" class="${index === 0 ? "active" : ""}">`).join("")}
+          <div class="windows-download-dots">
+            ${previews.map((_, index) => `<button type="button" aria-label="Preview ${index + 1}" class="${index === 0 ? "active" : ""}"></button>`).join("")}
+          </div>
+        </div>
+        <div class="windows-download-section-title">Deskripsi</div>
+        <p class="windows-download-description">${info.shortDescription}</p>
+        <button type="button" class="windows-download-detail-row" data-download-detail>
+          <span>Lihat detail aplikasi</span>
+          <strong aria-hidden="true">&gt;</strong>
+        </button>
       </div>
-      <p class="windows-download-description">
-        Installer Windows untuk ITS Maps dengan peta Carto berbasis data OSM, kamera realtime, notifikasi desktop, dan pembaruan aplikasi.
-      </p>
-      <div class="windows-download-modal-actions">
-        <button type="button" class="windows-download-primary" data-windows-download>Download .exe</button>
+      <div class="windows-download-view windows-download-detail" data-download-view="detail">
+        <button type="button" class="windows-download-back" data-download-back aria-label="Kembali">&lt;</button>
+        <div class="windows-download-head detail-head">
+          <img class="windows-download-icon" src="${ITS_APP_ICON}" alt="">
+          <div>
+            <h2>ITS Maps ${info.platformName}</h2>
+            <p>Versi ${ITS_APP_VERSION}</p>
+          </div>
+        </div>
+        <p class="windows-download-description long">${info.longDescription}</p>
+        <div class="windows-download-section-title">Akses aplikasi</div>
+        <div class="windows-access-list">
+          ${ITS_APP_ACCESS_ITEMS.map(([title, description]) => `
+            <article>
+              <strong>${title}</strong>
+              <span>${description}</span>
+            </article>
+          `).join("")}
+        </div>
       </div>
     </section>
   `;
   document.body.appendChild(modal);
+  document.body.classList.add("app-download-panel-open");
 
   let carouselIndex = 0;
   let carouselTimer = 0;
-  let closeModal: () => void = () => undefined;
+  let closeDownloadModal: () => void = () => undefined;
   const keyHandler = (event: KeyboardEvent) => {
-    if (event.key === "Escape") closeModal();
+    if (event.key === "Escape") closeDownloadModal();
   };
-  closeModal = () => {
+  closeDownloadModal = () => {
     window.clearInterval(carouselTimer);
     window.removeEventListener("keydown", keyHandler);
     modal.classList.remove("open");
+    document.body.classList.remove("app-download-panel-open");
+    clearPromptSidePanelWidth();
     window.setTimeout(() => modal.remove(), 220);
   };
   const setCarouselIndex = (nextIndex: number) => {
@@ -4671,17 +5285,26 @@ function itsShowWindowsDownloadModal(): void {
   };
 
   modal.addEventListener("click", (event) => {
-    if (event.target === modal) closeModal();
+    if (event.target === modal) closeDownloadModal();
   });
-  modal.querySelector<HTMLButtonElement>("[data-windows-close]")?.addEventListener("click", closeModal);
-  modal.querySelector<HTMLButtonElement>("[data-windows-download]")?.addEventListener("click", itsDownloadWindowsInstaller);
+  modal.querySelector<HTMLButtonElement>("[data-windows-close]")?.addEventListener("click", closeDownloadModal);
+  modal.querySelector<HTMLButtonElement>("[data-windows-download]")?.addEventListener("click", () => itsDownloadApp(info));
+  modal.querySelector<HTMLButtonElement>("[data-download-detail]")?.addEventListener("click", () => {
+    modal.classList.add("detail-open");
+  });
+  modal.querySelector<HTMLButtonElement>("[data-download-back]")?.addEventListener("click", () => {
+    modal.classList.remove("detail-open");
+  });
   modal.querySelectorAll<HTMLButtonElement>(".windows-download-dots button").forEach((dot, index) => {
     dot.addEventListener("click", () => setCarouselIndex(index));
   });
   const sheet = modal.querySelector<HTMLElement>(".windows-download-sheet");
-  if (sheet) setupPromptSheetSwipe(sheet, closeModal);
+  if (sheet) setupPromptSheetSwipe(sheet, closeDownloadModal);
   window.addEventListener("keydown", keyHandler);
-  window.setTimeout(() => modal.classList.add("open"), 20);
+  window.setTimeout(() => {
+    modal.classList.add("open");
+    setPromptSidePanelWidthFromSheet(sheet);
+  }, 20);
   carouselTimer = window.setInterval(() => setCarouselIndex(carouselIndex + 1), 2600);
 }
 
@@ -4690,15 +5313,20 @@ function setupPromptSheetSwipe(sheetEl: HTMLElement, onClose: () => void): void 
   let currentAxis = 0;
   let dragging = false;
   let pointerId = -1;
+  let startedAt = 0;
 
   sheetEl.addEventListener("pointerdown", (event) => {
     const target = event.target as HTMLElement;
-    if (target.closest("button, a, input, label, select, textarea")) return;
+    const startsOnHandle = Boolean(target.closest("[data-swipe-handle]"));
+    const startsOnHeader = Boolean(target.closest(".windows-download-head, .map-license-head"));
+    if (!startsOnHandle && !startsOnHeader && target.closest("button, a, input, label, select, textarea")) return;
+    if (!startsOnHandle && !startsOnHeader && sheetEl.scrollTop > 0) return;
     const horizontal = window.matchMedia("(min-width: 721px)").matches;
     startAxis = horizontal ? event.clientX : event.clientY;
     currentAxis = 0;
     dragging = true;
     pointerId = event.pointerId;
+    startedAt = performance.now();
     sheetEl.dataset.swipeAxis = horizontal ? "x" : "y";
     sheetEl.style.transition = "none";
     sheetEl.setPointerCapture?.(event.pointerId);
@@ -4709,7 +5337,12 @@ function setupPromptSheetSwipe(sheetEl: HTMLElement, onClose: () => void): void 
     const horizontal = sheetEl.dataset.swipeAxis === "x";
     const axis = horizontal ? event.clientX : event.clientY;
     currentAxis = Math.max(0, axis - startAxis);
+    if (currentAxis > 2) event.preventDefault();
     sheetEl.style.transform = horizontal ? `translateX(${currentAxis}px)` : `translateY(${currentAxis}px)`;
+    if (horizontal) {
+      const remaining = Math.max(0, sheetEl.getBoundingClientRect().width - currentAxis);
+      setPromptSidePanelWidth(remaining);
+    }
   });
 
   const finish = (event: PointerEvent) => {
@@ -4717,8 +5350,13 @@ function setupPromptSheetSwipe(sheetEl: HTMLElement, onClose: () => void): void 
     dragging = false;
     pointerId = -1;
     sheetEl.style.transition = "";
-    if (currentAxis > 80) onClose();
-    else sheetEl.style.transform = "";
+    const elapsed = Math.max(1, performance.now() - startedAt);
+    const velocity = currentAxis / elapsed;
+    if (currentAxis > 56 || velocity > 0.55) onClose();
+    else {
+      sheetEl.style.transform = "";
+      if (sheetEl.dataset.swipeAxis === "x") setPromptSidePanelWidthFromSheet(sheetEl);
+    }
   };
 
   sheetEl.addEventListener("pointerup", finish);
