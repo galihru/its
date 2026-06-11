@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { defineConfig } from "vite";
 
 export default defineConfig({
@@ -8,5 +9,11 @@ export default defineConfig({
     minify: "esbuild",
     cssMinify: true,
     outDir: "dist",
+    rollupOptions: {
+      input: {
+        main: resolve(__dirname, "index.html"),
+        windows: resolve(__dirname, "windows.html"),
+      },
+    },
   },
 });

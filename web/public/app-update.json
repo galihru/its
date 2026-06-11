@@ -1,0 +1,20 @@
+{
+  "appId": "id.ac.telkomuniversity.its",
+  "appName": "ITS Maps",
+  "ownerName": "Hanifa Septhi Larasati",
+  "institution": "Telkom University",
+  "versionCode": 12,
+  "versionName": "1.0.12",
+  "windowsUrl": "https://itstelkom.web.app/artifacts/apps/ITS-Maps-Windows-Custom-Setup-1.0.12-x64.download",
+  "desktopUrl": "https://itstelkom.web.app/artifacts/apps/ITS-Maps-Windows-Custom-Setup-1.0.12-x64.download",
+  "pwaUrl": "https://itstelkom.web.app/",
+  "logoUrl": "https://itstelkom.web.app/favicon.svg",
+  "updatedAt": "2026-06-11T00:00:00+07:00",
+  "force": false,
+  "autoDownload": false,
+  "releaseNotes": [
+    "Menambahkan ulang ITS Maps Windows dengan lokasi presisi, marker user, notifikasi route-aware, dan auto-update.",
+    "Menambahkan prompt website untuk membuka di aplikasi atau tetap di website dengan opsi Ingat pilihan saya.",
+    "Menambahkan PWA installable, splash screen, screenshot PWA, dan service worker notification click."
+  ]
+}

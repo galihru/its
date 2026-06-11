@@ -1,15 +1,26 @@
 {
   "name": "its-maps-web",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.12",
+  "productName": "ITS Maps Windows",
+  "description": "ITS Maps Windows untuk peta realtime, Raspberry Pi, kamera lalu lintas, notifikasi, dan auto-update.",
+  "author": {
+    "name": "Hanifa Septhi Larasati - Telkom University"
+  },
+  "main": "electron/main.cjs",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "desktop:dev": "npm run build && electron electron/main.cjs",
+    "desktop:open": "electron electron/main.cjs",
+    "desktop:build": "npm run build && electron-builder --win nsis portable"
   },
   "devDependencies": {
     "@types/leaflet": "^1.9.21",
+    "electron": "^38.8.6",
+    "electron-builder": "^26.8.1",
     "esbuild": "^0.28.0",
     "firebase-tools": "^15.18.0",
     "typescript": "^5.9.3",
@@ -20,5 +31,55 @@
     "leaflet-rotate": "^0.2.8",
     "mapbox-gl-leaflet": "^0.0.16",
     "maplibre-gl": "^5.24.0"
+  },
+  "build": {
+    "appId": "id.ac.telkomuniversity.its.maps.windows",
+    "productName": "ITS Maps Windows",
+    "copyright": "Copyright (c) 2026 Hanifa Septhi Larasati - Telkom University",
+    "asar": true,
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "public/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "executableName": "ITS Maps Windows",
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "artifactName": "ITS-Maps-Windows-Custom-Setup-${version}-${arch}.${ext}",
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "ITS Maps Windows",
+      "uninstallDisplayName": "ITS Maps Windows",
+      "deleteAppDataOnUninstall": true
+    },
+    "portable": {
+      "artifactName": "ITS-Maps-Windows-Portable-${version}-${arch}.${ext}"
+    }
   }
 }

@@ -4133,3 +4133,83 @@ window.addEventListener('appinstalled', () => {
   const b = document.getElementById('pwa-install-btn');
   if (b) b.remove();
 });
+
+type ItsNavigatorWithStandalone = Navigator & { standalone?: boolean };
+
+const ITS_WINDOWS_INSTALL_URL = "https://itstelkom.web.app/artifacts/apps/ITS-Maps-Windows-Custom-Setup-1.0.12-x64.download";
+const ITS_WINDOWS_INSTALL_NAME = "ITS-Maps-Windows-Custom-Setup-1.0.12-x64.exe";
+const ITS_APP_CHOICE_KEY = "its.maps.open-choice.v1";
+
+function itsIsStandaloneDisplay(): boolean {
+  return window.matchMedia("(display-mode: standalone)").matches || Boolean((navigator as ItsNavigatorWithStandalone).standalone);
+}
+
+function itsCreateSplash(): void {
+  if (document.getElementById("its-splash")) return;
+  const splash = document.createElement("div");
+  splash.id = "its-splash";
+  splash.innerHTML = `
+    <div class="its-splash-card">
+      <img src="/favicon.svg" alt="ITS">
+      <strong>ITS Maps</strong>
+      <span>Memuat peta realtime...</span>
+    </div>
+  `;
+  document.body.appendChild(splash);
+  window.setTimeout(() => splash.classList.add("hide"), 900);
+  window.setTimeout(() => splash.remove(), 1300);
+}
+
+function itsOpenWindowsApp(route = "map"): void {
+  window.location.href = `its://open?route=${encodeURIComponent(route)}`;
+}
+
+function itsDownloadWindowsInstaller(): void {
+  const link = document.createElement("a");
+  link.href = ITS_WINDOWS_INSTALL_URL;
+  link.download = ITS_WINDOWS_INSTALL_NAME;
+  link.rel = "noopener";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+function itsShowOpenChoicePrompt(): void {
+  if (itsIsStandaloneDisplay()) return;
+  if (localStorage.getItem(ITS_APP_CHOICE_KEY)) return;
+  if (document.getElementById("open-app-choice")) return;
+  const modal = document.createElement("div");
+  modal.id = "open-app-choice";
+  modal.className = "open-app-choice";
+  modal.innerHTML = `
+    <section class="open-app-choice-sheet" role="dialog" aria-modal="true">
+      <img src="/favicon.svg" alt="ITS">
+      <div>
+        <h2>Buka ITS Maps di aplikasi?</h2>
+        <p>Peta, kamera, notifikasi Windows, dan auto-update berjalan lebih lengkap di aplikasi Windows.</p>
+        <label><input type="checkbox" data-remember> Ingat pilihan saya</label>
+      </div>
+      <div class="open-app-choice-actions">
+        <button type="button" data-choice="app">Buka di app</button>
+        <button type="button" data-choice="web">Tetap di website</button>
+        <button type="button" data-choice="download">Download .exe</button>
+      </div>
+    </section>
+  `;
+  document.body.appendChild(modal);
+  window.setTimeout(() => modal.classList.add("open"), 20);
+  modal.querySelectorAll<HTMLButtonElement>("[data-choice]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const remember = modal.querySelector<HTMLInputElement>("[data-remember]")?.checked;
+      const choice = button.dataset.choice || "web";
+      if (remember) localStorage.setItem(ITS_APP_CHOICE_KEY, choice);
+      modal.classList.remove("open");
+      window.setTimeout(() => modal.remove(), 220);
+      if (choice === "app") itsOpenWindowsApp("map");
+      if (choice === "download") itsDownloadWindowsInstaller();
+    });
+  });
+}
+
+itsCreateSplash();
+window.setTimeout(itsShowOpenChoicePrompt, 1400);

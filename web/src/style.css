@@ -22,6 +22,168 @@ body {
   background: #dfe8f3;
 }
 
+#its-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 60000;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(circle at 42% 30%, rgba(68, 132, 255, 0.35), transparent 38%),
+    #101820;
+  opacity: 1;
+  transition: opacity 260ms ease, transform 260ms ease;
+}
+
+#its-splash.hide {
+  opacity: 0;
+  transform: scale(1.02);
+  pointer-events: none;
+}
+
+.its-splash-card {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  color: #fff;
+}
+
+.its-splash-card img {
+  width: 74px;
+  height: 74px;
+  object-fit: contain;
+  filter: drop-shadow(0 18px 30px rgba(37, 99, 235, 0.45));
+}
+
+.its-splash-card strong {
+  font-size: 28px;
+  font-weight: 900;
+}
+
+.its-splash-card span {
+  color: #bfdbfe;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.open-app-choice {
+  position: fixed;
+  inset: 0;
+  z-index: 52000;
+  display: grid;
+  place-items: start center;
+  padding-top: 18px;
+  pointer-events: none;
+}
+
+.open-app-choice-sheet {
+  width: min(760px, calc(100vw - 28px));
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  padding: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 14px;
+  background: rgba(17, 24, 39, 0.94);
+  color: #fff;
+  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.36);
+  transform: translateY(-18px);
+  opacity: 0;
+  transition: transform 220ms ease, opacity 220ms ease;
+  pointer-events: auto;
+  backdrop-filter: blur(18px);
+}
+
+.open-app-choice.open .open-app-choice-sheet {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+.open-app-choice img {
+  width: 54px;
+  height: 54px;
+  object-fit: contain;
+}
+
+.open-app-choice h2,
+.open-app-choice p {
+  margin: 0;
+}
+
+.open-app-choice p {
+  margin-top: 5px;
+  color: #cbd5e1;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.open-app-choice label {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+  color: #dbeafe;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.open-app-choice-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.open-app-choice-actions button,
+.pwa-install-btn {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 9px;
+  padding: 10px 13px;
+  background: #1f6fff;
+  color: #fff;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.open-app-choice-actions button[data-choice="web"] {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.pwa-install-btn {
+  position: fixed;
+  right: 14px;
+  bottom: 86px;
+  z-index: 51000;
+  box-shadow: 0 14px 34px rgba(37, 99, 235, 0.32);
+}
+
+@media (display-mode: standalone) {
+  .pwa-install-btn {
+    display: none !important;
+  }
+}
+
+@media (max-width: 720px) {
+  .open-app-choice {
+    place-items: end center;
+    padding: 12px;
+  }
+
+  .open-app-choice-sheet {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .open-app-choice-actions {
+    grid-column: 1 / -1;
+    justify-content: stretch;
+  }
+
+  .open-app-choice-actions button {
+    flex: 1;
+  }
+}
+
 .map {
   position: fixed;
   inset: 0;
