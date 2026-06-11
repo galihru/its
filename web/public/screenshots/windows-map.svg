@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <defs>
+    <linearGradient id="sky" x1="0" x2="0" y1="0" y2="1">
+      <stop stop-color="#bee0ff"/>
+      <stop offset=".36" stop-color="#eaf7ff"/>
+      <stop offset="1" stop-color="#d7f7dd"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="720" fill="#101820"/>
+  <rect x="32" y="28" width="76" height="664" rx="16" fill="#242930"/>
+  <rect x="132" y="28" width="1116" height="664" rx="16" fill="url(#sky)"/>
+  <path d="M132 430 C320 390 420 520 620 460 S920 330 1248 410" fill="none" stroke="#ffd166" stroke-width="34" opacity=".85"/>
+  <path d="M132 540 C300 500 470 590 670 540 S930 480 1248 530" fill="none" stroke="#80d8ff" stroke-width="48" opacity=".9"/>
+  <path d="M200 210 L1180 180" stroke="#ffffff" stroke-width="12" opacity=".9"/>
+  <path d="M260 120 L330 620 M520 105 L560 642 M860 94 L820 650 M1080 118 L1010 620" stroke="#fff" stroke-width="10" opacity=".86"/>
+  <g transform="translate(710 332)">
+    <rect x="-16" y="-34" width="32" height="54" rx="12" fill="#111827"/>
+    <circle cy="-19" r="6" fill="#ef4444"/>
+    <circle cy="-7" r="6" fill="#facc15"/>
+    <circle cy="5" r="6" fill="#22c55e"/>
+  </g>
+  <g transform="translate(536 392)">
+    <circle r="19" fill="#1d8fff"/>
+    <circle r="8" fill="#fff"/>
+  </g>
+  <rect x="156" y="52" width="330" height="48" rx="8" fill="#fff" opacity=".92"/>
+  <text x="178" y="83" fill="#64748b" font-family="Inter,Segoe UI,sans-serif" font-size="18" font-weight="700">Peta realtime ITS Maps</text>
+  <rect x="902" y="52" width="308" height="48" rx="8" fill="#111827" opacity=".86"/>
+  <text x="926" y="83" fill="#fff" font-family="Inter,Segoe UI,sans-serif" font-size="18" font-weight="800">User + Raspberry marker</text>
+  <rect x="914" y="480" width="276" height="150" rx="16" fill="#111827" opacity=".88"/>
+  <text x="942" y="526" fill="#fff" font-family="Inter,Segoe UI,sans-serif" font-size="24" font-weight="900">Koordinat presisi</text>
+  <text x="942" y="562" fill="#bfdbfe" font-family="Inter,Segoe UI,sans-serif" font-size="17" font-weight="700">Lat/lng tampil jelas</text>
+  <text x="942" y="592" fill="#bfdbfe" font-family="Inter,Segoe UI,sans-serif" font-size="17" font-weight="700">dan marker tidak dummy</text>
+</svg>

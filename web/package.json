@@ -1,28 +1,110 @@
 {
   "name": "its-maps-web",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.13",
+  "productName": "ITS Maps Windows",
+  "description": "Aplikasi Windows ITS Maps untuk sinkronisasi Raspberry Pi, website, peta realtime, grafik lalu lintas, kamera, dan auto-update.",
+  "author": {
+    "name": "Hanifa Septhi Larasati - Telkom University"
+  },
+  "main": "electron/main.cjs",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "desktop:dev": "npm run build && electron electron/main.cjs",
+    "desktop:open": "electron electron/main.cjs",
+    "desktop:build": "npm run build && electron-builder --win nsis portable",
+    "desktop:portable": "npm run build && electron-builder --win portable",
+    "desktop:custom-installer": "powershell -ExecutionPolicy Bypass -File scripts/build-custom-windows-installer.ps1"
   },
   "devDependencies": {
-    "@capacitor/cli": "^8.3.4",
     "@types/leaflet": "^1.9.21",
+    "electron": "^38.8.6",
+    "electron-builder": "^26.8.1",
     "esbuild": "^0.28.0",
     "firebase-tools": "^15.18.0",
     "typescript": "^5.9.3",
     "vite": "^8.0.1"
   },
   "dependencies": {
-    "@capacitor/android": "^8.3.4",
-    "@capacitor/app": "^8.1.0",
-    "@capacitor/core": "^8.3.4",
     "leaflet": "^1.9.4",
     "leaflet-rotate": "^0.2.8",
     "mapbox-gl-leaflet": "^0.0.16",
     "maplibre-gl": "^5.24.0"
+  },
+  "build": {
+    "appId": "id.ac.telkomuniversity.its.maps.windows",
+    "productName": "ITS Maps Windows",
+    "copyright": "Copyright (c) 2026 Hanifa Septhi Larasati - Telkom University",
+    "asar": true,
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "src/icon/its.png",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "dist",
+        "to": "dist"
+      }
+    ],
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "executableName": "ITS Maps Windows",
+      "legalTrademarks": "ITS Maps Windows - Hanifa Septhi Larasati - Telkom University",
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "artifactName": "ITS-Maps-Windows-Setup-${version}-${arch}.${ext}",
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "ITS Maps Windows",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "installerHeader": "build/installerHeader.bmp",
+      "installerSidebar": "build/installerSidebar.bmp",
+      "uninstallerSidebar": "build/uninstallerSidebar.bmp",
+      "include": "build/installer.nsh",
+      "uninstallDisplayName": "ITS Maps Windows",
+      "language": "1057",
+      "installerLanguages": [
+        "id_ID"
+      ],
+      "license": "build/windows-installer-license.txt",
+      "deleteAppDataOnUninstall": false
+    },
+    "portable": {
+      "artifactName": "ITS-Maps-Windows-Portable-${version}-${arch}.${ext}"
+    },
+    "extraMetadata": {
+      "name": "its-maps-windows",
+      "version": "1.0.13"
+    }
   }
 }
