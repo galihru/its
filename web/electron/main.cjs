@@ -285,7 +285,7 @@ async function checkForUpdates({ autoInstall = false } = {}) {
 
     if (autoInstall) {
       appendUpdateHistory({ status: "installing", message: "Menjalankan installer pembaruan", current, latest });
-      spawn(destination, ["/auto-update"], { detached: true, stdio: "ignore" }).unref();
+      spawn(destination, ["/S"], { detached: true, stdio: "ignore" }).unref();
       forceQuit = true;
       app.quit();
     }
