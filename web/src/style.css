@@ -388,269 +388,258 @@ body {
   }
 }
 
-.open-app-choice {
+.windows-download-app {
+  position: fixed;
+  right: 14px;
+  top: 66px;
+  z-index: 850;
+}
+
+.windows-download-trigger {
+  position: relative;
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 11px;
+  background: #ffffff;
+  color: #0f172a;
+  cursor: pointer;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.18);
+}
+
+.windows-download-trigger:hover,
+.windows-download-trigger:focus-visible {
+  border-color: rgba(37, 99, 235, 0.36);
+  box-shadow: 0 14px 30px rgba(37, 99, 235, 0.22);
+}
+
+.windows-download-trigger img {
+  width: 31px;
+  height: 31px;
+  object-fit: contain;
+}
+
+.windows-download-trigger::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: 50%;
+  right: calc(100% + 10px);
+  width: max-content;
+  max-width: 190px;
+  padding: 7px 9px;
+  border-radius: 7px;
+  background: #111827;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  opacity: 0;
+  transform: translate(5px, -50%);
+  pointer-events: none;
+  transition: opacity 160ms ease, transform 160ms ease;
+  white-space: nowrap;
+}
+
+.windows-download-trigger:hover::after,
+.windows-download-trigger:focus-visible::after {
+  opacity: 1;
+  transform: translate(0, -50%);
+}
+
+.windows-download-badge {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  width: 19px;
+  height: 19px;
+  border: 2px solid #fff;
+  border-radius: 999px;
+  background: #2563eb;
+  box-shadow: 0 5px 12px rgba(37, 99, 235, 0.3);
+}
+
+.windows-download-badge::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 4px;
+  width: 2px;
+  height: 7px;
+  border-radius: 999px;
+  background: #fff;
+  transform: translateX(-50%);
+}
+
+.windows-download-badge::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 4px;
+  width: 6px;
+  height: 6px;
+  border-right: 2px solid #fff;
+  border-bottom: 2px solid #fff;
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.windows-download-modal {
   position: fixed;
   inset: 0;
   z-index: 52000;
   display: grid;
-  place-items: start center;
-  padding-top: 18px;
+  place-items: center;
+  padding: 18px;
+  background: rgba(15, 23, 42, 0.42);
+  opacity: 0;
   pointer-events: none;
+  transition: opacity 180ms ease;
 }
 
-.open-app-choice-sheet {
-  width: min(760px, calc(100vw - 28px));
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 16px;
-  align-items: center;
-  padding: 16px;
-  border: 1px solid #dbe4ef;
-  border-radius: 12px;
-  background: #ffffff;
-  color: #0f172a;
-  box-shadow: 0 22px 54px rgba(15, 23, 42, 0.18);
-  transform: translateY(-18px);
-  opacity: 0;
-  transition: transform 220ms ease, opacity 220ms ease;
+.windows-download-modal.open {
+  opacity: 1;
   pointer-events: auto;
+}
+
+.windows-download-sheet {
+  position: relative;
+  width: min(430px, calc(100vw - 28px));
+  max-height: min(760px, calc(100vh - 28px));
+  overflow: auto;
+  padding: 18px;
+  border: 1px solid #dbe4ef;
+  border-radius: 14px;
+  background: #fff;
+  color: #162130;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.24);
+  transform: translateY(10px) scale(0.98);
+  transition: transform 180ms ease;
   touch-action: pan-y;
 }
 
-.open-app-choice.open .open-app-choice-sheet {
-  transform: translateY(0);
-  opacity: 1;
-}
-
-.open-app-choice img {
-  width: 54px;
-  height: 54px;
-  object-fit: contain;
-}
-
-.open-app-choice h2,
-.open-app-choice p {
-  margin: 0;
-}
-
-.open-app-choice p {
-  margin-top: 5px;
-  color: #475569;
-  font-size: 13px;
-  line-height: 1.4;
-}
-
-.open-app-choice label {
-  display: inline-flex;
-  gap: 8px;
-  align-items: center;
-  margin-top: 10px;
-  color: #334155;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.open-app-choice-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.open-app-choice-actions button,
-.pwa-install-btn {
-  border: 1px solid rgba(37, 99, 235, 0.22);
-  border-radius: 9px;
-  padding: 10px 13px;
-  background: #1f6fff;
-  color: #fff;
-  font-weight: 900;
-  cursor: pointer;
-}
-
-.open-app-choice-actions button[data-choice="web"] {
-  background: #ffffff;
-  color: #0f172a;
-  border-color: #cbd5e1;
-}
-
-.open-app-choice-actions button[data-choice="download"] {
-  background: #0f172a;
-  border-color: #0f172a;
-}
-
-.pwa-install-btn {
-  position: fixed;
-  right: 14px;
-  bottom: 86px;
-  z-index: 51000;
-  display: grid;
-  gap: 2px;
-  min-width: 112px;
-  padding: 9px 12px;
-  border: 1px solid rgba(37, 99, 235, 0.22);
-  border-radius: 10px;
-  background: #2563eb;
-  color: #fff;
-  font-weight: 900;
-  text-align: left;
-  cursor: pointer;
-  box-shadow: 0 14px 34px rgba(37, 99, 235, 0.32);
-}
-
-.pwa-install-btn span {
-  font-size: 10px;
-  opacity: 0.84;
-}
-
-.pwa-install-btn strong {
-  font-size: 13px;
-}
-
-.windows-download-app {
-  position: fixed;
-  right: 14px;
-  bottom: 18px;
-  z-index: 50950;
-  color: #fff;
-}
-
-.windows-download-trigger {
-  display: grid;
-  gap: 2px;
-  min-width: 142px;
-  padding: 10px 13px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 10px;
-  background: #1f6fff;
-  color: #fff;
-  text-align: left;
-  cursor: pointer;
-  box-shadow: 0 16px 38px rgba(15, 23, 42, 0.32);
-}
-
-.windows-download-trigger span {
-  font-size: 10px;
-  font-weight: 900;
-  opacity: 0.82;
-}
-
-.windows-download-trigger strong {
-  font-size: 13px;
-  font-weight: 900;
-}
-
-.windows-download-preview {
-  position: absolute;
-  right: 0;
-  bottom: calc(100% + 10px);
-  width: 310px;
-  display: grid;
-  gap: 10px;
-  padding: 10px;
-  border: 1px solid rgba(148, 163, 184, 0.26);
-  border-radius: 14px;
-  background: #202020;
-  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.38);
-  opacity: 0;
-  transform: translateY(8px) scale(0.98);
-  pointer-events: none;
-  transition: opacity 180ms ease, transform 180ms ease;
-}
-
-.windows-download-app:hover .windows-download-preview,
-.windows-download-app:focus-within .windows-download-preview {
-  opacity: 1;
+.windows-download-modal.open .windows-download-sheet {
   transform: translateY(0) scale(1);
 }
 
-.windows-download-carousel {
-  position: relative;
-  overflow: hidden;
-  aspect-ratio: 16 / 9;
-  border-radius: 10px;
-  background: #0f172a;
+.windows-download-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 32px;
+  height: 32px;
+  border: 1px solid #dbe4ef;
+  border-radius: 8px;
+  background: #fff;
+  color: #334155;
+  font-size: 14px;
+  font-weight: 900;
+  cursor: pointer;
 }
 
-.windows-download-carousel img {
+.windows-download-head {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  gap: 13px;
+  align-items: center;
+  padding-right: 38px;
+}
+
+.windows-download-icon {
+  width: 58px;
+  height: 58px;
+  object-fit: contain;
+}
+
+.windows-download-head h2 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 22px;
+  line-height: 1.12;
+}
+
+.windows-download-head p {
+  margin: 5px 0 0;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.windows-download-modal-carousel {
+  position: relative;
+  overflow: hidden;
+  margin-top: 16px;
+  aspect-ratio: 16 / 9;
+  border: 1px solid #dbe4ef;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.windows-download-modal-carousel img {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   opacity: 0;
-  transition: opacity 260ms ease;
+  transition: opacity 220ms ease;
 }
 
-.windows-download-carousel img.active {
+.windows-download-modal-carousel img.active {
   opacity: 1;
 }
 
-.windows-download-preview strong,
-.windows-download-preview span {
-  display: block;
+.windows-download-dots {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 9px;
+  display: flex;
+  justify-content: center;
+  gap: 6px;
 }
 
-.windows-download-preview strong {
-  font-size: 14px;
+.windows-download-dots button {
+  width: 7px;
+  height: 7px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(71, 85, 105, 0.36);
+  cursor: pointer;
+}
+
+.windows-download-dots button.active {
+  width: 18px;
+  background: #2563eb;
+}
+
+.windows-download-description {
+  margin: 14px 0 0;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.5;
+}
+
+.windows-download-modal-actions {
+  display: flex;
+  gap: 9px;
+  margin-top: 16px;
+}
+
+.windows-download-primary {
+  width: 100%;
+  min-height: 42px;
+  border-radius: 8px;
   font-weight: 900;
-}
-
-.windows-download-preview span {
-  margin-top: 3px;
-  color: #cbd5e1;
-  font-size: 12px;
-  line-height: 1.4;
-}
-
-@media (display-mode: standalone) {
-  .pwa-install-btn {
-    display: none !important;
-  }
+  cursor: pointer;
+  border: 1px solid #2563eb;
+  background: #2563eb;
+  color: #fff;
 }
 
 @media (max-width: 720px) {
-  .open-app-choice {
-    place-items: end center;
-    padding: 0;
-  }
-
-  .open-app-choice-sheet {
-    grid-template-columns: auto minmax(0, 1fr);
-    width: 100%;
-    border-right: 0;
-    border-bottom: 0;
-    border-left: 0;
-    border-radius: 16px 16px 0 0;
-    padding: 20px 16px max(20px, env(safe-area-inset-bottom));
-    transform: translateY(100%);
-  }
-
-  .open-app-choice-sheet::before {
-    content: "";
-    position: absolute;
-    top: 8px;
-    left: 50%;
-    width: 38px;
-    height: 4px;
-    border-radius: 999px;
-    background: #cbd5e1;
-    transform: translateX(-50%);
-  }
-
-  .open-app-choice.open .open-app-choice-sheet {
-    transform: translateY(0);
-  }
-
-  .open-app-choice-actions {
-    grid-column: 1 / -1;
-    justify-content: stretch;
-  }
-
-  .open-app-choice-actions button {
-    flex: 1;
-  }
-
   .windows-download-app {
     display: block;
     top: 58px;
@@ -671,53 +660,56 @@ body {
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18), 0 0 0 0.5px rgba(0, 0, 0, 0.06);
   }
 
-  .windows-download-trigger span {
+  .windows-download-trigger img {
+    width: 28px;
+    height: 28px;
+  }
+
+  .windows-download-trigger::after {
     display: none;
   }
 
-  .windows-download-trigger strong {
-    font-size: 0;
-  }
-
-  .windows-download-trigger strong::after {
-    content: "Win";
-    font-size: 11px;
-    font-weight: 900;
-    line-height: 1;
-  }
-
-  .windows-download-preview {
-    display: none;
-  }
-
-  .pwa-install-btn {
-    top: 104px;
-    right: 12px;
-    bottom: auto;
-    width: 40px;
-    min-width: 40px;
-    height: 40px;
+  .windows-download-modal {
+    place-items: end center;
     padding: 0;
-    place-items: center;
-    border-color: rgba(37, 99, 235, 0.12);
-    border-radius: 10px;
-    text-align: center;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18), 0 0 0 0.5px rgba(0, 0, 0, 0.06);
   }
 
-  .pwa-install-btn span {
-    display: none;
+  .windows-download-sheet {
+    width: 100%;
+    max-height: min(86vh, 760px);
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-radius: 16px 16px 0 0;
+    padding: 22px 16px max(18px, env(safe-area-inset-bottom));
+    transform: translateY(100%);
   }
 
-  .pwa-install-btn strong {
-    font-size: 0;
+  .windows-download-sheet::before {
+    content: "";
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    width: 38px;
+    height: 4px;
+    border-radius: 999px;
+    background: #cbd5e1;
+    transform: translateX(-50%);
   }
 
-  .pwa-install-btn strong::after {
-    content: "PWA";
-    font-size: 11px;
-    font-weight: 900;
-    line-height: 1;
+  .windows-download-modal.open .windows-download-sheet {
+    transform: translateY(0);
+  }
+
+  .windows-download-head h2 {
+    font-size: 19px;
+  }
+
+  .windows-download-modal-actions {
+    position: sticky;
+    bottom: 0;
+    padding-top: 8px;
+    background: #fff;
   }
 }
 
@@ -868,8 +860,8 @@ body {
   background: #edf2f8;
 }
 
-.leaflet-tile.its-custom-map-tile {
-  filter: saturate(1.22) contrast(1.04) brightness(1.04) hue-rotate(348deg);
+.leaflet-tile.its-carto-map-tile {
+  filter: saturate(1.08) contrast(1.02) brightness(1.02);
 }
 
 .leaflet-tile-pane::after {
@@ -879,8 +871,8 @@ body {
   z-index: 350;
   pointer-events: none;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 251, 242, 0.04)),
-    radial-gradient(circle at 50% 38%, rgba(255, 217, 142, 0.10), transparent 48%);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(248, 250, 252, 0.04)),
+    radial-gradient(circle at 50% 38%, rgba(255, 220, 154, 0.06), transparent 52%);
   mix-blend-mode: soft-light;
 }
 

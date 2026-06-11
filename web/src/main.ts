@@ -465,11 +465,15 @@ const state = {
 
 // ─── Tile layers ────────────────────────────────────────────────
 
-const streetLayer = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+const CARTO_TILE_URL = "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
+const CARTO_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>';
+
+const streetLayer = L.tileLayer(CARTO_TILE_URL, {
   maxZoom: 20,
-  className: "its-custom-map-tile",
-  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-} as L.TileLayerOptions & { className: string }).addTo(map);
+  subdomains: "abcd",
+  className: "its-carto-map-tile",
+  attribution: CARTO_ATTRIBUTION,
+} as L.TileLayerOptions & { className: string; subdomains: string }).addTo(map);
 
 const satelliteLayer = L.tileLayer(
   "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
@@ -1228,7 +1232,7 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
           }
           if (!pipMapInstance && currentPos) {
             pipMapInstance = L.map(pipMapElDiv).setView([currentPos.lat, currentPos.lng], 17);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OSM' }).addTo(pipMapInstance);
+            L.tileLayer(CARTO_TILE_URL, { maxZoom: 20, subdomains: "abcd", attribution: CARTO_ATTRIBUTION }).addTo(pipMapInstance);
             L.marker([currentPos.lat, currentPos.lng], { icon: L.icon({ iconUrl: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSI4IiBmaWxsPSIjZmY0NDQ0Ii8+PC9zdmc+', iconSize: [24, 24] }) }).addTo(pipMapInstance);
             L.marker([currentTarget.lat, currentTarget.lng], { icon: L.icon({ iconUrl: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48cmVjdCB4PSI0IiB5PSI0IiB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIGZpbGw9IiMxMGI5ODEiIHJ4PSIyIi8+PC9zdmc+', iconSize: [24, 24] }) }).addTo(pipMapInstance);
           }
@@ -4538,58 +4542,13 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-let deferredPrompt: any = null;
-function createInstallButton(): HTMLButtonElement {
-  const btn = document.createElement('button');
-  btn.id = 'pwa-install-btn';
-  btn.className = 'pwa-install-btn';
-  btn.type = 'button';
-  btn.title = 'Pasang PWA ITS Maps';
-  btn.setAttribute('aria-label', 'Pasang PWA ITS Maps');
-  btn.innerHTML = '<span>PWA</span><strong>Pasang</strong>';
-
-  btn.addEventListener('click', async () => {
-    if (!deferredPrompt) return;
-    try {
-      deferredPrompt.prompt();
-      const choice = await deferredPrompt.userChoice;
-      console.log('[PWA] install outcome', choice.outcome);
-      if (choice.outcome === 'accepted') btn.style.display = 'none';
-    } catch (e) {
-      console.warn('[PWA] prompt error', e);
-    }
-    deferredPrompt = null;
-  });
-  return btn;
-}
-
-window.addEventListener('beforeinstallprompt', (e: Event) => {
-  e.preventDefault();
-  deferredPrompt = e;
-  if (!document.getElementById('pwa-install-btn')) {
-    const btn = createInstallButton();
-    document.body.appendChild(btn);
-  } else {
-    (document.getElementById('pwa-install-btn') as HTMLElement).style.display = 'block';
-  }
-});
-
-window.addEventListener('appinstalled', () => {
-  console.log('[PWA] appinstalled');
-  const b = document.getElementById('pwa-install-btn');
-  if (b) b.remove();
-});
-
-type ItsNavigatorWithStandalone = Navigator & { standalone?: boolean };
+// PWA install UI is intentionally left to the browser, so Chrome/Edge can show
+// their native install and notification affordances without an extra app button.
 
 const ITS_WINDOWS_INSTALL_URL = "https://itstelkom.web.app/artifacts/apps/ITS-Maps-Windows-Custom-Setup-1.0.13-x64.download";
 const ITS_WINDOWS_INSTALL_NAME = "ITS-Maps-Windows-Custom-Setup-1.0.13-x64.exe";
-const ITS_APP_CHOICE_KEY = "its.maps.open-choice.v1";
+const ITS_WINDOWS_APP_VERSION = "1.0.13";
 const ITS_WINDOWS_PREVIEWS = [WIN_PREVIEW_WELCOME, WIN_PREVIEW_OPTIONS, WIN_PREVIEW_DONE];
-
-function itsIsStandaloneDisplay(): boolean {
-  return window.matchMedia("(display-mode: standalone)").matches || Boolean((navigator as ItsNavigatorWithStandalone).standalone);
-}
 
 function itsCreateSplash(): void {
   if (document.getElementById("its-splash")) return;
@@ -4632,10 +4591,6 @@ function itsCreateSplash(): void {
   window.setTimeout(hide, 3200);
 }
 
-function itsOpenWindowsApp(route = "map"): void {
-  window.location.href = `its://open?route=${encodeURIComponent(route)}`;
-}
-
 function itsDownloadWindowsInstaller(): void {
   const link = document.createElement("a");
   link.href = ITS_WINDOWS_INSTALL_URL;
@@ -4652,53 +4607,109 @@ function itsCreateWindowsDownloadButton(): void {
   host.id = "windows-download-app";
   host.className = "windows-download-app";
   host.innerHTML = `
-    <button type="button" class="windows-download-trigger" aria-label="Download aplikasi Windows">
-      <span>Windows</span>
-      <strong>Download .exe</strong>
+    <button type="button" class="windows-download-trigger" aria-label="Download ITS Maps Windows" title="Download ITS Maps Windows" data-tooltip="Download ITS Maps Windows">
+      <img src="/icons/icon-96.png" alt="">
+      <span class="windows-download-badge" aria-hidden="true"></span>
     </button>
-    <div class="windows-download-preview" aria-hidden="true">
-      <div class="windows-download-carousel">
-        ${ITS_WINDOWS_PREVIEWS.map((src, index) => `<img src="${src}" alt="" class="${index === 0 ? "active" : ""}">`).join("")}
-      </div>
-      <div>
-        <strong>ITS Maps Windows</strong>
-        <span>Installer custom, auto-update, kamera, peta, dan notifikasi desktop.</span>
-      </div>
-    </div>
   `;
-  host.querySelector<HTMLButtonElement>(".windows-download-trigger")?.addEventListener("click", itsDownloadWindowsInstaller);
+  host.querySelector<HTMLButtonElement>(".windows-download-trigger")?.addEventListener("click", itsShowWindowsDownloadModal);
   document.body.appendChild(host);
-  let index = 0;
-  window.setInterval(() => {
-    const images = host.querySelectorAll<HTMLImageElement>(".windows-download-carousel img");
+}
+
+function itsShowWindowsDownloadModal(): void {
+  if (document.getElementById("windows-download-modal")) return;
+  const modal = document.createElement("div");
+  modal.id = "windows-download-modal";
+  modal.className = "windows-download-modal";
+  modal.innerHTML = `
+    <section class="windows-download-sheet" role="dialog" aria-modal="true" aria-labelledby="windows-download-title">
+      <button type="button" class="windows-download-close" aria-label="Tutup" title="Tutup" data-windows-close>x</button>
+      <div class="windows-download-head">
+        <img class="windows-download-icon" src="/icons/icon-192.png" alt="">
+        <div>
+          <h2 id="windows-download-title">ITS Maps Windows</h2>
+          <p>Versi ${ITS_WINDOWS_APP_VERSION}</p>
+        </div>
+      </div>
+      <div class="windows-download-modal-carousel" aria-label="Preview aplikasi Windows">
+        ${ITS_WINDOWS_PREVIEWS.map((src, index) => `<img src="${src}" alt="Preview ITS Maps Windows ${index + 1}" class="${index === 0 ? "active" : ""}">`).join("")}
+        <div class="windows-download-dots">
+          ${ITS_WINDOWS_PREVIEWS.map((_, index) => `<button type="button" aria-label="Preview ${index + 1}" class="${index === 0 ? "active" : ""}"></button>`).join("")}
+        </div>
+      </div>
+      <p class="windows-download-description">
+        Installer Windows untuk ITS Maps dengan peta Carto berbasis data OSM, kamera realtime, notifikasi desktop, dan pembaruan aplikasi.
+      </p>
+      <div class="windows-download-modal-actions">
+        <button type="button" class="windows-download-primary" data-windows-download>Download .exe</button>
+      </div>
+    </section>
+  `;
+  document.body.appendChild(modal);
+
+  let carouselIndex = 0;
+  let carouselTimer = 0;
+  let closeModal: () => void = () => undefined;
+  const keyHandler = (event: KeyboardEvent) => {
+    if (event.key === "Escape") closeModal();
+  };
+  closeModal = () => {
+    window.clearInterval(carouselTimer);
+    window.removeEventListener("keydown", keyHandler);
+    modal.classList.remove("open");
+    window.setTimeout(() => modal.remove(), 220);
+  };
+  const setCarouselIndex = (nextIndex: number) => {
+    const images = modal.querySelectorAll<HTMLImageElement>(".windows-download-modal-carousel img");
+    const dots = modal.querySelectorAll<HTMLButtonElement>(".windows-download-dots button");
     if (!images.length) return;
-    images[index]?.classList.remove("active");
-    index = (index + 1) % images.length;
-    images[index]?.classList.add("active");
-  }, 2400);
+    images[carouselIndex]?.classList.remove("active");
+    dots[carouselIndex]?.classList.remove("active");
+    carouselIndex = nextIndex % images.length;
+    images[carouselIndex]?.classList.add("active");
+    dots[carouselIndex]?.classList.add("active");
+  };
+
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal) closeModal();
+  });
+  modal.querySelector<HTMLButtonElement>("[data-windows-close]")?.addEventListener("click", closeModal);
+  modal.querySelector<HTMLButtonElement>("[data-windows-download]")?.addEventListener("click", itsDownloadWindowsInstaller);
+  modal.querySelectorAll<HTMLButtonElement>(".windows-download-dots button").forEach((dot, index) => {
+    dot.addEventListener("click", () => setCarouselIndex(index));
+  });
+  const sheet = modal.querySelector<HTMLElement>(".windows-download-sheet");
+  if (sheet) setupPromptSheetSwipe(sheet, closeModal);
+  window.addEventListener("keydown", keyHandler);
+  window.setTimeout(() => modal.classList.add("open"), 20);
+  carouselTimer = window.setInterval(() => setCarouselIndex(carouselIndex + 1), 2600);
 }
 
 function setupPromptSheetSwipe(sheetEl: HTMLElement, onClose: () => void): void {
-  let startY = 0;
-  let currentY = 0;
+  let startAxis = 0;
+  let currentAxis = 0;
   let dragging = false;
   let pointerId = -1;
 
   sheetEl.addEventListener("pointerdown", (event) => {
     const target = event.target as HTMLElement;
     if (target.closest("button, a, input, label, select, textarea")) return;
-    startY = event.clientY;
-    currentY = 0;
+    const horizontal = window.matchMedia("(min-width: 721px)").matches;
+    startAxis = horizontal ? event.clientX : event.clientY;
+    currentAxis = 0;
     dragging = true;
     pointerId = event.pointerId;
+    sheetEl.dataset.swipeAxis = horizontal ? "x" : "y";
     sheetEl.style.transition = "none";
     sheetEl.setPointerCapture?.(event.pointerId);
   });
 
   sheetEl.addEventListener("pointermove", (event) => {
     if (!dragging || event.pointerId !== pointerId) return;
-    currentY = Math.max(0, event.clientY - startY);
-    sheetEl.style.transform = `translateY(${currentY}px)`;
+    const horizontal = sheetEl.dataset.swipeAxis === "x";
+    const axis = horizontal ? event.clientX : event.clientY;
+    currentAxis = Math.max(0, axis - startAxis);
+    sheetEl.style.transform = horizontal ? `translateX(${currentAxis}px)` : `translateY(${currentAxis}px)`;
   });
 
   const finish = (event: PointerEvent) => {
@@ -4706,7 +4717,7 @@ function setupPromptSheetSwipe(sheetEl: HTMLElement, onClose: () => void): void 
     dragging = false;
     pointerId = -1;
     sheetEl.style.transition = "";
-    if (currentY > 80) onClose();
+    if (currentAxis > 80) onClose();
     else sheetEl.style.transform = "";
   };
 
@@ -4714,50 +4725,7 @@ function setupPromptSheetSwipe(sheetEl: HTMLElement, onClose: () => void): void 
   sheetEl.addEventListener("pointercancel", finish);
 }
 
-function itsShowOpenChoicePrompt(): void {
-  if (itsIsStandaloneDisplay()) return;
-  if (localStorage.getItem(ITS_APP_CHOICE_KEY)) return;
-  if (document.getElementById("open-app-choice")) return;
-  const modal = document.createElement("div");
-  modal.id = "open-app-choice";
-  modal.className = "open-app-choice";
-  modal.innerHTML = `
-    <section class="open-app-choice-sheet" role="dialog" aria-modal="true">
-      <img src="/its.png" alt="ITS Maps">
-      <div>
-        <h2>Buka ITS Maps di aplikasi?</h2>
-        <p>Peta, kamera, notifikasi Windows, dan auto-update berjalan lebih lengkap di aplikasi Windows.</p>
-        <label><input type="checkbox" data-remember> Ingat pilihan saya</label>
-      </div>
-      <div class="open-app-choice-actions">
-        <button type="button" data-choice="app">Buka di app</button>
-        <button type="button" data-choice="web">Tetap di website</button>
-        <button type="button" data-choice="download">Download .exe</button>
-      </div>
-    </section>
-  `;
-  document.body.appendChild(modal);
-  const closeModal = () => {
-    modal.classList.remove("open");
-    window.setTimeout(() => modal.remove(), 220);
-  };
-  const sheet = modal.querySelector<HTMLElement>(".open-app-choice-sheet");
-  if (sheet) setupPromptSheetSwipe(sheet, closeModal);
-  window.setTimeout(() => modal.classList.add("open"), 20);
-  modal.querySelectorAll<HTMLButtonElement>("[data-choice]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const remember = modal.querySelector<HTMLInputElement>("[data-remember]")?.checked;
-      const choice = button.dataset.choice || "web";
-      if (remember) localStorage.setItem(ITS_APP_CHOICE_KEY, choice);
-      closeModal();
-      if (choice === "app") itsOpenWindowsApp("map");
-      if (choice === "download") itsDownloadWindowsInstaller();
-    });
-  });
-}
-
 if (!staticRoute) {
   itsCreateSplash();
   itsCreateWindowsDownloadButton();
-  window.setTimeout(itsShowOpenChoicePrompt, 1400);
 }
