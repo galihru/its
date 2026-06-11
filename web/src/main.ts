@@ -176,8 +176,6 @@ const OFFLINE_AFTER_MS = 60_000;
 const FIREBASE_DEVICES_URL =
   "https://itstelkom-default-rtdb.asia-southeast1.firebasedatabase.app/devices.json";
 const FIREBASE_ROOT_URL = FIREBASE_DEVICES_URL.replace(/\/devices\.json$/, "");
-const FIREBASE_TRAFFIC_DATASET_ROOT = `${FIREBASE_ROOT_URL}/trafficObjectDetectionDataset/devices`;
-const FIREBASE_BROWSER_YOLO_ROOT = `${FIREBASE_ROOT_URL}/browserYolo/devices`;
 const WEBRTC_SIGNAL_ROOT = "webrtc/devices";
 const WEBRTC_POLL_MS = 700;
 const WEBRTC_HEARTBEAT_MS = 5_000;
@@ -200,8 +198,191 @@ function requiredElement<T extends Element>(selector: string, name: string): T {
   return el;
 }
 
+function staticRouteName(pathname: string): "document" | "new" | null {
+  const normalized = pathname.replace(/\/+$/, "") || "/";
+  if (normalized.endsWith("/document") || normalized.endsWith("/documentation")) return "document";
+  if (normalized.endsWith("/new")) return "new";
+  return null;
+}
+
+function escapeStaticHtml(value: string): string {
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;").replaceAll("'", "&#039;");
+}
+
+function terminalStatic(commands: string[]): string {
+  return `<pre class="static-terminal"><code>${commands.map((command) => `$ ${escapeStaticHtml(command)}`).join("\n")}</code></pre>`;
+}
+
+function renderStaticSitePage(root: HTMLElement, route: "document" | "new"): void {
+  document.body.classList.add("static-site-body");
+  const isDocs = route === "document";
+  document.title = isDocs ? "ITS Maps Documentation" : "What's New | ITS Maps";
+  root.innerHTML = `
+    <div class="static-splash" data-static-splash>
+      <img src="/its.png" alt="ITS Maps">
+    </div>
+    <main class="static-page ${isDocs ? "doc-page" : "news-page"}">
+      <aside class="static-sidebar">
+        <a class="static-brand" href="/">
+          <img src="/its.png" alt="">
+          <span>ITS Maps</span>
+        </a>
+        <nav aria-label="${isDocs ? "Dokumentasi" : "Catatan pembaruan"}">
+          ${(isDocs ? [
+            ["Mulai", "#mulai"],
+            ["Arsitektur", "#arsitektur"],
+            ["Splash", "#splash"],
+            ["Notifikasi", "#notifikasi"],
+            ["Terminal", "#terminal"],
+          ] : [
+            ["Highlights", "#highlights"],
+            ["Windows app", "#windows"],
+            ["Website", "#website"],
+            ["Fixed", "#fixed"],
+            ["Terminal", "#terminal"],
+          ]).map(([label, href]) => `<a href="${href}">${label}</a>`).join("")}
+        </nav>
+      </aside>
+      <section class="static-content">
+        ${isDocs ? docsPageHtml() : newsPageHtml()}
+      </section>
+      <button class="static-floating-terminal" type="button" data-open-static-terminal>Terminal</button>
+      <section class="static-modal" data-static-modal hidden>
+        <div class="static-modal-panel" data-static-modal-panel>
+          <header>
+            <strong>Terminal</strong>
+            <button type="button" data-close-static-modal aria-label="Tutup">x</button>
+          </header>
+          ${terminalStatic(["cd web", "npm ci", "npm run dev", "npm run build", "npm run desktop:open"])}
+        </div>
+      </section>
+    </main>
+  `;
+  bindStaticModal();
+  window.setTimeout(() => {
+    const splash = document.querySelector<HTMLElement>("[data-static-splash]");
+    splash?.classList.add("hide");
+    window.setTimeout(() => splash?.remove(), 220);
+  }, 420);
+}
+
+function docsPageHtml(): string {
+  return `
+    <header class="static-hero" id="mulai">
+      <span>Documentation</span>
+      <h1>ITS Maps Windows</h1>
+      <p>Panduan singkat untuk menjalankan website, aplikasi Windows, splash dinamis, titlebar, notifikasi, dan installer update.</p>
+    </header>
+    <section class="static-section" id="arsitektur">
+      <h2>Arsitektur</h2>
+      <div class="static-card-grid">
+        <article><strong>src/main.ts</strong><p>Dashboard website, route /document, /documentation, /new, PWA, dan notifikasi publik.</p></article>
+        <article><strong>src/windows.ts</strong><p>Renderer Electron untuk Home, Peta, Kamera, panel dokumentasi, dan panel pembaruan.</p></article>
+        <article><strong>electron/main.cjs</strong><p>Native window, splash awal, auto-update, permission lokasi/media/notifikasi, dan klik notifikasi.</p></article>
+        <article><strong>public/sw.js</strong><p>Cache offline, push notification, dan routing saat notifikasi ditekan.</p></article>
+      </div>
+    </section>
+    <section class="static-section" id="splash">
+      <h2>Splash Dinamis</h2>
+      <p>Splash tidak lagi memakai gradient/glow berat. Durasi mengikuti pemuatan data: konfigurasi, data Raspberry, telemetry, peta, dan kamera. Jika data gagal dimuat, aplikasi tetap masuk mode offline.</p>
+    </section>
+    <section class="static-section" id="notifikasi">
+      <h2>Notifikasi Publik</h2>
+      <p>Website mendaftarkan service worker, meminta izin notifikasi, dan service worker siap menerima push event. Saat notifikasi ditekan, link tujuan dari payload dibuka dengan benar.</p>
+      <button class="static-action" type="button" data-enable-notifications>Aktifkan notifikasi</button>
+    </section>
+    <section class="static-section" id="terminal">
+      <h2>Terminal</h2>
+      ${terminalStatic(["cd web", "npm ci", "npm run dev", "npm run build", "npm run desktop:custom-installer"])}
+    </section>
+  `;
+}
+
+function newsPageHtml(): string {
+  return `
+    <header class="static-hero" id="highlights">
+      <span>What's New</span>
+      <h1>ITS Maps 1.0.13</h1>
+      <p>Catatan pembaruan untuk UI Windows, website, notifikasi, dokumentasi, dan workflow build.</p>
+    </header>
+    <section class="static-release" id="windows">
+      <h2>Windows app</h2>
+      <article><span>New</span><strong>Titlebar custom dengan dokumentasi</strong><p>Ikon buku, tombol pembaruan, minimize, maximize, close, dan tooltip berada di area titlebar.</p></article>
+      <article><span>Changed</span><strong>Splash lebih sederhana</strong><p>Logo berada di tengah, warna mengikuti gaya Windows, dan durasi mengikuti data yang dimuat.</p></article>
+      <article><span>Changed</span><strong>Kontrol peta lebih ringkas</strong><p>Pitch peta dipadatkan menjadi 2D dan 3D agar layar tidak penuh tombol.</p></article>
+    </section>
+    <section class="static-release" id="website">
+      <h2>Website</h2>
+      <article><span>New</span><strong>/documentation dan /new</strong><p>Halaman dokumentasi dan release notes bisa dibuka langsung dari web maupun Windows app.</p></article>
+      <article><span>New</span><strong>Push notification ready</strong><p>Service worker dapat menampilkan push notification publik dan membuka URL payload saat diklik.</p></article>
+    </section>
+    <section class="static-release" id="fixed">
+      <h2>Fixed</h2>
+      <article><span>Fixed</span><strong>Workflow GitHub Pages</strong><p>Path build disesuaikan dengan struktur repo saat ini supaya tidak mencari folder yang salah.</p></article>
+    </section>
+    <section class="static-section" id="terminal">
+      <h2>Terminal</h2>
+      ${terminalStatic(["cd web", "npm run build", "npm run desktop:open"])}
+    </section>
+  `;
+}
+
+function bindStaticModal(): void {
+  const modal = document.querySelector<HTMLElement>("[data-static-modal]");
+  const panel = document.querySelector<HTMLElement>("[data-static-modal-panel]");
+  const close = () => {
+    if (!modal || !panel) return;
+    modal.classList.remove("open");
+    window.setTimeout(() => { modal.hidden = true; panel.style.transform = ""; }, 180);
+  };
+  document.querySelector<HTMLButtonElement>("[data-open-static-terminal]")?.addEventListener("click", () => {
+    if (!modal) return;
+    modal.hidden = false;
+    window.setTimeout(() => modal.classList.add("open"), 20);
+  });
+  document.querySelector<HTMLButtonElement>("[data-close-static-modal]")?.addEventListener("click", close);
+  document.querySelector<HTMLButtonElement>("[data-enable-notifications]")?.addEventListener("click", requestPublicNotificationPermission);
+  if (!panel) return;
+  let startX = 0;
+  let startY = 0;
+  let current = 0;
+  let dragging = false;
+  panel.addEventListener("pointerdown", (event) => {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest("button, a")) return;
+    startX = event.clientX;
+    startY = event.clientY;
+    current = 0;
+    dragging = true;
+    panel.setPointerCapture?.(event.pointerId);
+  });
+  panel.addEventListener("pointermove", (event) => {
+    if (!dragging) return;
+    const desktop = window.matchMedia("(min-width: 760px)").matches;
+    current = desktop ? Math.max(0, event.clientX - startX) : Math.max(0, event.clientY - startY);
+    if (current < 2) return;
+    event.preventDefault();
+    panel.style.transform = desktop ? `translateX(${current}px)` : `translateY(${current}px)`;
+  });
+  const finish = () => {
+    if (!dragging) return;
+    dragging = false;
+    if (current > 84) close();
+    else panel.style.transform = "";
+  };
+  panel.addEventListener("pointerup", finish);
+  panel.addEventListener("pointercancel", finish);
+}
+
 const app = document.querySelector<HTMLDivElement>("#app");
 if (!app) throw new Error("Missing #app element.");
+const staticRoute = staticRouteName(window.location.pathname);
+let itsInitialDataReady = false;
+let itsMapReady = false;
+if (staticRoute) {
+  renderStaticSitePage(app, staticRoute);
+} else {
 app.innerHTML = `<div id="map" class="map" aria-label="Raspberry Pi realtime map"></div>`;
 const mapRoot = requiredElement<HTMLDivElement>("#map", "map");
 
@@ -216,6 +397,11 @@ const map = L.map(mapRoot, {
   bearing: 0,
   touchRotate: true,
   rotateControl: false,
+});
+
+map.whenReady(() => {
+  itsMapReady = true;
+  window.dispatchEvent(new CustomEvent("its:map-ready"));
 });
 
 // ─── State ──────────────────────────────────────────────────────
@@ -281,8 +467,9 @@ const state = {
 
 const streetLayer = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
   maxZoom: 20,
+  className: "its-custom-map-tile",
   attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-}).addTo(map);
+} as L.TileLayerOptions & { className: string }).addTo(map);
 
 const satelliteLayer = L.tileLayer(
   "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
@@ -411,22 +598,22 @@ const POI_LIBRARY: Record<PoiKind, {
 };
 
 const POI_VISUALS: Record<PoiKind, { icon: string; color: string }> = {
-  hospital: { icon: "🏥", color: "#ef4444" },
-  mall: { icon: "🏬", color: "#8b5cf6" },
-  campus: { icon: "🎓", color: "#0ea5e9" },
-  parking: { icon: "🅿️", color: "#64748b" },
-  park: { icon: "🌳", color: "#22c55e" },
-  worship: { icon: "🕌", color: "#f59e0b" },
-  school: { icon: "🏫", color: "#2563eb" },
-  office: { icon: "🏢", color: "#14b8a6" },
-  restaurant: { icon: "🍽️", color: "#fb7185" },
-  terminal: { icon: "🚌", color: "#0f766e" },
-  station: { icon: "🚉", color: "#1d4ed8" },
-  shelter: { icon: "🚏", color: "#0ea5e9" },
-  cemetery: { icon: "⚰️", color: "#64748b" },
-  transport: { icon: "🚍", color: "#0284c7" },
-  monument: { icon: "🗿", color: "#a16207" },
-  other: { icon: "📍", color: "#475569" },
+  hospital: { icon: "RS", color: "#e5484d" },
+  mall: { icon: "Mall", color: "#7c3aed" },
+  campus: { icon: "Edu", color: "#2563eb" },
+  parking: { icon: "P", color: "#64748b" },
+  park: { icon: "Park", color: "#16a34a" },
+  worship: { icon: "Ibd", color: "#d97706" },
+  school: { icon: "Sch", color: "#0f6cbd" },
+  office: { icon: "Off", color: "#0f766e" },
+  restaurant: { icon: "Eat", color: "#e11d48" },
+  terminal: { icon: "Bus", color: "#0f766e" },
+  station: { icon: "Rail", color: "#2563eb" },
+  shelter: { icon: "Stop", color: "#0284c7" },
+  cemetery: { icon: "Cem", color: "#64748b" },
+  transport: { icon: "Bus", color: "#0284c7" },
+  monument: { icon: "Mon", color: "#a16207" },
+  other: { icon: "POI", color: "#475569" },
 };
 
 function classifyPoiKind(tags: Record<string, string>): PoiKind {
@@ -438,8 +625,9 @@ function classifyPoiKind(tags: Record<string, string>): PoiKind {
   if (amenity === "university" || amenity === "college" || tourism === "university") return "campus";
   if (amenity === "restaurant" || amenity === "cafe" || amenity === "fast_food") return "restaurant";
   if (amenity === "parking" || tags.parking) return "parking";
-  if (amenity === "bus_station" || amenity === "ferry_terminal" || amenity === "terminal" || tags.public_transport === "station") return "station";
-  if (amenity === "bus_stop" || tags.highway === "bus_stop") return "shelter";
+  if (amenity === "bus_station" || amenity === "ferry_terminal" || amenity === "terminal") return "terminal";
+  if (tags.railway === "station" || tags.public_transport === "station") return "station";
+  if (amenity === "bus_stop" || tags.highway === "bus_stop" || tags.public_transport === "platform") return "shelter";
   if (amenity === "grave_yard" || tags.landuse === "cemetery") return "cemetery";
   if (amenity === "public_transport" || tags.public_transport) return "transport";
   if (amenity === "office" || tags.office) return "office";
@@ -455,18 +643,19 @@ function poiVisual(kind: PoiKind): { icon: string; color: string } {
 
 function poiMarkerSizeByZoom(): number {
   const zoom = map.getZoom();
-  return clamp(12 + (zoom - 13) * 1.15, 12, 24);
+  return clamp(16 + (zoom - 13) * 1.2, 16, 28);
 }
 
 function makePoiIcon(poi: PoiRecord, size: number): L.DivIcon {
   const visual = poiVisual(poi.kind);
+  const width = Math.max(size + 12, 22 + visual.icon.length * 5);
   return L.divIcon({
     className: "poi-marker-icon",
-    html: `<div class="poi-marker poi-kind-${poi.kind}" title="${escapeHtml(poi.title)}" style="--poi-accent:${visual.color}; --poi-size:${size}px;">
-      <span class="poi-marker-glyph">${visual.icon}</span>
+    html: `<div class="poi-marker poi-kind-${poi.kind}" data-kind="${poi.kind}" title="${escapeHtml(poi.title)}" style="--poi-accent:${visual.color}; --poi-size:${size}px; --poi-width:${width}px;">
+      <span class="poi-marker-glyph">${escapeHtml(visual.icon)}</span>
     </div>`,
-    iconSize: [size, size],
-    iconAnchor: [Math.round(size / 2), Math.round(size / 2)],
+    iconSize: [width, size + 10],
+    iconAnchor: [Math.round(width / 2), Math.round((size + 10) / 2)],
   });
 }
 
@@ -1165,6 +1354,72 @@ function buildOverpassBBoxString(bounds: L.LatLngBounds): string {
   return `${s},${w},${n},${e}`;
 }
 
+function poiNameFromTags(tags: Record<string, string>, fallback: string): string {
+  return tags["name:id"]
+    || tags.name
+    || tags.official_name
+    || tags.brand
+    || tags.operator
+    || tags.amenity
+    || tags.shop
+    || tags.tourism
+    || tags.office
+    || fallback;
+}
+
+function poiAddressFromTags(tags: Record<string, string>): string {
+  const parts = [
+    tags["addr:street"],
+    tags["addr:housenumber"],
+    tags["addr:subdistrict"],
+    tags["addr:city"],
+  ].filter(Boolean);
+  return parts.join(" ") || tags.addr || "";
+}
+
+function poiPriority(poi: PoiRecord): number {
+  const weights: Record<PoiKind, number> = {
+    station: 1,
+    terminal: 2,
+    shelter: 3,
+    hospital: 4,
+    campus: 5,
+    school: 6,
+    worship: 7,
+    parking: 8,
+    mall: 9,
+    restaurant: 10,
+    office: 11,
+    park: 12,
+    monument: 13,
+    transport: 14,
+    cemetery: 15,
+    other: 20,
+  };
+  return weights[poi.kind] ?? 20;
+}
+
+function visiblePoiLimit(): number {
+  const zoom = map.getZoom();
+  if (zoom < 14) return 28;
+  if (zoom < 16) return 48;
+  return 86;
+}
+
+function rankPoisForView(pois: PoiRecord[]): PoiRecord[] {
+  const center = map.getCenter();
+  return pois
+    .filter((poi) => isValidCoordinate(poi.lat, poi.lng))
+    .sort((a, b) => {
+      const priority = poiPriority(a) - poiPriority(b);
+      if (priority !== 0) return priority;
+      const da = center.distanceTo([a.lat, a.lng]);
+      const db = center.distanceTo([b.lat, b.lng]);
+      return da - db;
+    })
+    .slice(0, visiblePoiLimit());
+}
+
 async function fetchOverpassFeaturesForBounds(bounds: L.LatLngBounds): Promise<PoiRecord[]> {
   const bbox = buildOverpassBBoxString(bounds);
   // Query common POI tags; return nodes + ways + relations with center
@@ -1180,6 +1435,22 @@ async function fetchOverpassFeaturesForBounds(bounds: L.LatLngBounds): Promise<P
       node["tourism"](${bbox});
       way["tourism"](${bbox});
       relation["tourism"](${bbox});
+      node["office"](${bbox});
+      way["office"](${bbox});
+      relation["office"](${bbox});
+      node["leisure"="park"](${bbox});
+      way["leisure"="park"](${bbox});
+      relation["leisure"="park"](${bbox});
+      node["public_transport"](${bbox});
+      way["public_transport"](${bbox});
+      relation["public_transport"](${bbox});
+      node["highway"="bus_stop"](${bbox});
+      node["railway"="station"](${bbox});
+      way["railway"="station"](${bbox});
+      relation["railway"="station"](${bbox});
+      node["historic"](${bbox});
+      way["historic"](${bbox});
+      relation["historic"](${bbox});
     );
     out center tags;
   `;
@@ -1195,17 +1466,13 @@ async function fetchOverpassFeaturesForBounds(bounds: L.LatLngBounds): Promise<P
     const elements = Array.isArray(data.elements) ? data.elements : [];
     const pois: PoiRecord[] = elements.map((el: any) => {
       const tags = el.tags || {};
-      const name = tags.name || tags.official_name || tags['brand'] || tags['operator'] || tags.amenity || tags.shop || tags.tourism || `${tags.amenity || tags.shop || 'POI'}`;
+      const name = poiNameFromTags(tags, `POI ${el.id}`);
       const lat = el.type === 'node' ? el.lat : (el.center && el.center.lat) || el.lat || 0;
       const lng = el.type === 'node' ? el.lon : (el.center && el.center.lon) || el.lon || 0;
       const kind = classifyPoiKind(tags);
       const imageUrl = tags.image || tags['image:source'] || POI_LIBRARY[kind].imageUrl;
       const description = tags.description || tags['note'] || POI_LIBRARY[kind].description;
-      const addressParts = [] as string[];
-      if (tags['addr:street']) addressParts.push(tags['addr:street']);
-      if (tags['addr:housenumber']) addressParts.push(tags['addr:housenumber']);
-      if (tags['addr:city']) addressParts.push(tags['addr:city']);
-      const address = addressParts.join(" ") || (tags['addr'] || "");
+      const address = poiAddressFromTags(tags);
       return {
         id: `overpass-${el.type}-${el.id}`,
         kind,
@@ -1217,8 +1484,8 @@ async function fetchOverpassFeaturesForBounds(bounds: L.LatLngBounds): Promise<P
         icon: poiVisual(kind).icon,
         lat, lng,
       };
-    }).filter((p: PoiRecord) => p.lat && p.lng && !Number.isNaN(p.lat) && !Number.isNaN(p.lng));
-    return pois;
+    }).filter((p: PoiRecord) => isValidCoordinate(p.lat, p.lng));
+    return rankPoisForView(pois);
   } catch (err) {
     console.warn("Overpass fetch failed:", err);
     return [];
@@ -1273,6 +1540,8 @@ async function refreshOverpassLayer(): Promise<void> {
       { id: 'local-parking-1', kind: 'parking', title: 'Parkir Umum', description: '', address: '', imageUrl: POI_LIBRARY.parking.imageUrl, rating: POI_LIBRARY.parking.rating, icon: poiVisual('parking').icon, lat: c.lat - 0.0018, lng: c.lng - 0.0015 },
     ];
   }
+
+  finalPois = rankPoisForView(finalPois);
 
   // Update MapLibre POI layer (for 3D)
   updateMapLibrePoiLayer(finalPois);
@@ -1339,6 +1608,14 @@ map.on('click', async (ev: L.LeafletMouseEvent) => {
         node(around:80,${lat},${lng})["shop"];
         way(around:80,${lat},${lng})["shop"];
         relation(around:80,${lat},${lng})["shop"];
+        node(around:80,${lat},${lng})["tourism"];
+        way(around:80,${lat},${lng})["tourism"];
+        relation(around:80,${lat},${lng})["tourism"];
+        node(around:80,${lat},${lng})["public_transport"];
+        node(around:80,${lat},${lng})["highway"="bus_stop"];
+        node(around:80,${lat},${lng})["railway"="station"];
+        way(around:80,${lat},${lng})["leisure"="park"];
+        relation(around:80,${lat},${lng})["leisure"="park"];
       );
       out center tags;
     `;
@@ -1356,9 +1633,9 @@ map.on('click', async (ev: L.LeafletMouseEvent) => {
     const poi: PoiRecord = {
       id: `overpass-click-${el.type}-${el.id}`,
       kind,
-      title: tags.name || tags.amenity || tags.shop || `Feature ${el.id}`,
+      title: poiNameFromTags(tags, `Feature ${el.id}`),
       description: tags.description || tags['note'] || '',
-      address: (tags['addr:street'] || '') + (tags['addr:city'] ? ', ' + tags['addr:city'] : ''),
+      address: poiAddressFromTags(tags),
       imageUrl: tags.image || POI_LIBRARY[kind].imageUrl,
       rating: POI_LIBRARY[kind].rating,
       icon: poiVisual(kind).icon,
@@ -1391,8 +1668,56 @@ function isTrafficColor(v: unknown): v is TrafficColor {
 }
 function clamp(v: number, min: number, max: number) { return Math.min(max, Math.max(min, v)); }
 function finiteNumber(v: unknown): number | undefined {
-  return typeof v === "number" && Number.isFinite(v) ? v : undefined;
+  const n = typeof v === "number" ? v : typeof v === "string" && v.trim() ? Number(v) : NaN;
+  return Number.isFinite(n) ? n : undefined;
 }
+
+function stringValue(v: unknown): string | undefined {
+  return typeof v === "string" && v.trim() ? v.trim() : undefined;
+}
+
+function isValidCoordinate(lat: number, lng: number): boolean {
+  return Number.isFinite(lat)
+    && Number.isFinite(lng)
+    && Math.abs(lat) <= 90
+    && Math.abs(lng) <= 180
+    && !(Math.abs(lat) < 0.000001 && Math.abs(lng) < 0.000001);
+}
+
+function loadKnownDevicePositions(): Record<string, { lat: number; lng: number; updatedAt: number }> {
+  try {
+    const raw = localStorage.getItem(LAST_DEVICE_POSITIONS_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, { lat: number; lng: number; updatedAt: number }>;
+    return Object.fromEntries(Object.entries(parsed).filter(([, pos]) => isValidCoordinate(pos.lat, pos.lng)));
+  } catch {
+    return {};
+  }
+}
+
+function saveKnownDevicePosition(id: string, lat: number, lng: number): void {
+  if (!id || !isValidCoordinate(lat, lng)) return;
+  state.knownDevicePositions[id] = { lat, lng, updatedAt: Date.now() };
+  try {
+    localStorage.setItem(LAST_DEVICE_POSITIONS_STORAGE_KEY, JSON.stringify(state.knownDevicePositions));
+  } catch {
+    /* ignore */
+  }
+}
+
+function normalizeCameraDataset(raw: unknown): TrafficCameraDataset | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const record = raw as Record<string, unknown>;
+  const dataset: TrafficCameraDataset = {
+    snapshot1Url: stringValue(record.snapshot1Url) || stringValue(record.nama1) || stringValue(record.image1),
+    snapshot2Url: stringValue(record.snapshot2Url) || stringValue(record.nama2) || stringValue(record.image2),
+    updatedAt: normalizeEpoch(finiteNumber(record.updatedAt) ?? 0),
+    source: stringValue(record.source),
+    path: stringValue(record.path),
+  };
+  return dataset.snapshot1Url || dataset.snapshot2Url || dataset.updatedAt ? dataset : undefined;
+}
+
 function normalizeUpdateInfo(rawRecord: Record<string, unknown>): ControllerUpdateInfo | undefined {
   const nested = rawRecord.update && typeof rawRecord.update === "object"
     ? rawRecord.update as Record<string, unknown>
@@ -1683,6 +2008,8 @@ function normalizeOneDevice(raw: SnapshotDevice): DeviceRecord | null {
   } else {
     saveKnownDevicePosition(id, lat, lng);
   }
+  const safeLat = lat ?? (DEFAULT_CENTER as [number, number])[0];
+  const safeLng = lng ?? (DEFAULT_CENTER as [number, number])[1];
   const lastSeen = normalizeEpoch(typeof raw.lastSeen === "number" ? raw.lastSeen : 0);
   const rawStatus = isDeviceStatus(raw.status) ? raw.status : "offline";
   const status = lastSeen > 0 && Date.now() - lastSeen > OFFLINE_AFTER_MS ? "offline" : rawStatus;
@@ -1740,7 +2067,7 @@ function normalizeOneDevice(raw: SnapshotDevice): DeviceRecord | null {
     gpioReady: typeof rawRecord.gpioReady === "boolean" ? rawRecord.gpioReady : undefined,
     gpioNote: typeof rawRecord.gpioNote === "string" ? rawRecord.gpioNote.trim() || undefined : undefined,
     update: normalizeUpdateInfo(rawRecord),
-    position: { lat: clamp(lat, -90, 90), lng: clamp(lng, -180, 180) },
+    position: { lat: clamp(safeLat, -90, 90), lng: clamp(safeLng, -180, 180) },
   };
 }
 
@@ -3473,6 +3800,8 @@ async function refreshSnapshot(): Promise<void> {
     state.refreshBusy = false;
     window.clearTimeout(state.refreshTimer);
     state.refreshTimer = window.setTimeout(refreshSnapshot, state.config.refreshMs);
+    itsInitialDataReady = true;
+    window.dispatchEvent(new CustomEvent("its:initial-data-ready"));
   }
 }
 
@@ -3610,7 +3939,7 @@ function openLayerModal(): void {
       <div class="m-layer-options">
         <button class="m-layer-opt ${state.baseMode === 'street' ? 'active' : ''}" data-mode="street">
           <div class="m-layer-icon">🗺️</div>
-          <span>Normal</span>
+          <span>OpenStreetMap</span>
         </button>
         <button class="m-layer-opt ${state.baseMode === 'satellite' ? 'active' : ''}" data-mode="satellite">
           <div class="m-layer-icon">🛰️</div>
@@ -3659,20 +3988,31 @@ function closeLayerModal(): void {
 function setupSheetSwipe(sheetEl: HTMLElement, onClose: () => void): void {
   let startY = 0;
   let currentY = 0;
+  let dragging = false;
+  let pointerId = -1;
 
-  const onTouchStart = (e: TouchEvent) => {
-    startY = e.touches[0].clientY;
+  const onPointerDown = (e: PointerEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.closest("button, a, input, label, select, textarea")) return;
+    startY = e.clientY;
     currentY = 0;
+    dragging = true;
+    pointerId = e.pointerId;
     sheetEl.style.transition = "none";
+    sheetEl.setPointerCapture?.(e.pointerId);
   };
 
-  const onTouchMove = (e: TouchEvent) => {
-    const delta = e.touches[0].clientY - startY;
+  const onPointerMove = (e: PointerEvent) => {
+    if (!dragging || e.pointerId !== pointerId) return;
+    const delta = e.clientY - startY;
     currentY = Math.max(0, delta);
     sheetEl.style.transform = `translateY(${currentY}px)`;
   };
 
-  const onTouchEnd = () => {
+  const onPointerEnd = (e: PointerEvent) => {
+    if (!dragging || e.pointerId !== pointerId) return;
+    dragging = false;
+    pointerId = -1;
     sheetEl.style.transition = "";
     if (currentY > 80) {
       onClose();
@@ -3681,9 +4021,10 @@ function setupSheetSwipe(sheetEl: HTMLElement, onClose: () => void): void {
     }
   };
 
-  sheetEl.addEventListener("touchstart", onTouchStart, { passive: true });
-  sheetEl.addEventListener("touchmove", onTouchMove, { passive: true });
-  sheetEl.addEventListener("touchend", onTouchEnd);
+  sheetEl.addEventListener("pointerdown", onPointerDown);
+  sheetEl.addEventListener("pointermove", onPointerMove);
+  sheetEl.addEventListener("pointerup", onPointerEnd);
+  sheetEl.addEventListener("pointercancel", onPointerEnd);
 }
 
 // ─── 4. ITS Sheet (Swipeable, Dynamic Map Resize) ────────────────────────────
@@ -3701,6 +4042,13 @@ function getMapEl(): HTMLElement | null {
   return document.getElementById("map");
 }
 
+function setMobileToolbarSheetOffset(heightPx: number): void {
+  const offset = isMobile()
+    ? Math.min(Math.max(0, Math.round(heightPx - 160)), 340, Math.max(0, window.innerHeight - 420))
+    : 0;
+  document.documentElement.style.setProperty("--m-sheet-offset", `${offset}px`);
+}
+
 function setMapHeight(heightPx: number): void {
   const mapEl = getMapEl();
   if (!mapEl) return;
@@ -3710,6 +4058,7 @@ function setMapHeight(heightPx: number): void {
   mapEl.style.height = `${mapH}px`;
   mapEl.style.transition = "height 0.32s cubic-bezier(0.32,0.72,0,1)";
   mapEl.classList.toggle("its-open", heightPx > 0);
+  setMobileToolbarSheetOffset(heightPx);
   map.invalidateSize();
 }
 
@@ -3727,6 +4076,7 @@ function openITSSheet(): void {
 function closeITSSheet(): void {
   snapITSSheet("closed");
   document.body.classList.remove("its-sheet-open");
+  setMobileToolbarSheetOffset(0);
   setTimeout(() => {
     const mapEl = getMapEl();
     if (mapEl) {
@@ -4135,13 +4485,53 @@ initMobileUI();
 void refreshSnapshot();
 // Also fetch nearby POIs immediately so tablet filters have data even if devices are empty
 void refreshOverpassLayer();
+}
 
 // ─── PWA: Service Worker registration and install prompt handler ─────
+async function requestPublicNotificationPermission(): Promise<void> {
+  if (!("Notification" in window)) return;
+  const permission = Notification.permission === "granted"
+    ? "granted"
+    : await Notification.requestPermission();
+  if (permission !== "granted") return;
+  const registration = await navigator.serviceWorker?.ready.catch(() => null);
+  await registration?.showNotification("Notifikasi ITS Maps aktif", {
+    body: "Update aplikasi dan status publik akan muncul di sini.",
+    icon: "/icons/icon-192.png",
+    badge: "/icons/icon-96.png",
+    tag: "its-public-notification-ready",
+    data: { url: "/new" },
+  });
+}
+
+async function notifyLatestPublicUpdate(registration: ServiceWorkerRegistration): Promise<void> {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  try {
+    const response = await fetch("/app-update.json", { cache: "no-store" });
+    if (!response.ok) return;
+    const update = await response.json() as { versionName?: string; version?: string; releaseNotes?: string[]; updatedAt?: string };
+    const version = update.versionName || update.version || "";
+    const key = `${version}:${update.updatedAt || ""}`;
+    if (!version || localStorage.getItem("its-public-update-notified:v1") === key) return;
+    localStorage.setItem("its-public-update-notified:v1", key);
+    await registration.showNotification(`ITS Maps ${version}`, {
+      body: update.releaseNotes?.[0] || "Catatan pembaruan terbaru tersedia.",
+      icon: "/icons/icon-192.png",
+      badge: "/icons/icon-96.png",
+      tag: "its-public-app-update",
+      data: { url: "/new" },
+    });
+  } catch {
+    // Notification polling is best-effort; push events cover true background delivery.
+  }
+}
+
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', async () => {
     try {
-      await navigator.serviceWorker.register('/sw.js');
+      const registration = await navigator.serviceWorker.register('/sw.js');
       console.log('[PWA] Service Worker registered');
+      void notifyLatestPublicUpdate(registration);
     } catch (err) {
       console.warn('[PWA] Service Worker registration failed', err);
     }
@@ -4153,20 +4543,10 @@ function createInstallButton(): HTMLButtonElement {
   const btn = document.createElement('button');
   btn.id = 'pwa-install-btn';
   btn.className = 'pwa-install-btn';
-  btn.textContent = 'Pasang Aplikasi';
-  Object.assign(btn.style, {
-    position: 'fixed',
-    right: '12px',
-    bottom: '84px',
-    zIndex: '9999',
-    padding: '8px 12px',
-    background: '#2563eb',
-    color: '#fff',
-    border: 'none',
-    borderRadius: '8px',
-    boxShadow: '0 6px 14px rgba(37,99,235,0.24)',
-    cursor: 'pointer'
-  });
+  btn.type = 'button';
+  btn.title = 'Pasang PWA ITS Maps';
+  btn.setAttribute('aria-label', 'Pasang PWA ITS Maps');
+  btn.innerHTML = '<span>PWA</span><strong>Pasang</strong>';
 
   btn.addEventListener('click', async () => {
     if (!deferredPrompt) return;
@@ -4213,18 +4593,43 @@ function itsIsStandaloneDisplay(): boolean {
 
 function itsCreateSplash(): void {
   if (document.getElementById("its-splash")) return;
+  const startedAt = performance.now();
   const splash = document.createElement("div");
   splash.id = "its-splash";
   splash.innerHTML = `
     <div class="its-splash-card">
-      <img src="/favicon.svg" alt="ITS">
+      <img src="/its.png" alt="ITS Maps">
       <strong>ITS Maps</strong>
-      <span>Memuat peta realtime...</span>
+      <span>Menyiapkan peta OSM...</span>
+      <i aria-hidden="true"></i>
     </div>
   `;
   document.body.appendChild(splash);
-  window.setTimeout(() => splash.classList.add("hide"), 900);
-  window.setTimeout(() => splash.remove(), 1300);
+
+  let done = false;
+  let mapReady = itsMapReady;
+  let dataReady = itsInitialDataReady;
+  const hide = () => {
+    if (done) return;
+    done = true;
+    const wait = Math.max(0, 520 - (performance.now() - startedAt));
+    window.setTimeout(() => splash.classList.add("hide"), wait);
+    window.setTimeout(() => splash.remove(), wait + 320);
+  };
+  const hideWhenReady = () => {
+    if (mapReady && dataReady) hide();
+  };
+
+  window.addEventListener("its:map-ready", () => {
+    mapReady = true;
+    hideWhenReady();
+  }, { once: true });
+  window.addEventListener("its:initial-data-ready", () => {
+    dataReady = true;
+    hideWhenReady();
+  }, { once: true });
+  hideWhenReady();
+  window.setTimeout(hide, 3200);
 }
 
 function itsOpenWindowsApp(route = "map"): void {
@@ -4273,6 +4678,42 @@ function itsCreateWindowsDownloadButton(): void {
   }, 2400);
 }
 
+function setupPromptSheetSwipe(sheetEl: HTMLElement, onClose: () => void): void {
+  let startY = 0;
+  let currentY = 0;
+  let dragging = false;
+  let pointerId = -1;
+
+  sheetEl.addEventListener("pointerdown", (event) => {
+    const target = event.target as HTMLElement;
+    if (target.closest("button, a, input, label, select, textarea")) return;
+    startY = event.clientY;
+    currentY = 0;
+    dragging = true;
+    pointerId = event.pointerId;
+    sheetEl.style.transition = "none";
+    sheetEl.setPointerCapture?.(event.pointerId);
+  });
+
+  sheetEl.addEventListener("pointermove", (event) => {
+    if (!dragging || event.pointerId !== pointerId) return;
+    currentY = Math.max(0, event.clientY - startY);
+    sheetEl.style.transform = `translateY(${currentY}px)`;
+  });
+
+  const finish = (event: PointerEvent) => {
+    if (!dragging || event.pointerId !== pointerId) return;
+    dragging = false;
+    pointerId = -1;
+    sheetEl.style.transition = "";
+    if (currentY > 80) onClose();
+    else sheetEl.style.transform = "";
+  };
+
+  sheetEl.addEventListener("pointerup", finish);
+  sheetEl.addEventListener("pointercancel", finish);
+}
+
 function itsShowOpenChoicePrompt(): void {
   if (itsIsStandaloneDisplay()) return;
   if (localStorage.getItem(ITS_APP_CHOICE_KEY)) return;
@@ -4282,7 +4723,7 @@ function itsShowOpenChoicePrompt(): void {
   modal.className = "open-app-choice";
   modal.innerHTML = `
     <section class="open-app-choice-sheet" role="dialog" aria-modal="true">
-      <img src="/favicon.svg" alt="ITS">
+      <img src="/its.png" alt="ITS Maps">
       <div>
         <h2>Buka ITS Maps di aplikasi?</h2>
         <p>Peta, kamera, notifikasi Windows, dan auto-update berjalan lebih lengkap di aplikasi Windows.</p>
@@ -4296,20 +4737,27 @@ function itsShowOpenChoicePrompt(): void {
     </section>
   `;
   document.body.appendChild(modal);
+  const closeModal = () => {
+    modal.classList.remove("open");
+    window.setTimeout(() => modal.remove(), 220);
+  };
+  const sheet = modal.querySelector<HTMLElement>(".open-app-choice-sheet");
+  if (sheet) setupPromptSheetSwipe(sheet, closeModal);
   window.setTimeout(() => modal.classList.add("open"), 20);
   modal.querySelectorAll<HTMLButtonElement>("[data-choice]").forEach((button) => {
     button.addEventListener("click", () => {
       const remember = modal.querySelector<HTMLInputElement>("[data-remember]")?.checked;
       const choice = button.dataset.choice || "web";
       if (remember) localStorage.setItem(ITS_APP_CHOICE_KEY, choice);
-      modal.classList.remove("open");
-      window.setTimeout(() => modal.remove(), 220);
+      closeModal();
       if (choice === "app") itsOpenWindowsApp("map");
       if (choice === "download") itsDownloadWindowsInstaller();
     });
   });
 }
 
-itsCreateSplash();
-itsCreateWindowsDownloadButton();
-window.setTimeout(itsShowOpenChoicePrompt, 1400);
+if (!staticRoute) {
+  itsCreateSplash();
+  itsCreateWindowsDownloadButton();
+  window.setTimeout(itsShowOpenChoicePrompt, 1400);
+}

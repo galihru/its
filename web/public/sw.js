@@ -1,8 +1,21 @@
-const CACHE_NAME = 'its-maps-cache-v3';
+const CACHE_NAME = 'its-maps-cache-v5';
 const OFFLINE_URLS = [
   '/',
   '/index.html',
-  '/favicon.svg'
+  '/document',
+  '/documentation',
+  '/new',
+  '/manifest.webmanifest',
+  '/its.png',
+  '/icons/icon-96.png',
+  '/icons/icon-192.png',
+  '/icons/icon-512.png',
+  '/icons/shortcut-map-96.png',
+  '/icons/shortcut-camera-96.png',
+  '/screenshots/desktop-home.png',
+  '/screenshots/desktop-map.png',
+  '/screenshots/mobile-map.png',
+  '/app-update.json'
 ];
 
 self.addEventListener('install', (event) => {
@@ -60,6 +73,26 @@ self.addEventListener('notificationclick', (event) => {
         return existing.focus();
       }
       return self.clients.openWindow(targetUrl);
+    })
+  );
+});
+
+self.addEventListener('push', (event) => {
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch {
+    payload = { body: event.data?.text() };
+  }
+  const title = payload.title || 'ITS Maps';
+  const targetUrl = payload.url || payload.link || '/new';
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body: payload.body || payload.message || 'Pembaruan ITS Maps tersedia.',
+      icon: payload.icon || '/icons/icon-192.png',
+      badge: payload.badge || '/icons/icon-96.png',
+      tag: payload.tag || 'its-public-update',
+      data: { url: targetUrl },
     })
   );
 });

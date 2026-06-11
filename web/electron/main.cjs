@@ -13,6 +13,9 @@ let mainWindow = null;
 let splashWindow = null;
 let updateTimer = null;
 let forceQuit = false;
+let mainWindowReady = false;
+let rendererDataReady = false;
+let splashFallbackTimer = null;
 
 function iconPath() {
   const candidates = [
@@ -162,9 +165,19 @@ function downloadFile(url, destination, onProgress) {
   });
 }
 
-function notifyUpdate(title, body) {
+function openRendererPanel(panel) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+  mainWindow.webContents.send("its:open-panel", panel);
+}
+
+function notifyUpdate(title, body, panel = "settings") {
   if (!Notification.isSupported()) return;
-  new Notification({ title, body, icon: iconPath() }).show();
+  const notification = new Notification({ title, body, icon: iconPath() });
+  notification.on("click", () => openRendererPanel(panel));
+  notification.show();
 }
 
 function createSplashWindow() {
@@ -177,7 +190,7 @@ function createSplashWindow() {
     show: false,
     center: true,
     alwaysOnTop: false,
-    backgroundColor: "#101820",
+    backgroundColor: "#202020",
     icon: iconPath(),
     webPreferences: {
       contextIsolation: true,
@@ -195,15 +208,7 @@ function createSplashWindow() {
   <style>
     * { box-sizing: border-box; }
     html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; font-family: "Segoe UI", Arial, sans-serif; }
-    body {
-      display: grid;
-      place-items: center;
-      background:
-        radial-gradient(circle at 22% 18%, rgba(45, 140, 255, 0.48), transparent 38%),
-        radial-gradient(circle at 84% 82%, rgba(55, 221, 134, 0.28), transparent 36%),
-        linear-gradient(135deg, #101820, #1d2735 58%, #0d131b);
-      color: white;
-    }
+    body { display: grid; place-items: center; background: #202020; color: #f3f3f3; }
     .card {
       width: 100%;
       height: 100%;
@@ -211,14 +216,14 @@ function createSplashWindow() {
       place-items: center;
       gap: 14px;
       padding: 34px;
-      border: 1px solid rgba(255,255,255,0.11);
+      border: 1px solid rgba(255,255,255,0.12);
     }
-    img { width: 86px; height: 86px; object-fit: contain; filter: drop-shadow(0 20px 34px rgba(45,140,255,.48)); }
-    strong { font-size: 28px; font-weight: 900; letter-spacing: 0; }
-    span { color: #bfdbfe; font-size: 13px; font-weight: 800; }
-    .bar { width: 190px; height: 5px; border-radius: 99px; overflow: hidden; background: rgba(255,255,255,.14); }
-    .bar::before { content: ""; display: block; width: 42%; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #27d889, #2d8cff); animation: move 1.25s ease-in-out infinite; }
-    @keyframes move { 0% { transform: translateX(-110%); } 100% { transform: translateX(260%); } }
+    img { width: 72px; height: 72px; object-fit: contain; }
+    strong { font-size: 24px; font-weight: 700; letter-spacing: 0; }
+    span { color: #d0d0d0; font-size: 12px; font-weight: 600; }
+    .bar { width: 190px; height: 4px; overflow: hidden; background: rgba(255,255,255,.16); }
+    .bar::before { content: ""; display: block; width: 38%; height: 100%; background: #0078d4; animation: move 1.15s ease-in-out infinite; }
+    @keyframes move { 0% { transform: translateX(-110%); } 100% { transform: translateX(290%); } }
   </style>
 </head>
 <body>
@@ -241,6 +246,17 @@ function closeSplashWindow() {
   const splash = splashWindow;
   splashWindow = null;
   if (splash && !splash.isDestroyed()) splash.close();
+}
+
+function maybeShowMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed() || !mainWindowReady || !rendererDataReady) return;
+  if (splashFallbackTimer) {
+    clearTimeout(splashFallbackTimer);
+    splashFallbackTimer = null;
+  }
+  closeSplashWindow();
+  mainWindow.show();
+  mainWindow.focus();
 }
 
 async function checkForUpdates({ autoInstall = false } = {}) {
@@ -287,7 +303,7 @@ async function checkForUpdates({ autoInstall = false } = {}) {
     };
     appendUpdateHistory(downloaded);
     sendToRenderer("its:update-status", downloaded);
-    notifyUpdate("Update ITS Maps siap", "Pembaruan akan dipasang otomatis.");
+    notifyUpdate("Update ITS Maps siap", "Pembaruan akan dipasang otomatis.", "new");
 
     if (autoInstall) {
       const installing = { status: "installing", message: "Menjalankan custom setup secara silent", current, latest };
@@ -303,7 +319,7 @@ async function checkForUpdates({ autoInstall = false } = {}) {
     const failed = { status: "failed", message: error.message || "Gagal memeriksa pembaruan", current };
     appendUpdateHistory(failed);
     sendToRenderer("its:update-status", failed);
-    notifyUpdate("Update ITS Maps gagal", failed.message);
+    notifyUpdate("Update ITS Maps gagal", failed.message, "settings");
     return failed;
   }
 }
@@ -315,8 +331,9 @@ function createWindow() {
     minWidth: 1040,
     minHeight: 680,
     title: "ITS Maps Windows",
-    backgroundColor: "#171b20",
+    backgroundColor: "#202020",
     icon: iconPath(),
+    frame: false,
     show: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
@@ -328,18 +345,24 @@ function createWindow() {
   });
 
   mainWindow.once("ready-to-show", () => {
-    setTimeout(() => {
-      closeSplashWindow();
-      mainWindow?.show();
-    }, 450);
+    mainWindowReady = true;
+    splashFallbackTimer = setTimeout(() => {
+      rendererDataReady = true;
+      maybeShowMainWindow();
+    }, 12_000);
+    maybeShowMainWindow();
   });
 
   mainWindow.on("closed", () => {
     mainWindow = null;
+    mainWindowReady = false;
+    rendererDataReady = false;
   });
 
   mainWindow.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedUrl) => {
     console.error(`[ITS Maps Windows] Renderer load failed (${errorCode}): ${errorDescription} - ${validatedUrl}`);
+    rendererDataReady = true;
+    closeSplashWindow();
     mainWindow?.show();
   });
 
@@ -379,6 +402,18 @@ app.whenReady().then(() => {
   });
   ipcMain.handle("its:check-update", (_event, options) => checkForUpdates(options || {}));
   ipcMain.handle("its:get-update-history", () => readUpdateHistory());
+  ipcMain.handle("its:window-minimize", () => mainWindow?.minimize());
+  ipcMain.handle("its:window-toggle-maximize", () => {
+    if (!mainWindow) return false;
+    if (mainWindow.isMaximized()) mainWindow.unmaximize();
+    else mainWindow.maximize();
+    return mainWindow.isMaximized();
+  });
+  ipcMain.handle("its:window-close", () => mainWindow?.close());
+  ipcMain.on("its:renderer-ready", () => {
+    rendererDataReady = true;
+    maybeShowMainWindow();
+  });
 
   createSplashWindow();
   createWindow();

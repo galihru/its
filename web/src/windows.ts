@@ -126,6 +126,11 @@ type ItsDesktopBridge = {
   openLocationSettings?: () => Promise<boolean>;
   checkForUpdates?: (options?: { autoInstall?: boolean }) => Promise<UpdateStatus>;
   getUpdateHistory?: () => Promise<UpdateStatus[]>;
+  minimizeWindow?: () => Promise<void>;
+  toggleMaximizeWindow?: () => Promise<boolean>;
+  closeWindow?: () => Promise<void>;
+  rendererReady?: (message?: string) => void;
+  onOpenPanel?: (callback: (panel: AppPanel) => void) => () => void;
   onUpdateStatus?: (callback: (status: UpdateStatus) => void) => () => void;
   onUpdateHistory?: (callback: (history: UpdateStatus[]) => void) => () => void;
 };
@@ -161,7 +166,7 @@ type PoiRecord = {
 
 type AppTab = "home" | "map" | "camera";
 type MapFocus = "user" | "raspi";
-type AppPanel = "settings" | "statistics" | "licenses" | "history";
+type AppPanel = "settings" | "statistics" | "licenses" | "history" | "document" | "new";
 type ThemeMode = "system" | "dark" | "light";
 type AccentTheme = "classic" | "bloom" | "agave" | "rose";
 
@@ -187,7 +192,7 @@ const CUSTOM_ACCENT_STORAGE_KEY = "its-windows-custom-accent:v1";
 const OVERPASS_ENDPOINT = "https://overpass-api.de/api/interpreter";
 const VEHICLE_LABELS = new Set(["bicycle", "car", "motorcycle", "bus", "truck"]);
 const ACCENT_COLORS: Record<AccentTheme, string> = {
-  classic: "#6f7f91",
+  classic: "#0078d4",
   bloom: "#2458d6",
   agave: "#11777b",
   rose: "#b11945",
@@ -273,6 +278,11 @@ function boot(): void {
 }
 
 function bindUpdateBridge(): void {
+  desktopBridge?.onOpenPanel?.((panel) => {
+    if (["settings", "statistics", "licenses", "history", "document", "new"].includes(panel)) {
+      openPanel(panel);
+    }
+  });
   desktopBridge?.onUpdateStatus?.((status) => {
     state.updateStatus = status || state.updateStatus;
     if (state.activePanel === "settings") {
@@ -292,11 +302,25 @@ function bindUpdateBridge(): void {
 function shellHtml(): string {
   return `
     <div class="win-shell">
+      <header class="win-windowbar">
+        <div class="win-window-drag">
+          <img src="${APP_ICON_URL}" alt="" aria-hidden="true">
+          <span>ITS Maps Windows</span>
+        </div>
+        <div class="win-window-actions">
+          <button class="win-window-tool has-tooltip" type="button" data-open-panel="document" data-tip="Buka dokumentasi">${bookIcon()}</button>
+          <button class="win-window-tool has-tooltip" type="button" data-open-panel="new" data-tip="Lihat pembaruan">${sparkleIcon()}</button>
+          <button class="win-window-tool has-tooltip" type="button" data-window-minimize data-tip="Minimize">${minimizeIcon()}</button>
+          <button class="win-window-tool has-tooltip" type="button" data-window-maximize data-tip="Maximize">${maximizeIcon()}</button>
+          <button class="win-window-tool win-window-close has-tooltip" type="button" data-window-close data-tip="Close">${closeIcon()}</button>
+        </div>
+      </header>
+      <div class="win-shell-body">
       <div class="win-app-splash" data-app-splash>
         <div class="win-app-splash-card">
           <img src="${APP_ICON_URL}" alt="ITS Maps">
           <strong>ITS Maps Windows</strong>
-          <span data-app-splash-text>Mengambil data Raspberry, GPS, kamera, dan AI...</span>
+          <span data-app-splash-text>Mengambil data Raspberry dan peta...</span>
           <i></i>
         </div>
       </div>
@@ -323,12 +347,16 @@ function shellHtml(): string {
             <span data-title-meta>Raspberry Pi live traffic</span>
           </div>
           <div class="win-title-actions">
-            <button class="win-action-button" type="button" data-request-location>${userIcon()} Lokasi</button>
-            <button class="win-action-button" type="button" data-open-panel="statistics">${chartIcon()} Statistics</button>
-            <button class="win-action-button" type="button" data-open-panel="settings">${settingsIcon()} Setting</button>
-            <span class="win-chip">Raspberry <b data-raspi-state>-</b></span>
-            <span class="win-chip">Windows <b data-windows-state>-</b></span>
-            <button class="win-chip win-chip-button" type="button" data-open-panel="history">History <b data-history-count>0</b></button>
+            <div class="win-title-status">
+              <span class="win-chip">Raspberry <b data-raspi-state>-</b></span>
+              <span class="win-chip">Windows <b data-windows-state>-</b></span>
+              <button class="win-chip win-chip-button has-tooltip" type="button" data-open-panel="history" data-tip="Histori lalu lintas">History <b data-history-count>0</b></button>
+            </div>
+            <div class="win-title-tools">
+              <button class="win-action-button has-tooltip" type="button" data-request-location data-tip="Minta lokasi Windows">${targetIcon()}</button>
+              <button class="win-action-button has-tooltip" type="button" data-open-panel="statistics" data-tip="Statistik realtime">${chartIcon()}</button>
+              <button class="win-action-button has-tooltip" type="button" data-open-panel="settings" data-tip="Pengaturan">${settingsIcon()}</button>
+            </div>
           </div>
         </header>
 
@@ -381,14 +409,12 @@ function shellHtml(): string {
               <div class="win-map-status" data-map-status>Menunggu lokasi</div>
             </div>
             <div class="win-map-controls" aria-label="Kontrol peta">
-              <button type="button" data-map-locate title="Lokasi terkini">${targetIcon()}</button>
-              <button type="button" data-map-pitch="0" class="active">2D</button>
-              <button type="button" data-map-pitch="60">60</button>
-              <button type="button" data-map-pitch="75">75</button>
-              <button type="button" data-map-pitch="90">90</button>
-              <button type="button" data-map-zoom="in" title="Zoom in">+</button>
-              <button type="button" data-map-zoom="out" title="Zoom out">-</button>
-              <button type="button" class="win-compass" data-map-compass title="Reset arah utara"><span>N</span><i></i></button>
+              <button class="has-tooltip" type="button" data-map-locate data-tip="Lokasi terkini">${targetIcon()}</button>
+              <button class="has-tooltip active" type="button" data-map-pitch="0" data-tip="Mode peta 2D">2D</button>
+              <button class="has-tooltip" type="button" data-map-pitch="60" data-tip="Mode peta 3D">3D</button>
+              <button class="has-tooltip" type="button" data-map-zoom="in" data-tip="Zoom in">+</button>
+              <button class="has-tooltip" type="button" data-map-zoom="out" data-tip="Zoom out">-</button>
+              <button type="button" class="win-compass has-tooltip" data-map-compass data-tip="Reset arah utara"><span>N</span><i></i></button>
             </div>
             <div class="win-poi-sheet" data-poi-sheet></div>
           </section>
@@ -422,13 +448,14 @@ function shellHtml(): string {
           </section>
         </div>
       </main>
+      </div>
     </div>
   `;
 }
 
 function navButton(tab: AppTab, label: string, icon: string): string {
   return `
-    <button type="button" class="win-nav-button${tab === "home" ? " active" : ""}" data-tab="${tab}" aria-label="${label}">
+    <button type="button" class="win-nav-button has-tooltip${tab === "home" ? " active" : ""}" data-tab="${tab}" aria-label="${label}" data-tip="${label}">
       <span class="win-nav-icon">${icon}</span>
       <span>${label}</span>
     </button>
@@ -479,6 +506,16 @@ function bindStaticActions(): void {
   });
 
   document.querySelector<HTMLButtonElement>("[data-map-compass]")?.addEventListener("click", () => resetMapNorth());
+
+  document.querySelector<HTMLButtonElement>("[data-window-minimize]")?.addEventListener("click", () => {
+    void desktopBridge?.minimizeWindow?.();
+  });
+  document.querySelector<HTMLButtonElement>("[data-window-maximize]")?.addEventListener("click", () => {
+    void desktopBridge?.toggleMaximizeWindow?.();
+  });
+  document.querySelector<HTMLButtonElement>("[data-window-close]")?.addEventListener("click", () => {
+    void desktopBridge?.closeWindow?.();
+  });
 
   document.querySelector<HTMLButtonElement>("[data-location-allow]")?.addEventListener("click", requestUserLocation);
   document.querySelector<HTMLButtonElement>("[data-location-later]")?.addEventListener("click", hideLocationPrompt);
@@ -560,7 +597,9 @@ function sidePanelHtml(panel: AppPanel): string {
   const title = panel === "settings" ? "Setting"
     : panel === "statistics" ? "Statistics"
       : panel === "licenses" ? "Licence"
-        : "History";
+        : panel === "document" ? "Documentation"
+          : panel === "new" ? "What's New"
+            : "History";
   return `
     <section class="win-side-panel" data-side-panel>
       <header class="win-side-head">
@@ -571,7 +610,12 @@ function sidePanelHtml(panel: AppPanel): string {
         <button class="win-icon-button" type="button" data-close-side-panel aria-label="Tutup">${closeIcon()}</button>
       </header>
       <div class="win-side-body">
-        ${panel === "settings" ? settingsPanelHtml() : panel === "statistics" ? statisticsPanelHtml() : panel === "licenses" ? licensePanelHtml() : historyPanelHtml()}
+        ${panel === "settings" ? settingsPanelHtml()
+          : panel === "statistics" ? statisticsPanelHtml()
+            : panel === "licenses" ? licensePanelHtml()
+              : panel === "document" ? documentPanelHtml()
+                : panel === "new" ? whatsNewPanelHtml()
+                  : historyPanelHtml()}
       </div>
     </section>
   `;
@@ -600,7 +644,7 @@ function settingsPanelHtml(): string {
     <section class="win-panel-card">
       <h3>Theme</h3>
       <div class="win-accent-grid">
-        ${accentButton("classic", "Classic")}
+        ${accentButton("classic", "Windows")}
         ${accentButton("bloom", "Bloom")}
         ${accentButton("agave", "Agave")}
         ${accentButton("rose", "Rose")}
@@ -626,9 +670,60 @@ function settingsPanelHtml(): string {
         ${infoRow("Histori terakhir", updateHistoryLine())}
       </div>
       <button class="win-wide-action" type="button" data-check-update>${settingsIcon()} Cek pembaruan</button>
-      <button class="win-wide-action" type="button" data-auto-install-update>${targetIcon()} Cek dan install otomatis</button>
-      <p class="win-panel-note">Jika versi baru tersedia, aplikasi mengunduh custom setup lalu menjalankan installer native secara silent dan membuka aplikasi kembali.</p>
+      <p class="win-panel-note">Auto-update tetap berjalan di background. Jika versi baru tersedia, aplikasi mengunduh custom setup, menjalankan installer native secara silent, lalu membuka aplikasi kembali.</p>
     </section>
+  `;
+}
+
+function documentPanelHtml(): string {
+  return `
+    <section class="win-panel-card win-doc-card">
+      <h3>Jalankan project</h3>
+      <p class="win-panel-note">Command ini bisa dijalankan dari folder <strong>web</strong> untuk website, preview build, dan aplikasi Windows.</p>
+      ${terminalBlock(["npm ci", "npm run dev", "npm run build", "npm run desktop:open"])}
+    </section>
+    <section class="win-panel-card win-doc-card">
+      <h3>Struktur perubahan</h3>
+      <div class="win-doc-list">
+        <article><strong>electron/main.cjs</strong><span>Splash native sederhana, kontrol window, klik notifikasi update, dan sinyal data-ready.</span></article>
+        <article><strong>src/windows.ts</strong><span>Titlebar custom, panel dokumentasi, panel pembaruan, tooltip, dan splash renderer dinamis.</span></article>
+        <article><strong>src/windows.css</strong><span>Visual Windows yang lebih tenang tanpa blur/glow berlebihan, layout penuh, dan tombol lebih ringkas.</span></article>
+        <article><strong>src/main.ts</strong><span>Route /documentation, /document, dan /new untuk website, notifikasi publik, serta splash web yang lebih sederhana.</span></article>
+      </div>
+    </section>
+    <section class="win-panel-card win-doc-card">
+      <h3>Alur splash</h3>
+      <p class="win-panel-note">Splash muncul cepat jika data lokal/Firebase siap cepat, dan bertahan lebih lama saat konfigurasi, snapshot, kamera, atau telemetry masih dimuat. Jika jaringan gagal, aplikasi masuk mode offline dan tetap membuka dashboard.</p>
+    </section>
+  `;
+}
+
+function whatsNewPanelHtml(): string {
+  return `
+    <section class="win-panel-card win-doc-card">
+      <h3>Highlights</h3>
+      <div class="win-doc-list">
+        <article><strong>Splash baru</strong><span>Logo di tengah, warna mengikuti Windows, tanpa blur dan tanpa kartu dekoratif berlebihan.</span></article>
+        <article><strong>Titlebar Windows</strong><span>Ikon buku dokumentasi, ikon pembaruan, tooltip, minimize, maximize, dan close dalam satu area.</span></article>
+        <article><strong>UI lebih ringkas</strong><span>Tombol header dan kontrol peta dipadatkan agar layar utama lebih penuh untuk kamera, peta, dan grafik.</span></article>
+        <article><strong>Notifikasi publik</strong><span>Service worker sekarang siap menerima push notification dan membuka URL tujuan saat notifikasi ditekan.</span></article>
+      </div>
+    </section>
+    <section class="win-panel-card">
+      <h3>Release terminal</h3>
+      ${terminalBlock(["npm run build", "npm run desktop:custom-installer"])}
+    </section>
+    <section class="win-panel-card">
+      <h3>Link cepat</h3>
+      <button class="win-wide-action" type="button" data-open-panel="document">${bookIcon()} Buka dokumentasi</button>
+      <button class="win-wide-action" type="button" data-open-panel="settings">${settingsIcon()} Cek pembaruan</button>
+    </section>
+  `;
+}
+
+function terminalBlock(commands: string[]): string {
+  return `
+    <pre class="win-terminal" aria-label="Terminal"><code>${commands.map((line) => `$ ${escapeHtml(line)}`).join("\n")}</code></pre>
   `;
 }
 
@@ -803,8 +898,11 @@ function invalidateMaps(): void {
 
 async function refreshData(): Promise<void> {
   try {
+    setAppSplashText("Membaca konfigurasi...");
     await refreshConfig();
+    setAppSplashText("Mengambil data Raspberry...");
     const devices = await enrichDevices(await fetchDevices());
+    setAppSplashText("Menyiapkan peta dan kamera...");
     state.devices = devices;
     state.device = selectActiveDevice(devices);
     state.desktopClients = await fetchDesktopClients().catch(() => []);
@@ -836,6 +934,11 @@ async function refreshConfig(): Promise<void> {
   }
 }
 
+function setAppSplashText(message: string): void {
+  const text = document.querySelector<HTMLElement>("[data-app-splash-text]");
+  if (text) text.textContent = message;
+}
+
 async function fetchDevices(): Promise<DeviceRecord[]> {
   const urls = uniqueStrings([
     state.config.snapshotUrl,
@@ -861,6 +964,7 @@ function hideAppSplash(message = "Data siap"): void {
   const splash = document.querySelector<HTMLElement>("[data-app-splash]");
   const text = splash?.querySelector<HTMLElement>("[data-app-splash-text]");
   if (text) text.textContent = message;
+  desktopBridge?.rendererReady?.(message);
   window.setTimeout(() => {
     splash?.classList.add("hide");
     window.setTimeout(() => splash?.remove(), 260);
@@ -897,9 +1001,10 @@ async function fetchDeviceTelemetry(id: string): Promise<{ traffic: unknown; yol
     traffic.snapshot1Url = cached.snapshot1Url;
     traffic.snapshot2Url = cached.snapshot2Url;
   } else if (trafficUpdatedAt) {
-    const snapshots = await readFirebaseFields(`${FIREBASE_TRAFFIC_DATASET_ROOT}/${id}`, ["snapshot1Url", "snapshot2Url"]).catch(() => ({}));
-    traffic.snapshot1Url = snapshots.snapshot1Url;
-    traffic.snapshot2Url = snapshots.snapshot2Url;
+    const snapshots = await readFirebaseFields(`${FIREBASE_TRAFFIC_DATASET_ROOT}/${id}`, ["snapshot1Url", "snapshot2Url"])
+      .catch(() => ({} as Record<string, unknown>));
+    traffic.snapshot1Url = stringValue(snapshots.snapshot1Url);
+    traffic.snapshot2Url = stringValue(snapshots.snapshot2Url);
     const dataset = normalizeCameraDataset(traffic);
     if (dataset) state.snapshotCache.set(id, dataset);
   }
@@ -2775,6 +2880,22 @@ function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number)
   const a = Math.sin(dLat / 2) ** 2
     + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
   return earth * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function bookIcon(): string {
+  return `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 4.5A2.5 2.5 0 0 1 7.5 2H20v17H7.5A2.5 2.5 0 0 0 5 21.5v-17Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M5 4.5A2.5 2.5 0 0 1 7.5 7H20M9 11h7M9 15h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`;
+}
+
+function sparkleIcon(): string {
+  return `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M18 14l.9 2.1L21 17l-2.1.9L18 20l-.9-2.1L15 17l2.1-.9L18 14ZM5.5 14l.7 1.6 1.6.7-1.6.7-.7 1.6-.7-1.6-1.6-.7 1.6-.7.7-1.6Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>`;
+}
+
+function minimizeIcon(): string {
+  return `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 12h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`;
+}
+
+function maximizeIcon(): string {
+  return `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1.6" stroke="currentColor" stroke-width="1.8"/></svg>`;
 }
 
 function homeIcon(): string {

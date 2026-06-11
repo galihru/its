@@ -73,25 +73,49 @@
       "name": "Buka Peta",
       "short_name": "Peta",
       "url": "/?route=map&source=pwa",
-      "icons": [{ "src": "/icons/shortcut-map-96.png", "sizes": "96x96", "type": "image/png" }]
+      "icons": [
+        {
+          "src": "/icons/shortcut-map-96.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
     },
     {
       "name": "Buka Kamera",
       "short_name": "Camera",
       "url": "/?route=camera&source=pwa",
-      "icons": [{ "src": "/icons/shortcut-camera-96.png", "sizes": "96x96", "type": "image/png" }]
+      "icons": [
+        {
+          "src": "/icons/shortcut-camera-96.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
     },
     {
       "name": "Documentation",
       "short_name": "Docs",
       "url": "/documentation?source=pwa",
-      "icons": [{ "src": "/icons/icon-96.png", "sizes": "96x96", "type": "image/png" }]
+      "icons": [
+        {
+          "src": "/icons/icon-96.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
     },
     {
       "name": "What's New",
       "short_name": "New",
       "url": "/new?source=pwa",
-      "icons": [{ "src": "/icons/icon-96.png", "sizes": "96x96", "type": "image/png" }]
+      "icons": [
+        {
+          "src": "/icons/icon-96.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
     }
   ]
 }
