@@ -1,4 +1,4 @@
-const CACHE_NAME = 'its-maps-cache-v5';
+const CACHE_NAME = 'its-maps-cache-v3';
 const OFFLINE_URLS = [
   '/',
   '/index.html',
@@ -22,20 +22,6 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
-  const url = new URL(event.request.url);
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
-  if (
-    url.pathname === '/app.json'
-    || url.pathname.endsWith('/app-update.json')
-    || url.pathname === '/apk.json'
-    || url.pathname.startsWith('/apk/')
-    || url.pathname === '/.well-known/assetlinks.json'
-    || url.hostname.endsWith('firebasedatabase.app')
-    || url.hostname.endsWith('firebaseio.com')
-  ) {
-    event.respondWith(fetch(event.request, { cache: 'no-store' }));
-    return;
-  }
 
   if (event.request.mode === 'navigate') {
     event.respondWith(
@@ -52,31 +38,28 @@ self.addEventListener('fetch', (event) => {
 
   event.respondWith(
     fetch(event.request).then((response) => {
-      try {
-        const copy = response.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy).catch(() => undefined));
-      } catch (e) {
-        // ignore opaque responses and other failures
-      }
-      return response;
+        try {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+        } catch (e) {
+          // ignore opaque responses and other failures
+        }
+        return response;
     }).catch(() => caches.match(event.request).then((cached) => cached || caches.match('/index.html')))
   );
 });
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const targetUrl = event.notification.data?.url || '/?update=1';
+  const targetUrl = event.notification.data?.url || '/';
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true })
-      .then((clientList) => {
-        for (const client of clientList) {
-          if ('focus' in client) {
-            client.navigate(targetUrl);
-            return client.focus();
-          }
-        }
-        if (self.clients.openWindow) return self.clients.openWindow(targetUrl);
-        return undefined;
-      })
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      const existing = clients.find((client) => 'focus' in client);
+      if (existing) {
+        existing.navigate(targetUrl);
+        return existing.focus();
+      }
+      return self.clients.openWindow(targetUrl);
+    })
   );
 });

@@ -1,0 +1,10 @@
+*.sh text eol=lf
+*.service text eol=lf
+*.timer text eol=lf
+*.py text eol=lf
+controller/*.scala text eol=lf
+controller/*.txt text eol=lf
+controller/*.md text eol=lf
+controller/*.json text eol=lf
+web/public/sw.js text eol=lf
+web/sw.js text eol=lf

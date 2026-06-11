@@ -1,40 +1,59 @@
 {
   "id": "/?source=pwa",
-  "name": "ITS",
+  "name": "ITS Maps",
   "short_name": "ITS",
-  "description": "ITS realtime traffic dashboard oleh Hanifa Septhi Larasati, Telkom University",
-  "start_url": "/",
+  "description": "ITS Maps untuk peta realtime, Raspberry Pi, kamera lalu lintas, notifikasi, dan PWA.",
+  "start_url": "/?source=pwa",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#f2f7ff",
-  "theme_color": "#f2f7ff",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "background_color": "#101820",
+  "theme_color": "#101820",
+  "orientation": "any",
+  "categories": ["maps", "navigation", "utilities"],
   "prefer_related_applications": false,
   "related_applications": [
     {
-      "platform": "play",
-      "id": "id.ac.telkomuniversity.its"
-    }
-  ],
-  "categories": ["maps", "navigation", "utilities"],
-  "shortcuts": [
-    {
-      "name": "Peta Realtime",
-      "short_name": "Peta",
-      "url": "/?route=map",
-      "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
-    },
-    {
-      "name": "Grafik Lalu Lintas",
-      "short_name": "Grafik",
-      "url": "/?route=chart",
-      "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+      "platform": "windows",
+      "id": "id.ac.telkomuniversity.its.maps.windows",
+      "url": "https://itstelkom.web.app/artifacts/apps/ITS-Maps-Windows-Custom-Setup-1.0.13-x64.download"
     }
   ],
   "icons": [
     {
-      "src": "/favicon.svg",
+      "src": "./favicon.svg",
       "sizes": "any",
       "type": "image/svg+xml"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshots/windows-home.svg",
+      "sizes": "1280x720",
+      "type": "image/svg+xml",
+      "form_factor": "wide",
+      "label": "Home ITS Maps Windows"
+    },
+    {
+      "src": "/screenshots/windows-map.svg",
+      "sizes": "1280x720",
+      "type": "image/svg+xml",
+      "form_factor": "wide",
+      "label": "Peta realtime ITS Maps"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Buka Peta",
+      "short_name": "Peta",
+      "url": "/?route=map&source=pwa",
+      "icons": [{ "src": "./favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "Buka Kamera",
+      "short_name": "Camera",
+      "url": "/?route=camera&source=pwa",
+      "icons": [{ "src": "./favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
     }
   ]
 }

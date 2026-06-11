@@ -1,0 +1,2073 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap");
+
+:root {
+  color-scheme: dark;
+  --bg: #171b20;
+  --rail: #22262c;
+  --rail-active: #0f1318;
+  --surface: #242930;
+  --surface-2: #2b3037;
+  --line: rgba(255, 255, 255, 0.1);
+  --line-strong: rgba(255, 255, 255, 0.16);
+  --ink: #f7fbff;
+  --ink-muted: #aab4c0;
+  --ink-soft: #758191;
+  --blue: #2d8cff;
+  --cyan: #36d7ff;
+  --red: #ff4d5c;
+  --red-dim: #75313b;
+  --yellow: #ffd44d;
+  --yellow-dim: #74622c;
+  --green: #37dd86;
+  --green-dim: #246649;
+  --shadow: 0 18px 44px rgba(0, 0, 0, 0.28);
+  --accent: #2d8cff;
+  --accent-soft: rgba(45, 140, 255, 0.18);
+  --accent-glow: rgba(45, 140, 255, 0.34);
+  --sidebar: #252a31;
+  --sidebar-active: #10151d;
+  --panel-bg: rgba(29, 34, 41, 0.98);
+  --card-tint: rgba(255, 255, 255, 0.04);
+}
+
+#windows-app[data-accent="bloom"] {
+  --accent: #4f7cff;
+  --blue: #4f7cff;
+  --cyan: #52e5ff;
+}
+
+#windows-app[data-accent="agave"] {
+  --accent: #17a2a8;
+  --blue: #17a2a8;
+  --cyan: #39d7c7;
+}
+
+#windows-app[data-accent="rose"] {
+  --accent: #d44868;
+  --blue: #d44868;
+  --cyan: #ff8ab0;
+}
+
+#windows-app[data-theme="light"] {
+  color-scheme: light;
+  --bg: #eef4fb;
+  --rail: #e9f0f8;
+  --rail-active: #dceaff;
+  --surface: #ffffff;
+  --surface-2: #f4f7fb;
+  --line: rgba(22, 34, 50, 0.12);
+  --line-strong: rgba(22, 34, 50, 0.18);
+  --ink: #071324;
+  --ink-muted: #536176;
+  --ink-soft: #788398;
+  --shadow: 0 18px 44px rgba(52, 75, 104, 0.16);
+  --sidebar: #f7fbff;
+  --sidebar-active: color-mix(in srgb, var(--accent) 18%, #ffffff);
+  --panel-bg: rgba(255, 255, 255, 0.98);
+  --card-tint: rgba(12, 28, 48, 0.035);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#windows-app {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  letter-spacing: 0;
+}
+
+button {
+  font: inherit;
+}
+
+.win-shell {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  background: var(--bg);
+}
+
+.win-app-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(circle at 26% 24%, color-mix(in srgb, var(--accent) 46%, transparent), transparent 34%),
+    radial-gradient(circle at 78% 82%, rgba(55, 221, 134, 0.24), transparent 38%),
+    linear-gradient(135deg, #101820, #1b222d 58%, #0d131b);
+  transition: opacity 240ms ease, transform 240ms ease;
+}
+
+.win-app-splash.hide {
+  opacity: 0;
+  transform: scale(1.018);
+  pointer-events: none;
+}
+
+.win-app-splash-card {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  color: #fff;
+}
+
+.win-app-splash-card img {
+  width: 88px;
+  height: 88px;
+  object-fit: contain;
+  filter: drop-shadow(0 22px 42px color-mix(in srgb, var(--accent) 42%, transparent));
+}
+
+.win-app-splash-card strong {
+  font-size: 29px;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.win-app-splash-card span {
+  color: #cfe4ff;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.win-app-splash-card i {
+  width: 210px;
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.win-app-splash-card i::before {
+  content: "";
+  display: block;
+  width: 40%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #37dd86, var(--accent));
+  animation: winSplashMove 1.1s ease-in-out infinite;
+}
+
+@keyframes winSplashMove {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(260%); }
+}
+
+.win-sidebar {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 18px;
+  padding: 12px 8px;
+  background:
+    radial-gradient(circle at 50% 10%, var(--accent-glow), transparent 34%),
+    linear-gradient(180deg, color-mix(in srgb, var(--accent) 18%, var(--sidebar)), var(--sidebar) 34%);
+  border-right: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.win-brand {
+  min-height: 48px;
+  display: grid;
+  place-items: center;
+  gap: 4px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.win-brand img {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+}
+
+.win-nav {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+.win-nav-button,
+.win-icon-button,
+.win-segment-button,
+.win-camera-button {
+  border: 0;
+  color: var(--ink);
+  cursor: pointer;
+  user-select: none;
+}
+
+.win-nav-button {
+  width: 72px;
+  min-height: 64px;
+  display: grid;
+  place-items: center;
+  gap: 5px;
+  padding: 7px 4px;
+  border-radius: 8px;
+  background: transparent;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+#windows-app[data-theme="light"] .win-nav-button,
+#windows-app[data-theme="light"] .win-brand {
+  color: #172544;
+}
+
+.win-nav-button:hover,
+.win-nav-button:focus-visible {
+  background: rgba(255, 255, 255, 0.07);
+  outline: none;
+}
+
+.win-nav-button.active {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--accent) 82%, #ffffff 8%), color-mix(in srgb, var(--accent) 52%, #0d1420));
+  color: #fff;
+  box-shadow:
+    0 12px 26px color-mix(in srgb, var(--accent) 30%, transparent),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+
+.win-nav-icon {
+  width: 23px;
+  height: 23px;
+  display: grid;
+  place-items: center;
+}
+
+.win-nav-icon svg,
+.win-icon-button svg,
+.win-camera-button svg {
+  width: 21px;
+  height: 21px;
+  display: block;
+}
+
+.win-nav-map-icon {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.25));
+}
+
+.win-sync-pill {
+  display: grid;
+  place-items: center;
+  gap: 6px;
+  min-height: 58px;
+  color: var(--ink-muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.win-sync-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 99px;
+  background: var(--ink-soft);
+  box-shadow: 0 0 0 4px rgba(117, 129, 145, 0.16);
+}
+
+.win-sync-pill[data-sync="live"] .win-sync-dot {
+  background: var(--green);
+  box-shadow: 0 0 0 4px rgba(55, 221, 134, 0.16);
+}
+
+.win-sync-pill[data-sync="warn"] .win-sync-dot {
+  background: var(--yellow);
+  box-shadow: 0 0 0 4px rgba(255, 212, 77, 0.15);
+}
+
+.win-sync-pill[data-sync="offline"] .win-sync-dot {
+  background: var(--red);
+  box-shadow: 0 0 0 4px rgba(255, 77, 92, 0.16);
+}
+
+.win-main {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: 52px minmax(0, 1fr);
+  background:
+    radial-gradient(circle at 92% 8%, var(--accent-soft), transparent 30%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.018), transparent 280px),
+    var(--bg);
+}
+
+.win-titlebar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  padding: 0 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--accent) 16%, #22262b), #22262b 58%);
+}
+
+#windows-app[data-theme="light"] .win-titlebar {
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--accent) 12%, #fbfdff), #f5f8fc 62%);
+  border-bottom-color: rgba(22, 34, 50, 0.1);
+}
+
+.win-title-main {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.win-title-main strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.win-title-main span {
+  color: var(--ink-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.win-title-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.win-action-button {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.win-action-button svg {
+  width: 16px;
+  height: 16px;
+}
+
+.win-action-button:hover,
+.win-action-button:focus-visible,
+.win-chip-button:hover,
+.win-chip-button:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 72%, transparent);
+  background: var(--accent-soft);
+  outline: none;
+}
+
+.win-chip {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.win-chip-button {
+  border: 1px solid var(--line);
+  cursor: pointer;
+}
+
+.win-chip b {
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.win-content {
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.win-view {
+  position: absolute;
+  inset: 0;
+  display: none;
+  min-width: 0;
+  min-height: 0;
+  padding: 18px;
+}
+
+.win-view.active {
+  display: block;
+}
+
+.win-home-grid {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-columns: minmax(520px, 1.18fr) minmax(420px, 0.82fr);
+  grid-template-rows: minmax(270px, 0.52fr) minmax(260px, 0.48fr);
+  gap: 14px;
+}
+
+.win-widget {
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.win-widget-head {
+  position: absolute;
+  left: 14px;
+  top: 12px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(14, 18, 24, 0.64);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.win-gallery {
+  --ambient-a: rgba(85, 142, 255, 0.58);
+  --ambient-b: rgba(68, 218, 177, 0.44);
+  --ambient-c: rgba(255, 190, 92, 0.26);
+  grid-row: 1 / span 2;
+  height: 100%;
+  isolation: isolate;
+  box-shadow:
+    0 0 44px -8px var(--ambient-a),
+    0 24px 70px -18px var(--ambient-b),
+    var(--shadow);
+}
+
+.win-gallery::before {
+  content: "";
+  position: absolute;
+  inset: -8%;
+  z-index: 0;
+  background-image: var(--gallery-image);
+  background-size: cover;
+  background-position: center;
+  filter: blur(42px) saturate(1.55);
+  opacity: 0.82;
+  transform: scale(1.12);
+}
+
+.win-gallery-slide {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  opacity: 0;
+  transition: opacity 0.7s ease;
+}
+
+.win-gallery-slide.active {
+  opacity: 1;
+}
+
+.win-gallery-slide img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.win-gallery::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: inherit;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+    inset 0 -120px 160px rgba(0, 0, 0, 0.38);
+  background:
+    radial-gradient(circle at 22% 12%, var(--ambient-a), transparent 34%),
+    radial-gradient(circle at 78% 22%, var(--ambient-b), transparent 30%),
+    radial-gradient(circle at 58% 92%, var(--ambient-c), transparent 38%);
+  mix-blend-mode: screen;
+  opacity: 0.42;
+  pointer-events: none;
+}
+
+.win-gallery-shade {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background:
+    linear-gradient(90deg, rgba(10, 14, 20, 0.64), transparent 48%),
+    linear-gradient(0deg, rgba(10, 14, 20, 0.72), transparent 42%);
+  pointer-events: none;
+}
+
+.win-gallery-caption {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 14px;
+  z-index: 3;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 14px;
+}
+
+.win-gallery-caption strong {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 20px;
+}
+
+.win-gallery-caption span {
+  display: block;
+  margin-top: 4px;
+  color: rgba(255, 255, 255, 0.74);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.win-carousel-dots {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+
+.win-carousel-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.42);
+}
+
+.win-carousel-dots span.active {
+  width: 18px;
+  background: #fff;
+}
+
+.win-chart-widget {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  padding: 14px;
+}
+
+.win-chart-header,
+.win-map-card-header,
+.win-camera-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.win-chart-header h2,
+.win-camera-header h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.win-chart-header span,
+.win-map-card-header span,
+.win-camera-header span {
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.win-chart-legend {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+  color: var(--ink-muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.win-chart-legend i,
+.win-map-dot {
+  width: 9px;
+  height: 9px;
+  display: inline-block;
+  border-radius: 99px;
+}
+
+.win-chart-legend [data-color="red"] i {
+  background: var(--red);
+}
+
+.win-chart-legend [data-color="yellow"] i {
+  background: var(--yellow);
+}
+
+.win-chart-legend [data-color="green"] i {
+  background: var(--green);
+}
+
+.win-chart-wrap {
+  min-height: 0;
+  margin-top: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 8px;
+  background: #12161c;
+  overflow: hidden;
+}
+
+#win-traffic-chart {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.win-mini-map-widget {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  padding: 12px;
+}
+
+.win-mini-map-grid {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.win-mini-map-widget[data-clickable="true"] {
+  cursor: pointer;
+}
+
+.win-mini-map-widget[data-clickable="true"]:hover {
+  border-color: rgba(45, 140, 255, 0.4);
+}
+
+.win-map-card-header strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.win-map-card-header span {
+  max-width: 48%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+.win-map-dot.user {
+  background: var(--blue);
+  box-shadow: 0 0 0 4px rgba(45, 140, 255, 0.14);
+}
+
+.win-map-dot.raspi {
+  background: var(--green);
+  box-shadow: 0 0 0 4px rgba(55, 221, 134, 0.14);
+}
+
+.win-map-surface {
+  min-height: 0;
+  margin-top: 10px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #dbe5ef;
+}
+
+.win-map-surface::after,
+.win-full-map::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 22% 16%, rgba(45, 140, 255, 0.13), transparent 30%),
+    radial-gradient(circle at 78% 74%, rgba(55, 221, 134, 0.1), transparent 34%);
+}
+
+.win-map-surface .leaflet-control-attribution {
+  display: none;
+}
+
+.win-map-view {
+  padding: 0;
+}
+
+.win-full-map {
+  position: absolute;
+  inset: 0;
+  background: #dbe5ef;
+}
+
+.win-map-topbar {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  right: 14px;
+  z-index: 500;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  pointer-events: none;
+}
+
+.win-map-topbar > * {
+  pointer-events: auto;
+}
+
+.win-map-controls {
+  position: absolute;
+  right: 16px;
+  bottom: 18px;
+  z-index: 520;
+  display: grid;
+  grid-template-columns: 42px;
+  gap: 7px;
+  pointer-events: auto;
+}
+
+.win-map-controls button,
+.win-compass {
+  width: 42px;
+  min-height: 38px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  background: rgba(25, 29, 36, 0.86);
+  color: #fff;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22);
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.win-map-controls button:hover,
+.win-map-controls button:focus-visible,
+.win-map-controls button.active {
+  border-color: var(--accent);
+  background: var(--accent);
+  outline: none;
+}
+
+.win-map-controls svg {
+  width: 18px;
+  height: 18px;
+}
+
+.win-compass {
+  min-height: 54px;
+  gap: 2px;
+  background:
+    radial-gradient(circle, rgba(255, 255, 255, 0.18), transparent 62%),
+    rgba(25, 29, 36, 0.86);
+  transition: transform 0.24s ease, background 0.2s ease;
+}
+
+.win-compass span {
+  color: #ff4d5c;
+  font-size: 11px;
+  transform: rotate(var(--bearing, 0deg));
+}
+
+.win-compass i {
+  width: 0;
+  height: 0;
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-bottom: 18px solid #fff;
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.28));
+  transform: rotate(var(--bearing, 0deg));
+  transition: transform 0.24s ease;
+}
+
+.win-compass.pulse {
+  transform: scale(1.06);
+  background: var(--accent);
+}
+
+#win-full-map[data-pitch="60"],
+#win-full-map[data-pitch="75"],
+#win-full-map[data-pitch="90"] {
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, rgba(167, 205, 255, 0.95), transparent 34%),
+    #dbe5ef;
+  filter: saturate(1.08) contrast(1.03);
+  perspective: 1200px;
+}
+
+#win-full-map .leaflet-tile-pane,
+#win-full-map .leaflet-overlay-pane,
+#win-full-map .leaflet-marker-pane,
+#win-full-map .leaflet-shadow-pane,
+#win-full-map .leaflet-popup-pane {
+  transition: transform 0.38s cubic-bezier(0.32, 0.72, 0, 1), filter 0.38s ease;
+  transform-origin: 50% 62%;
+  will-change: transform;
+}
+
+#win-full-map[data-pitch="60"] .leaflet-tile-pane,
+#win-full-map[data-pitch="60"] .leaflet-overlay-pane,
+#win-full-map[data-pitch="60"] .leaflet-marker-pane,
+#win-full-map[data-pitch="60"] .leaflet-shadow-pane,
+#win-full-map[data-pitch="60"] .leaflet-popup-pane {
+  transform: perspective(1200px) rotateX(24deg) scale(1.09) translateY(-6%);
+}
+
+#win-full-map[data-pitch="75"] .leaflet-tile-pane,
+#win-full-map[data-pitch="75"] .leaflet-overlay-pane,
+#win-full-map[data-pitch="75"] .leaflet-marker-pane,
+#win-full-map[data-pitch="75"] .leaflet-shadow-pane,
+#win-full-map[data-pitch="75"] .leaflet-popup-pane {
+  transform: perspective(1200px) rotateX(34deg) scale(1.16) translateY(-10%);
+}
+
+#win-full-map[data-pitch="90"] .leaflet-tile-pane,
+#win-full-map[data-pitch="90"] .leaflet-overlay-pane,
+#win-full-map[data-pitch="90"] .leaflet-marker-pane,
+#win-full-map[data-pitch="90"] .leaflet-shadow-pane,
+#win-full-map[data-pitch="90"] .leaflet-popup-pane {
+  transform: perspective(1200px) rotateX(46deg) scale(1.26) translateY(-15%);
+}
+
+#win-full-map[data-pitch="60"]::before,
+#win-full-map[data-pitch="75"]::before,
+#win-full-map[data-pitch="90"]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 430;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(186, 219, 255, 0.74), transparent 34%),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.18) 0 2px, transparent 2px 88px);
+  mix-blend-mode: screen;
+  opacity: 0.42;
+}
+
+.win-segment {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background: rgba(25, 29, 36, 0.86);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.24);
+}
+
+.win-segment-button {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.win-segment-button:hover,
+.win-segment-button:focus-visible {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.07);
+  outline: none;
+}
+
+.win-segment-button.active {
+  color: #fff;
+  background: var(--blue);
+}
+
+.win-map-status {
+  max-width: min(48vw, 620px);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background: rgba(25, 29, 36, 0.86);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.24);
+}
+
+.win-poi-sheet {
+  position: absolute;
+  top: 64px;
+  right: 14px;
+  z-index: 530;
+  width: min(390px, calc(100vw - 120px));
+  max-height: calc(100vh - 96px);
+  pointer-events: none;
+}
+
+.win-side-sheet {
+  position: absolute;
+  inset: 0;
+  z-index: 650;
+  pointer-events: none;
+}
+
+.win-location-consent {
+  position: absolute;
+  left: 20px;
+  right: 20px;
+  bottom: 20px;
+  z-index: 700;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(18px);
+  transition: opacity 0.22s ease, transform 0.22s ease;
+}
+
+.win-location-consent.open {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.win-location-card {
+  width: min(760px, calc(100vw - 140px));
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background:
+    radial-gradient(circle at 0 0, var(--accent-soft), transparent 36%),
+    var(--panel-bg);
+  box-shadow:
+    0 20px 70px rgba(0, 0, 0, 0.36),
+    0 0 40px -12px var(--accent-glow);
+  pointer-events: auto;
+}
+
+.win-location-icon {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff;
+}
+
+.win-location-icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.win-location-card strong {
+  display: block;
+  font-size: 15px;
+}
+
+.win-location-card p {
+  margin: 4px 0 0;
+  color: var(--ink-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.win-location-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.win-location-actions button {
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.win-location-primary {
+  background: var(--accent);
+  color: #fff !important;
+  border-color: var(--accent) !important;
+}
+
+.win-location-secondary {
+  background: var(--card-tint);
+}
+
+.win-side-panel {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  bottom: 14px;
+  width: min(520px, calc(100vw - 118px));
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background:
+    radial-gradient(circle at 6% 0, var(--accent-soft), transparent 34%),
+    var(--panel-bg);
+  box-shadow:
+    0 30px 90px rgba(0, 0, 0, 0.4),
+    0 0 42px -14px var(--accent-glow);
+  transform: translateX(calc(100% + 24px));
+  transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+  pointer-events: auto;
+}
+
+.win-side-sheet.open .win-side-panel {
+  transform: translateX(0);
+}
+
+.win-side-panel.dragging {
+  transition: none;
+  cursor: grabbing;
+  user-select: none;
+}
+
+.win-side-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.win-side-head span {
+  color: var(--ink-soft);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.win-side-head strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 22px;
+}
+
+.win-side-body {
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+}
+
+.win-panel-card {
+  margin-bottom: 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background:
+    linear-gradient(180deg, var(--card-tint), transparent),
+    color-mix(in srgb, var(--surface) 92%, var(--accent) 3%);
+}
+
+.win-panel-card h3 {
+  margin: 0 0 12px;
+  font-size: 16px;
+}
+
+.win-panel-note {
+  margin: 0 0 12px;
+  color: var(--ink-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.win-choice-grid,
+.win-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.win-choice-card,
+.win-wide-action {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card-tint);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.win-choice-card.active,
+.win-accent-choice.active,
+.win-wide-action:hover,
+.win-choice-card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.win-choice-card.active,
+.win-accent-choice.active {
+  background:
+    linear-gradient(135deg, var(--accent-soft), transparent 58%),
+    var(--card-tint);
+}
+
+.win-choice-card span,
+.win-wide-action {
+  font-weight: 900;
+}
+
+.win-choice-card small {
+  color: var(--ink-muted);
+}
+
+.win-accent-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.win-accent-choice {
+  display: grid;
+  gap: 7px;
+  justify-items: center;
+  min-width: 70px;
+  padding: 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+}
+
+.win-accent-choice i {
+  width: 42px;
+  height: 42px;
+  border-radius: 9px;
+  background: #7f8b9d;
+}
+
+.win-accent-choice[data-accent="bloom"] i { background: #21459b; }
+.win-accent-choice[data-accent="agave"] i { background: #126b70; }
+.win-accent-choice[data-accent="rose"] i { background: #9f183c; }
+
+.win-color-picker {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card-tint);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.win-color-picker input {
+  width: 54px;
+  height: 34px;
+  padding: 2px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.win-wide-action {
+  width: 100%;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  margin-top: 8px;
+}
+
+.win-wide-action svg {
+  width: 18px;
+  height: 18px;
+}
+
+.win-panel-stat,
+.win-info-table div,
+.win-license-list article,
+.win-history-list article {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.win-panel-stat span,
+.win-info-table span,
+.win-license-list span,
+.win-history-list span,
+.win-license-list small,
+.win-history-list small {
+  display: block;
+  color: var(--ink-muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.win-panel-stat strong,
+.win-info-table strong,
+.win-license-list strong,
+.win-history-list strong {
+  display: block;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.win-info-table,
+.win-license-list,
+.win-history-list {
+  display: grid;
+  gap: 8px;
+}
+
+.win-poi-sheet-panel {
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at 100% 0, var(--accent-soft), transparent 36%),
+    var(--panel-bg);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.36);
+  transform: translateX(calc(100% + 22px));
+  transition: transform 0.26s cubic-bezier(0.32, 0.72, 0, 1);
+  pointer-events: auto;
+  will-change: transform;
+}
+
+.win-poi-sheet.open .win-poi-sheet-panel {
+  transform: translateX(0);
+}
+
+.win-poi-sheet-panel.dragging {
+  transition: none;
+  cursor: grabbing;
+  user-select: none;
+}
+
+.win-poi-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  padding: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.win-poi-header strong {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 16px;
+}
+
+.win-poi-header span {
+  display: block;
+  margin-top: 4px;
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.win-icon-button {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.win-icon-button:hover,
+.win-icon-button:focus-visible {
+  background: rgba(255, 255, 255, 0.12);
+  outline: none;
+}
+
+.win-poi-body {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  color: var(--ink-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.win-poi-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.win-poi-meta div {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.win-poi-meta span {
+  display: block;
+  color: var(--ink-soft);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.win-poi-meta strong {
+  display: block;
+  margin-top: 3px;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.win-ok {
+  color: var(--green) !important;
+}
+
+.win-bad {
+  color: var(--red) !important;
+}
+
+.win-video-popup .leaflet-popup-content-wrapper {
+  overflow: hidden;
+  border-radius: 10px;
+  background: rgba(9, 12, 18, 0.96);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.34);
+}
+
+.win-video-popup .leaflet-popup-content {
+  width: 240px !important;
+  margin: 0;
+}
+
+.win-video-popup .leaflet-popup-tip {
+  background: rgba(9, 12, 18, 0.96);
+}
+
+.win-map-video-preview {
+  width: 240px;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 0;
+  background: transparent;
+  color: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+
+.win-map-video-preview img {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  display: block;
+  border-radius: 8px;
+  object-fit: cover;
+  background: #05070a;
+  box-shadow: 0 0 26px -8px var(--accent-glow);
+}
+
+.win-map-video-head,
+.win-map-video-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.win-map-video-head strong,
+.win-map-video-foot {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.win-map-video-head b {
+  padding: 2px 6px;
+  border-radius: 99px;
+  background: rgba(255, 77, 92, 0.18);
+  color: var(--red);
+}
+
+.win-map-video-head b[data-live="true"] {
+  background: rgba(55, 221, 134, 0.16);
+  color: var(--green);
+}
+
+.win-map-video-foot {
+  display: block;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.win-marker {
+  position: relative;
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+}
+
+.win-marker::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 99px;
+  background: var(--marker-color, var(--blue));
+  opacity: 0.18;
+  animation: winPulse 1.9s ease-in-out infinite;
+}
+
+.win-marker-core {
+  position: relative;
+  z-index: 1;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 99px;
+  background: var(--marker-color, var(--blue));
+  border: 2px solid #fff;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+  color: #fff;
+}
+
+.win-marker-core svg {
+  width: 16px;
+  height: 16px;
+}
+
+.win-traffic-marker {
+  background: transparent;
+  border: 0;
+}
+
+.win-user-marker {
+  background: transparent;
+  border: 0;
+}
+
+.win-poi-marker-icon {
+  background: transparent;
+  border: 0;
+}
+
+.win-poi-marker {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 99px;
+  background: #fff;
+  border: 2px solid var(--poi-color, var(--blue));
+  color: var(--poi-color, var(--blue));
+  box-shadow: 0 7px 18px rgba(0, 0, 0, 0.22);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+@keyframes winPulse {
+  0% {
+    transform: scale(0.82);
+    opacity: 0.36;
+  }
+
+  72% {
+    transform: scale(1.28);
+    opacity: 0.04;
+  }
+
+  100% {
+    transform: scale(1.28);
+    opacity: 0;
+  }
+}
+
+.win-camera-view {
+  padding: 18px;
+}
+
+.win-camera-page {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 14px;
+}
+
+.win-camera-stage-host {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+}
+
+.win-camera-surface {
+  --camera-ambient-color: rgba(45, 140, 255, 0.46);
+  --camera-ambient-soft: rgba(54, 215, 255, 0.28);
+  position: relative;
+  width: min(100%, 1280px);
+  height: min(100%, calc((100vw - 160px) * 0.5625));
+  min-height: min(60vh, 620px);
+  max-height: 100%;
+  display: grid;
+  place-items: center;
+  isolation: isolate;
+}
+
+.win-camera-surface::before {
+  content: "";
+  position: absolute;
+  inset: -32px;
+  z-index: 0;
+  border-radius: 8px;
+  background:
+    radial-gradient(ellipse at center, var(--camera-ambient-color), transparent 66%),
+    radial-gradient(circle at 18% 88%, var(--camera-ambient-soft), transparent 42%),
+    linear-gradient(135deg, var(--camera-ambient-soft), rgba(255, 212, 77, 0.1));
+  filter: blur(34px) saturate(1.4);
+  opacity: 0.9;
+  transition: background 0.35s ease, opacity 0.35s ease;
+}
+
+.win-camera-frame {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 8px;
+  background: #05070a;
+  box-shadow: 0 26px 80px rgba(0, 0, 0, 0.42);
+}
+
+.win-camera-media {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: #05070a;
+}
+
+.win-camera-media video,
+.win-camera-media img,
+.win-camera-media iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+  object-fit: cover;
+  background: #05070a;
+}
+
+.win-camera-media video.fallback-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.win-camera-media iframe {
+  object-fit: initial;
+}
+
+.win-camera-fallback-frame {
+  position: absolute !important;
+  inset: 0;
+}
+
+.win-camera-media-message {
+  position: absolute;
+  left: 18px;
+  bottom: 88px;
+  z-index: 6;
+  max-width: min(560px, calc(100% - 36px));
+  padding: 8px 11px;
+  border-radius: 8px;
+  background: rgba(4, 8, 18, 0.72);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.28);
+}
+
+.win-camera-placeholder {
+  display: grid;
+  place-items: center;
+  gap: 12px;
+  padding: 22px;
+  color: var(--ink-muted);
+  text-align: center;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.win-camera-live {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: rgba(5, 7, 10, 0.66);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.win-camera-live span {
+  width: 8px;
+  height: 8px;
+  border-radius: 99px;
+  background: var(--red);
+  box-shadow: 0 0 0 4px rgba(255, 77, 92, 0.18);
+}
+
+.win-camera-surface[data-live-state="online"] .win-camera-live span {
+  background: var(--green);
+  box-shadow: 0 0 0 4px rgba(55, 221, 134, 0.18);
+}
+
+.win-camera-surface[data-live-state="offline"] .win-camera-media img {
+  filter: saturate(0.96) brightness(0.72);
+}
+
+.win-camera-surface[data-live-state="offline"] .win-camera-frame::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background:
+    linear-gradient(0deg, rgba(5, 7, 10, 0.52), transparent 38%),
+    radial-gradient(circle at 50% 30%, transparent, rgba(5, 7, 10, 0.34));
+}
+
+.win-camera-status {
+  position: absolute;
+  left: 14px;
+  bottom: 64px;
+  z-index: 4;
+  max-width: min(520px, calc(100% - 28px));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(5, 7, 10, 0.58);
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.win-camera-controls {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 12px;
+  z-index: 5;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  min-height: 40px;
+  padding: 0;
+}
+
+.win-camera-button {
+  min-width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: rgba(5, 7, 10, 0.68);
+  color: #fff;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.win-camera-button:hover,
+.win-camera-button:focus-visible {
+  background: rgba(28, 34, 44, 0.84);
+  outline: none;
+}
+
+.win-camera-button.ai {
+  width: 48px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.win-camera-controls-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.win-camera-ai-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 6;
+  width: min(390px, 34%);
+  min-width: 300px;
+  overflow: auto;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  background: #151a20;
+  transform: translateX(100%);
+  transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+  will-change: transform;
+}
+
+.win-camera-frame[data-ai-open="true"] .win-camera-ai-panel {
+  transform: translateX(0);
+}
+
+.win-camera-ai-panel.dragging {
+  transition: none;
+  cursor: grabbing;
+  user-select: none;
+}
+
+.win-ai-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.win-ai-head span,
+.win-ai-stat span {
+  color: var(--ink-soft);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.win-ai-head strong {
+  display: block;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+  font-size: 15px;
+}
+
+.win-ai-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 14px;
+}
+
+.win-ai-stat {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.win-ai-stat strong {
+  display: block;
+  margin-top: 5px;
+  color: var(--ink);
+  font-family: "Space Grotesk", Inter, sans-serif;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.win-ai-note {
+  margin: 0 14px 14px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink-muted);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.win-camera-surface:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  min-height: 100vh;
+  max-height: none;
+  background: #05070a;
+}
+
+.win-camera-surface:fullscreen::before {
+  inset: 0;
+  border-radius: 0;
+  filter: blur(46px) saturate(1.3);
+  opacity: 0.8;
+}
+
+.win-camera-surface:fullscreen .win-camera-frame {
+  border-radius: 0;
+  border: 0;
+  display: flex;
+}
+
+.win-camera-surface:fullscreen .win-camera-media {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.win-camera-surface:fullscreen .win-camera-ai-panel {
+  position: relative;
+  flex: 0 0 min(410px, 34vw);
+  width: min(410px, 34vw);
+  min-width: 320px;
+  transform: none;
+  display: none;
+}
+
+.win-camera-surface:fullscreen .win-camera-frame[data-ai-open="true"] .win-camera-ai-panel {
+  display: block;
+}
+
+.win-camera-surface:fullscreen .win-camera-controls,
+.win-camera-surface:fullscreen .win-camera-live,
+.win-camera-surface:fullscreen .win-camera-status {
+  z-index: 8;
+}
+
+@media (max-width: 1180px) {
+  .win-home-grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(360px, 0.92fr) minmax(280px, 0.72fr) minmax(260px, 0.7fr);
+    overflow: auto;
+    padding-right: 2px;
+  }
+
+  .win-gallery {
+    grid-row: auto;
+  }
+
+  .win-mini-map-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .win-camera-surface {
+    height: min(100%, 70vw);
+  }
+}
+
+@media (max-width: 760px) {
+  .win-shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) 76px;
+  }
+
+  .win-sidebar {
+    grid-row: 2;
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr;
+    padding: 8px;
+    border-right: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .win-brand,
+  .win-sync-pill {
+    display: none;
+  }
+
+  .win-nav {
+    grid-template-columns: repeat(3, 1fr);
+    align-content: stretch;
+  }
+
+  .win-nav-button {
+    width: 100%;
+    min-height: 60px;
+  }
+
+  .win-main {
+    grid-row: 1;
+  }
+
+  .win-titlebar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .win-title-actions {
+    display: none;
+  }
+
+  .win-view {
+    padding: 12px;
+  }
+
+  .win-map-topbar {
+    flex-direction: column;
+    right: auto;
+    max-width: calc(100vw - 24px);
+  }
+
+  .win-map-status {
+    max-width: 100%;
+  }
+
+  .win-poi-sheet {
+    top: auto;
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    width: auto;
+  }
+
+  .win-mini-map-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .win-side-panel {
+    top: 10px;
+    right: 10px;
+    bottom: 86px;
+    left: 10px;
+    width: auto;
+  }
+
+  .win-location-consent {
+    left: 12px;
+    right: 12px;
+    bottom: 88px;
+  }
+
+  .win-location-card {
+    width: 100%;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .win-location-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+  }
+
+  .win-choice-grid,
+  .win-stat-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .win-poi-sheet-panel {
+    transform: translateY(calc(100% + 20px));
+  }
+
+  .win-poi-sheet.open .win-poi-sheet-panel {
+    transform: translateY(0);
+  }
+
+  .win-camera-surface {
+    width: 100%;
+    height: auto;
+    min-height: 0;
+    aspect-ratio: 16 / 9;
+  }
+
+  .win-camera-ai-panel {
+    top: auto;
+    left: 0;
+    width: 100%;
+    min-width: 0;
+    max-height: min(72%, 460px);
+    border-left: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    transform: translateY(100%);
+  }
+
+  .win-camera-frame[data-ai-open="true"] .win-camera-ai-panel {
+    transform: translateY(0);
+  }
+
+  .win-camera-surface:fullscreen .win-camera-frame {
+    display: block;
+  }
+
+  .win-camera-surface:fullscreen .win-camera-media {
+    position: absolute;
+  }
+
+  .win-camera-surface:fullscreen .win-camera-ai-panel,
+  .win-camera-surface:fullscreen .win-camera-frame[data-ai-open="true"] .win-camera-ai-panel {
+    position: absolute;
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: block;
+    width: 100%;
+    min-width: 0;
+    height: min(48vh, 430px);
+    transform: translateY(0);
+  }
+}

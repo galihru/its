@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <AssemblyName>ITS Maps Uninstall</AssemblyName>
+    <ApplicationIcon>..\..\build\icon.ico</ApplicationIcon>
+    <Version>1.0.13</Version>
+    <Company>Hanifa Septhi Larasati - Telkom University</Company>
+    <Product>ITS Maps Uninstall</Product>
+    <Description>Uninstaller native ITS Maps Windows</Description>
+    <Copyright>Copyright (c) 2026 Hanifa Septhi Larasati - Telkom University</Copyright>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="..\..\src\icon\its.png" Link="Assets\logo.png" />
+    <Resource Include="..\..\src\windows\uninstall.png" Link="Assets\uninstall.png" />
+  </ItemGroup>
+</Project>

@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 MODEL_DIR="${ITS_YOLO_MODEL_DIR:-/home/raspberry5its/models}"
 MODEL_NAME="${ITS_YOLO_MODEL_NAME:-yolo26n}"
 MODEL_PATH="$MODEL_DIR/$MODEL_NAME.onnx"
-MODEL_URL="${ITS_YOLO_MODEL_URL:-https://itstelkom.web.app/artifacts/yolo26n.onnx}"
+MODEL_URL="${ITS_YOLO_MODEL_URL:-https://itstelkom.web.app/artifacts/yolo26n.onnx?v=20260527-1705}"
 VENV_DIR="${ITS_YOLO_VENV_DIR:-$SCRIPT_DIR/.venv-yolo}"
 
 if [ "$(id -u)" -eq 0 ]; then

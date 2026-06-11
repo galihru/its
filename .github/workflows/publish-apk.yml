@@ -1,64 +1,23 @@
-name: Build Android APK
+name: Publish APK and Manifest
 
 on:
   push:
-    paths:
-      - "web/**"
-      - ".github/workflows/publish-apk.yml"
-  workflow_dispatch:
+    branches: [ main ]
 
 jobs:
-  build-apk:
+  publish-apk:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Set APK version
-        run: |
-          set -euo pipefail
-          VERSION_CODE="${GITHUB_RUN_NUMBER}"
-          VERSION_NAME="1.0.${GITHUB_RUN_NUMBER}"
-          APK_FILE_NAME="its-${VERSION_NAME}-${VERSION_CODE}.apk"
-          APK_RELEASE_TAG="apk-${GITHUB_RUN_NUMBER}"
-          PUBLIC_APK_BASE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${APK_RELEASE_TAG}"
-          {
-            echo "ITS_VERSION_CODE=${VERSION_CODE}"
-            echo "ITS_VERSION_NAME=${VERSION_NAME}"
-            echo "VITE_APP_VERSION=${VERSION_NAME}"
-            echo "VITE_APP_VERSION_CODE=${VERSION_CODE}"
-            echo "APK_FILE_NAME=${APK_FILE_NAME}"
-            echo "APK_RELEASE_TAG=${APK_RELEASE_TAG}"
-            echo "PUBLIC_APK_BASE_URL=${PUBLIC_APK_BASE_URL}"
-          } >> "$GITHUB_ENV"
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-
-      - name: Install web dependencies
-        working-directory: web
-        run: npm ci
-
-      - name: Build web assets
-        working-directory: web
-        run: npm run build
-
-      - name: Sync Capacitor Android project
-        working-directory: web
-        run: npx cap sync android
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: '21'
 
       - name: Build Android debug APK
         working-directory: web/android
@@ -66,63 +25,67 @@ jobs:
           chmod +x ./gradlew
           ./gradlew assembleDebug -x lint
 
-      - name: Prepare APK artifact
-        id: apk
+      - name: Find APK
+        id: find_apk
         run: |
-          set -euo pipefail
-          APK_SRC="web/android/app/build/outputs/apk/debug/app-debug.apk"
-          APK_OUT="web/dist/apk/${APK_FILE_NAME}"
-          APK_LATEST="web/dist/apk/its-latest.apk"
-          test -f "$APK_SRC"
-          mkdir -p web/dist/apk
-          cp "$APK_SRC" "$APK_OUT"
-          cp "$APK_SRC" "$APK_LATEST"
-          node web/scripts/write-apk-manifest.mjs
-          echo "path=$APK_OUT" >> "$GITHUB_OUTPUT"
-          echo "latest_path=$APK_LATEST" >> "$GITHUB_OUTPUT"
-          echo "manifest=web/dist/app-update.json" >> "$GITHUB_OUTPUT"
-          echo "sha256=$(sha256sum "$APK_OUT" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          APK_PATH="web/android/app/build/outputs/apk/debug/app-debug.apk"
+          if [ -f "$APK_PATH" ]; then
+            echo "apk_found=true" >> $GITHUB_OUTPUT
+            echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
+          else
+            echo "apk_found=false" >> $GITHUB_OUTPUT
+          fi
 
-      - name: Upload APK artifact
+      - name: Create release (if apk present)
+        if: steps.find_apk.outputs.apk_found == 'true'
+        id: create_release
+        uses: actions/create-release@v1
+        with:
+          tag_name: apk-${{ github.run_id }}
+          release_name: APK build ${{ github.run_id }}
+          draft: false
+          prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload release asset
+        if: steps.find_apk.outputs.apk_found == 'true'
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ${{ steps.find_apk.outputs.apk_path }}
+          asset_name: app-debug.apk
+          asset_content_type: application/vnd.android.package-archive
+
+      - name: Write app-update manifest
+        if: steps.find_apk.outputs.apk_found == 'true'
+        run: |
+          mkdir -p dist/apk
+          TAG=apk-${{ github.run_id }}
+          APK_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/app-debug.apk"
+          cat > dist/apk/app-update.json <<EOF
+          {
+            "version": "${{ github.run_number }}",
+            "versionName": "${{ github.run_number }}",
+            "url": "${APK_URL}",
+            "fileName": "app-debug.apk",
+            "notes": ["Automated APK upload"],
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add dist/apk/app-update.json
+          git commit -m "chore(ci): publish apk manifest [skip ci]" || true
+          git push origin HEAD:main || true
+
+      - name: Upload workflow artifact (APK manifest)
+        if: steps.find_apk.outputs.apk_found == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: its-debug-apk
-          path: |
-            ${{ steps.apk.outputs.path }}
-            ${{ steps.apk.outputs.latest_path }}
-            ${{ steps.apk.outputs.manifest }}
+          name: app-update-manifest
+          path: dist/apk/app-update.json
 
-      - name: Publish APK prerelease
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ env.APK_RELEASE_TAG }}
-          name: APK build ${{ github.run_number }}
-          prerelease: true
-          files: |
-            ${{ steps.apk.outputs.path }}
-            ${{ steps.apk.outputs.latest_path }}
-            ${{ steps.apk.outputs.manifest }}
-
-      - name: Authenticate to Google Cloud
-        id: auth
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_ITSTELKOM }}
-
-      - name: Deploy APK to Firebase
-        working-directory: web
-        env:
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}
-        run: |
-          set -euo pipefail
-          find dist -name "*.apk" -delete
-          ./node_modules/.bin/firebase deploy --project itstelkom --only hosting --non-interactive
-          ./node_modules/.bin/firebase database:set /apk dist/app-update.json --project itstelkom --force
-
-      - name: Summary
-        run: |
-          echo "Version: ${ITS_VERSION_NAME} (${ITS_VERSION_CODE})" >> "$GITHUB_STEP_SUMMARY"
-          echo "APK: ${{ steps.apk.outputs.path }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "Download: ${PUBLIC_APK_BASE_URL}/${APK_FILE_NAME}" >> "$GITHUB_STEP_SUMMARY"
-          echo "Firebase manifest: https://itstelkom.web.app/app-update.json" >> "$GITHUB_STEP_SUMMARY"
-          echo "SHA256: ${{ steps.apk.outputs.sha256 }}" >> "$GITHUB_STEP_SUMMARY"
+      - name: Notify (no APK)
+        if: steps.find_apk.outputs.apk_found == 'false'
+        run: echo "No APK found at web/android/app/build/outputs/apk/debug/app-debug.apk; please build artifact first."
