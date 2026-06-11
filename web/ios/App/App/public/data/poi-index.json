@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "updatedAt": "2026-06-04T00:00:00+07:00",
+  "license": "Seed POI file for legal/open POI shards. Runtime OSM/Overpass data remains under ODbL.",
+  "sources": [
+    {
+      "id": "osm-overpass-live",
+      "name": "OpenStreetMap via Overpass",
+      "mode": "viewport",
+      "license": "ODbL-1.0",
+      "attribution": "© OpenStreetMap contributors"
+    },
+    {
+      "id": "future-firebase-poi-cache",
+      "name": "Firebase-hosted POI shards",
+      "mode": "json-shard",
+      "license": "source-specific"
+    }
+  ],
+  "seedPois": []
+}

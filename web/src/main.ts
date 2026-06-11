@@ -42,6 +42,13 @@ type YoloDetection = {
   width: number;
   height: number;
 };
+type TrafficCameraDataset = {
+  snapshot1Url?: string;
+  snapshot2Url?: string;
+  updatedAt?: number;
+  source?: string;
+  path?: string;
+};
 type ControllerUpdateInfo = {
   status?: "running" | "complete" | "error";
   stage?: string;
@@ -59,6 +66,8 @@ type DeviceRecord = {
   note?: string;
   cameraUrl?: string;
   cameraHlsUrl?: string;
+  cameraThumbnailUrl?: string;
+  cameraDataset?: TrafficCameraDataset;
   cameraMode?: CameraMode;
   webrtcEnabled?: boolean;
   webrtcPath?: string;
@@ -167,6 +176,8 @@ const OFFLINE_AFTER_MS = 60_000;
 const FIREBASE_DEVICES_URL =
   "https://itstelkom-default-rtdb.asia-southeast1.firebasedatabase.app/devices.json";
 const FIREBASE_ROOT_URL = FIREBASE_DEVICES_URL.replace(/\/devices\.json$/, "");
+const FIREBASE_TRAFFIC_DATASET_ROOT = `${FIREBASE_ROOT_URL}/trafficObjectDetectionDataset/devices`;
+const FIREBASE_BROWSER_YOLO_ROOT = `${FIREBASE_ROOT_URL}/browserYolo/devices`;
 const WEBRTC_SIGNAL_ROOT = "webrtc/devices";
 const WEBRTC_POLL_MS = 700;
 const WEBRTC_HEARTBEAT_MS = 5_000;
@@ -179,6 +190,7 @@ const BEARING_STEP = 90;
 const BEARING_SNAP = 5;
 const MAPLIBRE_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
 const MAPLIBRE_3D_PITCH = 52;
+const LAST_DEVICE_POSITIONS_STORAGE_KEY = "its-web-device-positions:v1";
 
 // ─── DOM bootstrap ──────────────────────────────────────────────
 
@@ -212,6 +224,9 @@ const state = {
   config: DEFAULT_CONFIG,
   device: null as DeviceRecord | null,
   devices: [] as DeviceRecord[],
+  knownDevicePositions: loadKnownDevicePositions(),
+  snapshotCache: new Map<string, TrafficCameraDataset>(),
+  splashReady: false,
   refreshTimer: 0,
   refreshBusy: false,
   hasCentered: false,
@@ -1653,18 +1668,24 @@ function markerAnchorBySize(size: number): [number, number] {
 // FIX: normalizeOneDevice — parser untuk satu raw device object langsung,
 // tidak membungkus ulang dalam Snapshot sehingga tidak ada double-wrapping.
 function normalizeOneDevice(raw: SnapshotDevice): DeviceRecord | null {
+  const rawRecord = raw as Record<string, unknown>;
+  const rawId = typeof rawRecord.id === "string" ? rawRecord.id.trim() : "";
+  const id = raw.id?.trim() || rawId || "raspberry-its";
   let lat = typeof raw.position?.lat === "number" ? raw.position.lat
     : typeof raw.position?.y === "number" ? raw.position.y : null;
   let lng = typeof raw.position?.lng === "number" ? raw.position.lng
     : typeof raw.position?.x === "number" ? raw.position.x : null;
   if (lat === null || lng === null) return null;
-  if (Math.abs(lat) < 0.000001 && Math.abs(lng) < 0.000001) {
-    [lat, lng] = DEFAULT_CENTER as [number, number];
+  if (!isValidCoordinate(lat, lng)) {
+    const known = state.knownDevicePositions[id];
+    lat = known?.lat ?? (DEFAULT_CENTER as [number, number])[0];
+    lng = known?.lng ?? (DEFAULT_CENTER as [number, number])[1];
+  } else {
+    saveKnownDevicePosition(id, lat, lng);
   }
   const lastSeen = normalizeEpoch(typeof raw.lastSeen === "number" ? raw.lastSeen : 0);
   const rawStatus = isDeviceStatus(raw.status) ? raw.status : "offline";
   const status = lastSeen > 0 && Date.now() - lastSeen > OFFLINE_AFTER_MS ? "offline" : rawStatus;
-  const rawRecord = raw as Record<string, unknown>;
   const rawCameraMode = rawRecord.cameraMode;
   const cameraUrl = raw.cameraUrl?.trim() || undefined;
   const cameraHlsUrl = typeof rawRecord.cameraHlsUrl === "string" ? rawRecord.cameraHlsUrl.trim() || undefined : undefined;
@@ -1682,13 +1703,15 @@ function normalizeOneDevice(raw: SnapshotDevice): DeviceRecord | null {
   const vehicleBreakdown = normalizeVehicleBreakdown(rawRecord.vehicleBreakdown);
   const detections = normalizeDetections(rawRecord.detections);
   return {
-    id: raw.id?.trim() || "raspberry-its",
+    id,
     label: raw.label?.trim() || "Raspberry Pi 5 Controller",
     status, lastSeen,
     lastSeenText: raw.lastSeenText?.trim() || undefined,
     note: raw.note?.trim() || undefined,
     cameraUrl,
     cameraHlsUrl,
+    cameraThumbnailUrl: typeof rawRecord.cameraThumbnailUrl === "string" ? rawRecord.cameraThumbnailUrl.trim() || undefined : undefined,
+    cameraDataset: normalizeCameraDataset(rawRecord.cameraDataset),
     cameraMode,
     webrtcEnabled: typeof rawRecord.webrtcEnabled === "boolean" ? rawRecord.webrtcEnabled : undefined,
     webrtcPath: typeof rawRecord.webrtcPath === "string" ? rawRecord.webrtcPath.trim() || undefined : undefined,

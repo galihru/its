@@ -99,6 +99,74 @@ button {
   background: var(--bg);
 }
 
+.win-app-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(circle at 26% 24%, color-mix(in srgb, var(--accent) 46%, transparent), transparent 34%),
+    radial-gradient(circle at 78% 82%, rgba(55, 221, 134, 0.24), transparent 38%),
+    linear-gradient(135deg, #101820, #1b222d 58%, #0d131b);
+  transition: opacity 240ms ease, transform 240ms ease;
+}
+
+.win-app-splash.hide {
+  opacity: 0;
+  transform: scale(1.018);
+  pointer-events: none;
+}
+
+.win-app-splash-card {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  color: #fff;
+}
+
+.win-app-splash-card img {
+  width: 88px;
+  height: 88px;
+  object-fit: contain;
+  filter: drop-shadow(0 22px 42px color-mix(in srgb, var(--accent) 42%, transparent));
+}
+
+.win-app-splash-card strong {
+  font-size: 29px;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.win-app-splash-card span {
+  color: #cfe4ff;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.win-app-splash-card i {
+  width: 210px;
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.win-app-splash-card i::before {
+  content: "";
+  display: block;
+  width: 40%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #37dd86, var(--accent));
+  animation: winSplashMove 1.1s ease-in-out infinite;
+}
+
+@keyframes winSplashMove {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(260%); }
+}
+
 .win-sidebar {
   display: grid;
   grid-template-rows: auto 1fr auto;

@@ -182,6 +182,7 @@ const DEFAULT_ZOOM = 16;
 const HISTORY_STORAGE_KEY = "its-windows-traffic-history:v1";
 const CLIENT_ID_STORAGE_KEY = "its-windows-client-id:v1";
 const LAST_LOCATION_STORAGE_KEY = "its-windows-user-location:v1";
+const LAST_DEVICE_POSITIONS_STORAGE_KEY = "its-windows-device-positions:v1";
 const CUSTOM_ACCENT_STORAGE_KEY = "its-windows-custom-accent:v1";
 const OVERPASS_ENDPOINT = "https://overpass-api.de/api/interpreter";
 const VEHICLE_LABELS = new Set(["bicycle", "car", "motorcycle", "bus", "truck"]);
@@ -210,6 +211,7 @@ const state = {
   mapFocus: "raspi" as MapFocus,
   mapPitch: 0,
   userLocation: loadLastUserLocation(),
+  knownDevicePositions: loadKnownDevicePositions(),
   geolocationState: "menunggu izin lokasi" as string,
   locationPromptOpen: false,
   clientId: clientId(),
@@ -229,6 +231,8 @@ const state = {
   cameraKey: "",
   ambientTimer: 0,
   cameraReadyTimer: 0,
+  appDataReady: false,
+  snapshotCache: new Map<string, TrafficCameraDataset>(),
   maps: {
     homeUser: null as L.Map | null,
     homeRaspi: null as L.Map | null,
@@ -288,6 +292,14 @@ function bindUpdateBridge(): void {
 function shellHtml(): string {
   return `
     <div class="win-shell">
+      <div class="win-app-splash" data-app-splash>
+        <div class="win-app-splash-card">
+          <img src="${APP_ICON_URL}" alt="ITS Maps">
+          <strong>ITS Maps Windows</strong>
+          <span data-app-splash-text>Mengambil data Raspberry, GPS, kamera, dan AI...</span>
+          <i></i>
+        </div>
+      </div>
       <aside class="win-sidebar">
         <div class="win-brand">
           <img src="${APP_ICON_URL}" alt="ITS">
@@ -799,10 +811,12 @@ async function refreshData(): Promise<void> {
     if (state.device) recordTrafficHistory(state.device);
     state.syncStatus = "live";
     state.syncText = "live";
+    hideAppSplash("Data realtime siap");
   } catch (err) {
     console.warn("[ITS Windows] sync failed:", err);
     state.syncStatus = "warn";
     state.syncText = "offline";
+    hideAppSplash("Mode offline, memakai data terakhir");
   } finally {
     renderAll();
     window.clearTimeout(state.refreshTimer);
@@ -841,15 +855,63 @@ async function fetchDevices(): Promise<DeviceRecord[]> {
   throw new Error("No valid devices found");
 }
 
+function hideAppSplash(message = "Data siap"): void {
+  if (state.appDataReady) return;
+  state.appDataReady = true;
+  const splash = document.querySelector<HTMLElement>("[data-app-splash]");
+  const text = splash?.querySelector<HTMLElement>("[data-app-splash-text]");
+  if (text) text.textContent = message;
+  window.setTimeout(() => {
+    splash?.classList.add("hide");
+    window.setTimeout(() => splash?.remove(), 260);
+  }, 180);
+}
+
 async function enrichDevices(devices: DeviceRecord[]): Promise<DeviceRecord[]> {
   return Promise.all(devices.map(async (device) => {
     const id = encodeURIComponent(device.id);
-    const [trafficDataset, browserYolo] = await Promise.all([
-      fetchJson<unknown>(`${FIREBASE_TRAFFIC_DATASET_ROOT}/${id}.json`).catch(() => null),
-      fetchJson<unknown>(`${FIREBASE_BROWSER_YOLO_ROOT}/${id}.json`).catch(() => null),
-    ]);
-    return mergeDeviceTelemetry(device, trafficDataset, browserYolo);
+    const telemetry = await fetchDeviceTelemetry(id).catch(() => ({ traffic: null, yolo: null }));
+    return mergeDeviceTelemetry(device, telemetry.traffic, telemetry.yolo);
   }));
+}
+
+async function fetchDeviceTelemetry(id: string): Promise<{ traffic: unknown; yolo: unknown }> {
+  const trafficFields = [
+    "updatedAt", "source", "vehicleCount", "cameraUrl", "detectorStatus",
+    "trafficDurationSec", "trafficColor", "detectorFrameHeight", "detectorFrameWidth",
+    "vehicleBreakdown", "locationLabel", "position",
+  ];
+  const yoloFields = [
+    "updatedAt", "thumbnailUpdatedAt", "source", "vehicleCount", "cameraUrl", "fps",
+    "status", "note", "frameWidth", "frameHeight", "objectCount", "vehicleBreakdown",
+  ];
+  const [trafficEntries, yoloEntries] = await Promise.all([
+    readFirebaseFields(`${FIREBASE_TRAFFIC_DATASET_ROOT}/${id}`, trafficFields),
+    readFirebaseFields(`${FIREBASE_BROWSER_YOLO_ROOT}/${id}`, yoloFields),
+  ]);
+  const traffic = trafficEntries as Record<string, unknown>;
+  const yolo = yoloEntries as Record<string, unknown>;
+  const trafficUpdatedAt = normalizeEpoch(finiteNumber(traffic.updatedAt) ?? 0);
+  const cached = state.snapshotCache.get(id);
+  if (trafficUpdatedAt && cached?.updatedAt === trafficUpdatedAt) {
+    traffic.snapshot1Url = cached.snapshot1Url;
+    traffic.snapshot2Url = cached.snapshot2Url;
+  } else if (trafficUpdatedAt) {
+    const snapshots = await readFirebaseFields(`${FIREBASE_TRAFFIC_DATASET_ROOT}/${id}`, ["snapshot1Url", "snapshot2Url"]).catch(() => ({}));
+    traffic.snapshot1Url = snapshots.snapshot1Url;
+    traffic.snapshot2Url = snapshots.snapshot2Url;
+    const dataset = normalizeCameraDataset(traffic);
+    if (dataset) state.snapshotCache.set(id, dataset);
+  }
+  return { traffic, yolo };
+}
+
+async function readFirebaseFields(baseUrl: string, fields: string[]): Promise<Record<string, unknown>> {
+  const pairs = await Promise.all(fields.map(async (field) => {
+    const value = await fetchJson<unknown>(`${baseUrl}/${field}.json`).catch(() => undefined);
+    return [field, value] as const;
+  }));
+  return Object.fromEntries(pairs.filter(([, value]) => value !== undefined));
 }
 
 function mergeDeviceTelemetry(device: DeviceRecord, trafficRaw: unknown, yoloRaw: unknown): DeviceRecord {
@@ -960,9 +1022,13 @@ function normalizeOneDevice(raw: SnapshotDevice): DeviceRecord | null {
   let lat = finiteNumber(position?.lat) ?? finiteNumber(position?.y);
   let lng = finiteNumber(position?.lng) ?? finiteNumber(position?.x);
   if (lat === undefined || lng === undefined) return null;
-  if (Math.abs(lat) < 0.000001 && Math.abs(lng) < 0.000001) {
-    lat = DEFAULT_CENTER[0];
-    lng = DEFAULT_CENTER[1];
+  const id = stringValue(record.id) || raw.id || "raspberry-its";
+  if (!isValidCoordinate(lat, lng)) {
+    const known = state.knownDevicePositions[id];
+    lat = known?.lat ?? DEFAULT_CENTER[0];
+    lng = known?.lng ?? DEFAULT_CENTER[1];
+  } else {
+    saveKnownDevicePosition(id, lat, lng);
   }
 
   const lastSeen = normalizeEpoch(finiteNumber(raw.lastSeen) ?? 0);
@@ -978,7 +1044,7 @@ function normalizeOneDevice(raw: SnapshotDevice): DeviceRecord | null {
     : stringValue(record.cameraUrl) ? "mjpeg" : undefined;
 
   return {
-    id: stringValue(record.id) || "raspberry-its",
+    id,
     label: stringValue(record.label) || "Raspberry Pi 5 Controller",
     status,
     lastSeen,
@@ -2415,7 +2481,7 @@ function isLikelyImageUrl(url: string): boolean {
 
 function cameraSurfaceKey(device: DeviceRecord | null): string {
   const url = publicCameraHlsUrl(device) || publicCameraUrl(device) || device?.cameraThumbnailUrl || "";
-  return `${device?.id || "none"}:${device?.status || "none"}:${device?.lastSeen || 0}:${device?.cameraMode || "auto"}:${url}`;
+  return `${device?.id || "none"}:${device?.status || "none"}:${device?.lastSeen || 0}:${device?.cameraMode || "auto"}:${device?.cameraDataset?.updatedAt || 0}:${url}`;
 }
 
 function deviceIsOnline(device: DeviceRecord | null): boolean {
@@ -2563,6 +2629,14 @@ function stringValue(v: unknown): string | undefined {
   return typeof v === "string" && v.trim() ? v.trim() : undefined;
 }
 
+function isValidCoordinate(lat: number, lng: number): boolean {
+  return Number.isFinite(lat)
+    && Number.isFinite(lng)
+    && Math.abs(lat) <= 90
+    && Math.abs(lng) <= 180
+    && !(Math.abs(lat) < 0.000001 && Math.abs(lng) < 0.000001);
+}
+
 function objectRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" ? v as Record<string, unknown> : {};
 }
@@ -2667,6 +2741,27 @@ function loadLastUserLocation(): UserLocation | null {
 function saveLastUserLocation(location: UserLocation): void {
   try {
     localStorage.setItem(LAST_LOCATION_STORAGE_KEY, JSON.stringify(location));
+  } catch {
+    /* ignore */
+  }
+}
+
+function loadKnownDevicePositions(): Record<string, { lat: number; lng: number; updatedAt: number }> {
+  try {
+    const raw = localStorage.getItem(LAST_DEVICE_POSITIONS_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, { lat: number; lng: number; updatedAt: number }>;
+    return Object.fromEntries(Object.entries(parsed).filter(([, pos]) => isValidCoordinate(pos.lat, pos.lng)));
+  } catch {
+    return {};
+  }
+}
+
+function saveKnownDevicePosition(id: string, lat: number, lng: number): void {
+  if (!id || !isValidCoordinate(lat, lng)) return;
+  state.knownDevicePositions[id] = { lat, lng, updatedAt: Date.now() };
+  try {
+    localStorage.setItem(LAST_DEVICE_POSITIONS_STORAGE_KEY, JSON.stringify(state.knownDevicePositions));
   } catch {
     /* ignore */
   }

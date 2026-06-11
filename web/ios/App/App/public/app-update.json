@@ -1,0 +1,36 @@
+{
+  "appId": "id.ac.telkomuniversity.its",
+  "appName": "ITS",
+  "ownerName": "Hanifa Septhi Larasati",
+  "institution": "Telkom University",
+  "versionCode": 12,
+  "versionName": "1.0.12",
+  "apkUrl": "https://itstelkom.web.app/artifacts/apps/ITS.apk",
+  "androidUrl": "https://itstelkom.web.app/artifacts/apps/ITS.apk",
+  "iosBundleId": "id.ac.telkomuniversity.its",
+  "iosUrl": "https://itstelkom.web.app/?install=ios",
+  "pwaUrl": "https://itstelkom.web.app/",
+  "downloadUrl": "https://itstelkom.web.app/artifacts/apps/ITS.apk",
+  "latestUrl": "https://itstelkom.web.app/artifacts/apps/ITS.apk",
+  "fileName": "ITS.apk",
+  "sizeBytes": 55071027,
+  "sha256": "eb7def701b5727fa346e6cfacd93af25e8f42f1b265aef5228fff205cdeab079",
+  "updatedAt": "2026-06-04T06:03:06+07:00",
+  "force": false,
+  "autoDownload": false,
+  "minSupportedVersionCode": 1,
+  "logoUrl": "https://itstelkom.web.app/its.png",
+  "deepLinks": {
+    "open": "its://open",
+    "map": "its://map",
+    "chart": "its://chart"
+  },
+  "releaseNotes": [
+    "Menambahkan source iOS Capacitor dan widget iOS berbasis WidgetKit untuk ringkasan traffic ITS.",
+    "Website otomatis menyesuaikan install/download untuk iPhone, Android, dan desktop.",
+    "Memperbaiki tampilan widget Alert dan Full Data agar sidebar tidak terpotong saat widget dibuat penuh.",
+    "Modal install mobile memakai icon aplikasi ITS terbaru dan screenshot dari folder src/ss.",
+    "Download APK hanya berjalan saat user menekan tombol install, tidak otomatis.",
+    "Metadata update sinkron ke Firebase dan tombol buka aplikasi tetap memakai deep link ITS."
+  ]
+}
