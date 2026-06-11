@@ -1,65 +1,24 @@
-const { app, BrowserWindow, Menu, Notification, Tray, ipcMain, nativeImage, session, shell } = require("electron");
+const { app, BrowserWindow, Menu, Notification, shell, session, ipcMain } = require("electron");
 const { execFile, spawn } = require("node:child_process");
 const fs = require("node:fs");
 const https = require("node:https");
 const path = require("node:path");
 
-const APP_PROTOCOLS = ["its", "itsmaps"];
+const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
 const APP_UPDATE_URL = "https://itstelkom.web.app/app-update.json";
 const WINDOWS_EXE_NAME = "ITS-Maps-Windows-Custom-Setup-1.0.12-x64.exe";
 const UPDATE_HISTORY_FILE = "update-history.json";
-
 let mainWindow = null;
-let tray = null;
+let updateTimer = null;
 let forceQuit = false;
-let pendingRoute = null;
 
 function iconPath() {
   const candidates = [
-    path.join(__dirname, "..", "public", "itss.png"),
-    path.join(__dirname, "..", "public", "favicon.svg"),
-    path.join(process.resourcesPath || "", "app.asar", "public", "itss.png"),
-    path.join(process.resourcesPath || "", "app.asar", "public", "favicon.svg"),
+    path.join(__dirname, "..", "src", "icon", "its.png"),
+    path.join(__dirname, "..", "public", "its.png"),
+    path.join(process.resourcesPath || "", "app.asar", "src", "icon", "its.png"),
   ];
-  return candidates.find((candidate) => candidate && fs.existsSync(candidate)) || "";
-}
-
-function rendererPath() {
-  const resourceRenderer = path.join(process.resourcesPath || "", "dist", "windows.html");
-  const localRenderer = path.join(__dirname, "..", "dist", "windows.html");
-  return fs.existsSync(resourceRenderer) ? resourceRenderer : localRenderer;
-}
-
-function sendToRenderer(channel, payload) {
-  if (!mainWindow || mainWindow.isDestroyed()) return;
-  mainWindow.webContents.send(channel, payload);
-}
-
-function focusWindow(route) {
-  if (route) pendingRoute = route;
-  if (!mainWindow || mainWindow.isDestroyed()) {
-    createWindow();
-    return;
-  }
-  if (!mainWindow.isVisible()) mainWindow.show();
-  if (mainWindow.isMinimized()) mainWindow.restore();
-  mainWindow.focus();
-  if (pendingRoute) {
-    sendToRenderer("its:navigate", pendingRoute);
-    pendingRoute = null;
-  }
-}
-
-function parseRouteFromUrl(rawUrl) {
-  try {
-    const parsed = new URL(rawUrl);
-    return parsed.searchParams.get("route")
-      || parsed.searchParams.get("screen")
-      || parsed.pathname.replace(/^\/+/, "")
-      || "home";
-  } catch {
-    return "home";
-  }
+  return candidates.find((candidate) => candidate && fs.existsSync(candidate)) || path.join(__dirname, "..", "public", "its.png");
 }
 
 function readWindowsLocation() {
@@ -70,7 +29,7 @@ function readWindowsLocation() {
   const script = `
 Add-Type -AssemblyName System.Device
 $watcher = New-Object System.Device.Location.GeoCoordinateWatcher ([System.Device.Location.GeoPositionAccuracy]::High)
-$started = $watcher.TryStart($false, [TimeSpan]::FromSeconds(15))
+$started = $watcher.TryStart($false, [TimeSpan]::FromSeconds(10))
 $loc = $watcher.Position.Location
 if ($loc.IsUnknown) {
   [pscustomobject]@{ ok=$false; error="windows-location-unknown"; started=$started } | ConvertTo-Json -Compress
@@ -84,10 +43,9 @@ if ($loc.IsUnknown) {
   } | ConvertTo-Json -Compress
 }
 `;
-
   return new Promise((resolve) => {
     execFile("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script], {
-      timeout: 20_000,
+      timeout: 14_000,
       windowsHide: true,
       maxBuffer: 64 * 1024,
     }, (error, stdout) => {
@@ -100,13 +58,7 @@ if ($loc.IsUnknown) {
         const lat = Number(parsed.lat);
         const lng = Number(parsed.lng);
         if (parsed.ok && Number.isFinite(lat) && Number.isFinite(lng)) {
-          resolve({
-            ok: true,
-            lat,
-            lng,
-            accuracy: Number(parsed.accuracy) || undefined,
-            source: "windows-location",
-          });
+          resolve({ ok: true, lat, lng, accuracy: Number(parsed.accuracy) || undefined, source: "windows-location" });
           return;
         }
         resolve({ ok: false, error: parsed.error || "windows-location-unknown" });
@@ -117,70 +69,39 @@ if ($loc.IsUnknown) {
   });
 }
 
-function ensureTray() {
-  if (tray) return;
-  const img = iconPath() ? nativeImage.createFromPath(iconPath()) : nativeImage.createEmpty();
-  tray = new Tray(img);
-  tray.setToolTip("ITS Maps Windows");
-  tray.setContextMenu(Menu.buildFromTemplate([
-    { label: "Buka ITS Maps", click: () => focusWindow("home") },
-    { label: "Peta Raspberry", click: () => focusWindow("map:raspberry") },
-    { label: "Camera", click: () => focusWindow("camera") },
-    { type: "separator" },
-    {
-      label: "Keluar",
-      click: () => {
-        forceQuit = true;
-        app.quit();
-      },
-    },
-  ]));
-  tray.on("click", () => focusWindow("home"));
+function sendToRenderer(channel, payload) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.webContents.send(channel, payload);
 }
 
-function showSystemNotification(payload = {}) {
-  if (!Notification.isSupported()) return false;
-  const notification = new Notification({
-    title: String(payload.title || "ITS Maps Windows"),
-    body: String(payload.body || ""),
-    icon: iconPath(),
-    silent: Boolean(payload.silent),
-  });
-  notification.on("click", () => focusWindow(String(payload.route || "home")));
-  notification.show();
-  return true;
+function updateHistoryPath() {
+  return path.join(app.getPath("userData"), UPDATE_HISTORY_FILE);
 }
 
 function readUpdateHistory() {
-  const file = path.join(app.getPath("userData"), UPDATE_HISTORY_FILE);
   try {
-    return JSON.parse(fs.readFileSync(file, "utf8"));
+    return JSON.parse(fs.readFileSync(updateHistoryPath(), "utf8"));
   } catch {
     return [];
   }
 }
 
-function writeUpdateHistory(items) {
-  const file = path.join(app.getPath("userData"), UPDATE_HISTORY_FILE);
-  fs.writeFileSync(file, JSON.stringify(items.slice(0, 40), null, 2), "utf8");
-}
-
 function appendUpdateHistory(item) {
-  const next = [{
-    at: Date.now(),
-    ...item,
-  }, ...readUpdateHistory()];
-  writeUpdateHistory(next);
-  sendToRenderer("its:update-history", next);
+  const history = readUpdateHistory();
+  history.push({ ...item, at: new Date().toISOString() });
+  const trimmed = history.slice(-80);
+  fs.mkdirSync(app.getPath("userData"), { recursive: true });
+  fs.writeFileSync(updateHistoryPath(), JSON.stringify(trimmed, null, 2));
+  sendToRenderer("its:update-history", trimmed);
 }
 
-function compareVersion(a, b) {
-  const left = String(a || "0").replace(/^v/i, "").split(".").map((part) => Number(part) || 0);
-  const right = String(b || "0").replace(/^v/i, "").split(".").map((part) => Number(part) || 0);
-  const max = Math.max(left.length, right.length);
+function compareVersion(left, right) {
+  const a = String(left || "0").split(".").map((part) => Number(part) || 0);
+  const b = String(right || "0").split(".").map((part) => Number(part) || 0);
+  const max = Math.max(a.length, b.length);
   for (let i = 0; i < max; i += 1) {
-    if ((left[i] || 0) > (right[i] || 0)) return 1;
-    if ((left[i] || 0) < (right[i] || 0)) return -1;
+    if ((a[i] || 0) > (b[i] || 0)) return 1;
+    if ((a[i] || 0) < (b[i] || 0)) return -1;
   }
   return 0;
 }
@@ -199,8 +120,8 @@ function fetchJson(url) {
       res.on("end", () => {
         try {
           resolve(JSON.parse(body));
-        } catch (err) {
-          reject(err);
+        } catch (error) {
+          reject(error);
         }
       });
     }).on("error", reject);
@@ -230,39 +151,46 @@ function downloadFile(url, destination, onProgress) {
         if (total) onProgress(Math.round((done / total) * 100));
       });
       res.pipe(file);
-      file.on("finish", () => {
-        file.close(() => resolve(destination));
-      });
-    }).on("error", (err) => {
+      file.on("finish", () => file.close(() => resolve(destination)));
+    }).on("error", (error) => {
       file.close();
       fs.rmSync(destination, { force: true });
-      reject(err);
+      reject(error);
     });
   });
 }
 
+function notifyUpdate(title, body) {
+  if (!Notification.isSupported()) return;
+  new Notification({ title, body, icon: iconPath() }).show();
+}
+
 async function checkForUpdates({ autoInstall = false } = {}) {
   const current = app.getVersion();
-  appendUpdateHistory({ status: "checking", message: "Memeriksa pembaruan", current });
-  sendToRenderer("its:update-status", { status: "checking", message: "Memeriksa pembaruan", current });
+  const checking = { status: "checking", message: "Memeriksa pembaruan", current };
+  appendUpdateHistory(checking);
+  sendToRenderer("its:update-status", checking);
 
   try {
     const manifest = await fetchJson(APP_UPDATE_URL);
     const latest = manifest.versionName || manifest.version || current;
-    const url = manifest.windowsUrl || manifest.desktopUrl || "";
-    if (compareVersion(latest, current) <= 0 || !url) {
+    const updateUrl = manifest.windowsUrl || manifest.desktopUrl || "";
+
+    if (!updateUrl || compareVersion(latest, current) <= 0) {
       const item = { status: "up-to-date", message: `Versi terbaru sudah terpasang (${current})`, current, latest };
       appendUpdateHistory(item);
       sendToRenderer("its:update-status", item);
-      showSystemNotification({ title: "ITS Maps Windows update", body: "You are up to date", route: "updates" });
       return item;
     }
 
     const updateDir = path.join(app.getPath("userData"), "updates");
     fs.mkdirSync(updateDir, { recursive: true });
     const destination = path.join(updateDir, WINDOWS_EXE_NAME);
-    appendUpdateHistory({ status: "downloading", message: `Mengunduh versi ${latest}`, current, latest });
-    await downloadFile(url, destination, (progress) => {
+    const downloading = { status: "downloading", message: `Mengunduh versi ${latest}`, current, latest, progress: 0 };
+    appendUpdateHistory(downloading);
+    sendToRenderer("its:update-status", downloading);
+
+    await downloadFile(updateUrl, destination, (progress) => {
       sendToRenderer("its:update-status", {
         status: "downloading",
         message: `Mengunduh pembaruan ${progress}%`,
@@ -281,20 +209,23 @@ async function checkForUpdates({ autoInstall = false } = {}) {
     };
     appendUpdateHistory(downloaded);
     sendToRenderer("its:update-status", downloaded);
-    showSystemNotification({ title: "Update ITS Maps siap", body: "Installer pembaruan sudah selesai diunduh", route: "updates" });
+    notifyUpdate("Update ITS Maps siap", "Pembaruan akan dipasang otomatis.");
 
     if (autoInstall) {
-      appendUpdateHistory({ status: "installing", message: "Menjalankan installer pembaruan", current, latest });
-      spawn(destination, ["/S"], { detached: true, stdio: "ignore" }).unref();
+      const installing = { status: "installing", message: "Menjalankan custom setup secara silent", current, latest };
+      appendUpdateHistory(installing);
+      sendToRenderer("its:update-status", installing);
+      spawn(destination, ["--silent", "--run-after-install"], { detached: true, stdio: "ignore" }).unref();
       forceQuit = true;
       app.quit();
     }
+
     return downloaded;
-  } catch (err) {
-    const failed = { status: "failed", message: err.message || "Gagal memeriksa pembaruan", current };
+  } catch (error) {
+    const failed = { status: "failed", message: error.message || "Gagal memeriksa pembaruan", current };
     appendUpdateHistory(failed);
     sendToRenderer("its:update-status", failed);
-    showSystemNotification({ title: "Update ITS Maps gagal", body: failed.message, route: "updates" });
+    notifyUpdate("Update ITS Maps gagal", failed.message);
     return failed;
   }
 }
@@ -303,10 +234,10 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 920,
-    minWidth: 1060,
-    minHeight: 700,
+    minWidth: 1040,
+    minHeight: 680,
     title: "ITS Maps Windows",
-    backgroundColor: "#111827",
+    backgroundColor: "#171b20",
     icon: iconPath(),
     show: false,
     webPreferences: {
@@ -319,23 +250,16 @@ function createWindow() {
   });
 
   mainWindow.once("ready-to-show", () => {
-    mainWindow.show();
-    if (pendingRoute) {
-      sendToRenderer("its:navigate", pendingRoute);
-      pendingRoute = null;
-    }
+    mainWindow?.show();
   });
 
-  mainWindow.on("close", (event) => {
-    if (forceQuit) return;
-    event.preventDefault();
-    mainWindow.hide();
-    showSystemNotification({
-      title: "ITS Maps tetap aktif",
-      body: "Notifikasi Raspberry, kamera, dan update tetap berjalan di background.",
-      route: "home",
-      silent: true,
-    });
+  mainWindow.on("closed", () => {
+    mainWindow = null;
+  });
+
+  mainWindow.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedUrl) => {
+    console.error(`[ITS Maps Windows] Renderer load failed (${errorCode}): ${errorDescription} - ${validatedUrl}`);
+    mainWindow?.show();
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -343,36 +267,23 @@ function createWindow() {
     return { action: "deny" };
   });
 
-  mainWindow.loadFile(rendererPath()).catch((err) => {
-    console.error("[ITS Maps Windows] Renderer failed:", err);
-    mainWindow.show();
-  });
-}
-
-app.setName("ITS Maps Windows");
-if (process.platform === "win32") {
-  app.setAppUserModelId("id.ac.telkomuniversity.its.maps.windows");
-}
-
-const gotLock = app.requestSingleInstanceLock();
-if (!gotLock) app.quit();
-
-app.on("second-instance", (_event, argv) => {
-  const link = argv.find((arg) => APP_PROTOCOLS.some((protocol) => arg.startsWith(`${protocol}:`)));
-  focusWindow(link ? parseRouteFromUrl(link) : "home");
-});
-
-APP_PROTOCOLS.forEach((protocol) => {
-  try {
-    app.setAsDefaultProtocolClient(protocol);
-  } catch {
-    // Ignore registration failure in unpacked/dev mode.
+  if (isDev) {
+    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
+    mainWindow.webContents.openDevTools({ mode: "detach" });
+  } else {
+    const resourceRendererPath = path.join(process.resourcesPath, "dist", "desktop", "renderer.html");
+    const asarRendererPath = path.join(__dirname, "..", "dist", "desktop", "renderer.html");
+    const rendererPath = fs.existsSync(resourceRendererPath) ? resourceRendererPath : asarRendererPath;
+    mainWindow.loadFile(rendererPath).catch((error) => {
+      console.error("[ITS Maps Windows] Renderer loadFile failed:", error);
+      mainWindow?.show();
+    });
   }
-});
+}
 
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
-  ensureTray();
+
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
     callback(permission === "geolocation" || permission === "media" || permission === "notifications");
   });
@@ -381,18 +292,27 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle("its:get-current-position", readWindowsLocation);
-  ipcMain.handle("its:open-location-settings", () => shell.openExternal("ms-settings:privacy-location"));
-  ipcMain.handle("its:notify", (_event, payload) => showSystemNotification(payload));
-  ipcMain.handle("its:check-update", (_event, options) => checkForUpdates(options));
+  ipcMain.handle("its:open-location-settings", () => {
+    shell.openExternal("ms-settings:privacy-location");
+    return true;
+  });
+  ipcMain.handle("its:check-update", (_event, options) => checkForUpdates(options || {}));
   ipcMain.handle("its:get-update-history", () => readUpdateHistory());
-  ipcMain.handle("its:open-external", (_event, url) => shell.openExternal(String(url || "")));
 
   createWindow();
-  void checkForUpdates({ autoInstall: false });
+  setTimeout(() => void checkForUpdates({ autoInstall: true }), 10_000);
+  updateTimer = setInterval(() => void checkForUpdates({ autoInstall: true }), 6 * 60 * 60 * 1000);
+
+  app.on("activate", () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
 });
 
-app.on("activate", () => focusWindow("home"));
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") app.quit();
+});
 
 app.on("before-quit", () => {
   forceQuit = true;
+  if (updateTimer) clearInterval(updateTimer);
 });

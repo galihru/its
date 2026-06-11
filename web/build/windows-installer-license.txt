@@ -1,0 +1,17 @@
+ITS Maps Windows
+
+Developer / Publisher:
+Hanifa Septhi Larasati
+Telkom University
+
+Application:
+ITS Maps Windows is a desktop dashboard for Raspberry Pi live traffic monitoring,
+realtime maps, traffic-light history charts, and IP camera viewing.
+
+Sync:
+The app reads the same Firebase Realtime Database data source used by the web
+dashboard and Raspberry Pi controller.
+
+Security note:
+For Windows to show a verified publisher in SmartScreen/UAC, the installer must
+be signed with an official code-signing certificate owned by the publisher.

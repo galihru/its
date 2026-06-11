@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.12",
   "productName": "ITS Maps Windows",
-  "description": "ITS Maps Windows untuk peta realtime, Raspberry Pi, kamera lalu lintas, notifikasi, dan auto-update.",
+  "description": "Aplikasi Windows ITS Maps untuk sinkronisasi Raspberry Pi, website, peta realtime, grafik lalu lintas, kamera, dan auto-update.",
   "author": {
     "name": "Hanifa Septhi Larasati - Telkom University"
   },
@@ -15,7 +15,9 @@
     "preview": "vite preview",
     "desktop:dev": "npm run build && electron electron/main.cjs",
     "desktop:open": "electron electron/main.cjs",
-    "desktop:build": "npm run build && electron-builder --win nsis portable"
+    "desktop:build": "npm run build && electron-builder --win nsis portable",
+    "desktop:portable": "npm run build && electron-builder --win portable",
+    "desktop:custom-installer": "powershell -ExecutionPolicy Bypass -File scripts/build-custom-windows-installer.ps1"
   },
   "devDependencies": {
     "@types/leaflet": "^1.9.21",
@@ -40,8 +42,14 @@
     "files": [
       "dist/**/*",
       "electron/**/*",
-      "public/**/*",
+      "src/icon/its.png",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "dist",
+        "to": "dist"
+      }
     ],
     "directories": {
       "output": "release",
@@ -62,12 +70,13 @@
           ]
         }
       ],
-      "icon": "build/icon.png",
+      "icon": "build/icon.ico",
       "executableName": "ITS Maps Windows",
+      "legalTrademarks": "ITS Maps Windows - Hanifa Septhi Larasati - Telkom University",
       "requestedExecutionLevel": "asInvoker"
     },
     "nsis": {
-      "artifactName": "ITS-Maps-Windows-Custom-Setup-${version}-${arch}.${ext}",
+      "artifactName": "ITS-Maps-Windows-Setup-${version}-${arch}.${ext}",
       "oneClick": false,
       "perMachine": false,
       "allowElevation": true,
@@ -75,11 +84,27 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "ITS Maps Windows",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "installerHeader": "build/installerHeader.bmp",
+      "installerSidebar": "build/installerSidebar.bmp",
+      "uninstallerSidebar": "build/uninstallerSidebar.bmp",
+      "include": "build/installer.nsh",
       "uninstallDisplayName": "ITS Maps Windows",
-      "deleteAppDataOnUninstall": true
+      "language": "1057",
+      "installerLanguages": [
+        "id_ID"
+      ],
+      "license": "build/windows-installer-license.txt",
+      "deleteAppDataOnUninstall": false
     },
     "portable": {
       "artifactName": "ITS-Maps-Windows-Portable-${version}-${arch}.${ext}"
+    },
+    "extraMetadata": {
+      "name": "its-maps-windows",
+      "version": "1.0.12"
     }
   }
 }

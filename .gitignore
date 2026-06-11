@@ -8,6 +8,10 @@ web/dist/
 web/release/
 web/.firebase/
 web/vite-*.log
+web/windows-native/**/bin/
+web/windows-native/**/obj/
+web/windows-native/ItsMapsInstaller/Payload/
+web/public/artifacts/apps/*.download
 
 controller/.scala-build/
 

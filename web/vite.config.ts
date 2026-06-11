@@ -1,4 +1,4 @@
-import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 
 export default defineConfig({
@@ -11,8 +11,8 @@ export default defineConfig({
     outDir: "dist",
     rollupOptions: {
       input: {
-        main: resolve(__dirname, "index.html"),
-        windows: resolve(__dirname, "windows.html"),
+        main: fileURLToPath(new URL("./index.html", import.meta.url)),
+        windows: fileURLToPath(new URL("./desktop/renderer.html", import.meta.url)),
       },
     },
   },

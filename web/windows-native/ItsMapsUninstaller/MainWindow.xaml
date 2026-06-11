@@ -1,0 +1,405 @@
+<Window x:Class="ItsMapsUninstaller.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Uninstall ITS Maps"
+        Width="1100"
+        Height="825"
+        MinWidth="980"
+        MinHeight="735"
+        WindowStartupLocation="CenterScreen"
+        WindowStyle="None"
+        ResizeMode="CanResize"
+        Background="#f7fbff"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True"
+        Loaded="OnLoaded">
+  <Window.Resources>
+    <DropShadowEffect x:Key="SoftButtonShadow" Color="#2d6bd8" BlurRadius="18" ShadowDepth="0" Opacity="0.16" />
+    <DropShadowEffect x:Key="CardShadow" Color="#3e6caf" BlurRadius="22" ShadowDepth="8" Opacity="0.10" />
+
+    <Style x:Key="WindowButton" TargetType="Button">
+      <Setter Property="Width" Value="58" />
+      <Setter Property="Height" Value="72" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="Foreground" Value="White" />
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="FontFamily" Value="Segoe MDL2 Assets" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Root" Background="{TemplateBinding Background}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Root" Property="Background" Value="#1d6edf" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style x:Key="CloseWindowButton" TargetType="Button" BasedOn="{StaticResource WindowButton}">
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Root" Background="{TemplateBinding Background}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Root" Property="Background" Value="#e81123" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style x:Key="FooterButton" TargetType="Button">
+      <Setter Property="Height" Value="58" />
+      <Setter Property="MinWidth" Value="172" />
+      <Setter Property="Padding" Value="22,0" />
+      <Setter Property="FontFamily" Value="Segoe UI" />
+      <Setter Property="FontSize" Value="20" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Effect" Value="{StaticResource SoftButtonShadow}" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Root"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    Effect="{TemplateBinding Effect}"
+                    CornerRadius="8">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Root" Property="Opacity" Value="0.92" />
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="Root" Property="Opacity" Value="0.45" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource FooterButton}">
+      <Setter Property="Background" Value="#075ed6" />
+      <Setter Property="BorderBrush" Value="#075ed6" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+
+    <Style x:Key="SecondaryButton" TargetType="Button" BasedOn="{StaticResource FooterButton}">
+      <Setter Property="Background" Value="#fbfdff" />
+      <Setter Property="BorderBrush" Value="#b8c7e5" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Foreground" Value="#06123d" />
+    </Style>
+
+    <Style x:Key="OptionCheckBox" TargetType="CheckBox">
+      <Setter Property="FontFamily" Value="Segoe UI" />
+      <Setter Property="FontSize" Value="20" />
+      <Setter Property="Foreground" Value="#06123d" />
+      <Setter Property="Margin" Value="0,0,0,18" />
+    </Style>
+  </Window.Resources>
+
+  <Viewbox Stretch="Uniform">
+    <Grid Width="1448" Height="1086" Background="#f8fbff">
+      <Image Source="pack://application:,,,/Assets/uninstall.png" Stretch="UniformToFill" Opacity="0.98" />
+      <Path Fill="#fbfdff" Opacity="0.985" Data="M0,72 L765,72 L720,966 L0,966 Z" />
+      <Rectangle Height="120" VerticalAlignment="Bottom" Fill="#fbfdff" Stroke="#d1dced" StrokeThickness="1" />
+
+      <Rectangle Height="72" VerticalAlignment="Top">
+        <Rectangle.Fill>
+          <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+            <GradientStop Color="#063fb6" Offset="0" />
+            <GradientStop Color="#0867df" Offset="0.62" />
+            <GradientStop Color="#2c8cff" Offset="1" />
+          </LinearGradientBrush>
+        </Rectangle.Fill>
+      </Rectangle>
+
+      <Grid Height="72" VerticalAlignment="Top" MouseLeftButtonDown="OnTitleBarMouseDown">
+        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="48,0,0,0">
+          <Image Source="pack://application:,,,/Assets/logo.png" Width="42" Height="42" Stretch="Uniform" Margin="0,0,14,0" />
+          <TextBlock Text="ITS Maps Windows Setup"
+                     Foreground="White"
+                     FontFamily="Segoe UI"
+                     FontSize="27"
+                     FontWeight="SemiBold"
+                     VerticalAlignment="Center" />
+        </StackPanel>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+          <Button Content="&#xE921;" Style="{StaticResource WindowButton}" Click="OnMinimize" />
+          <Button Content="&#xE922;" Style="{StaticResource WindowButton}" Click="OnMaximizeRestore" />
+          <Button Content="&#xE8BB;" Style="{StaticResource CloseWindowButton}" Click="OnClose" />
+        </StackPanel>
+      </Grid>
+
+      <Canvas>
+        <Rectangle Canvas.Left="102" Canvas.Top="130" Width="430" Height="2" Fill="#c5d1e7" />
+        <ItemsControl Canvas.Left="70" Canvas.Top="108" ItemsSource="{Binding Steps}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Orientation="Horizontal" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <Grid Width="108" Height="92">
+                <Ellipse Width="42" Height="42"
+                         VerticalAlignment="Top"
+                         HorizontalAlignment="Center"
+                         Fill="{Binding Fill}"
+                         Stroke="{Binding Stroke}"
+                         StrokeThickness="1.4" />
+                <TextBlock Text="{Binding Number}"
+                           VerticalAlignment="Top"
+                           HorizontalAlignment="Center"
+                           Margin="0,5,0,0"
+                           FontFamily="Segoe UI"
+                           FontSize="22"
+                           FontWeight="SemiBold"
+                           Foreground="{Binding NumberBrush}" />
+                <TextBlock Text="{Binding Label}"
+                           Margin="0,58,0,0"
+                           TextAlignment="Center"
+                           FontFamily="Segoe UI"
+                           FontSize="16"
+                           FontWeight="{Binding LabelWeight}"
+                           Foreground="{Binding LabelBrush}" />
+              </Grid>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </Canvas>
+
+      <Grid Margin="72,216,0,0" Width="670" Height="750" HorizontalAlignment="Left" VerticalAlignment="Top" Panel.ZIndex="4">
+        <Image Source="pack://application:,,,/Assets/logo.png"
+               Width="96"
+               Height="96"
+               Stretch="Uniform"
+               HorizontalAlignment="Left"
+               VerticalAlignment="Top" />
+
+        <TextBlock Text="{Binding TitleText}"
+                   Margin="132,0,0,0"
+                   Width="520"
+                   FontFamily="Segoe UI"
+                   FontSize="44"
+                   LineHeight="54"
+                   FontWeight="Bold"
+                   Foreground="#06123d"
+                   TextWrapping="Wrap" />
+        <TextBlock Text="{Binding BodyText}"
+                   Margin="0,138,0,0"
+                   Width="620"
+                   FontFamily="Segoe UI"
+                   FontSize="24"
+                   LineHeight="36"
+                   Foreground="#172544"
+                   TextWrapping="Wrap" />
+
+        <Border Margin="0,288,0,0"
+                Width="585"
+                Padding="28"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Top"
+                Background="#ffffff"
+                BorderBrush="#d7e2f5"
+                BorderThickness="1"
+                CornerRadius="10"
+                Effect="{StaticResource CardShadow}"
+                Visibility="{Binding WelcomeVisibility}">
+          <StackPanel>
+            <TextBlock Text="Aplikasi yang akan dihapus:"
+                       FontFamily="Segoe UI"
+                       FontSize="18"
+                       FontWeight="SemiBold"
+                       Foreground="#06123d" />
+            <TextBlock Text="ITS Maps Windows"
+                       Margin="0,16,0,0"
+                       FontFamily="Segoe UI"
+                       FontSize="22"
+                       FontWeight="SemiBold"
+                       Foreground="#06123d" />
+            <TextBlock Text="{Binding InstallPath}"
+                       Margin="0,10,0,0"
+                       FontFamily="Segoe UI"
+                       FontSize="16"
+                       Foreground="#52617d"
+                       TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
+
+        <Border Margin="0,288,0,0"
+                Width="585"
+                Padding="28"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Top"
+                Background="#ffffff"
+                BorderBrush="#d7e2f5"
+                BorderThickness="1"
+                CornerRadius="10"
+                Effect="{StaticResource CardShadow}"
+                Visibility="{Binding ConfirmVisibility}">
+          <StackPanel>
+            <TextBlock Text="Penghapusan yang akan dijalankan"
+                       FontFamily="Segoe UI"
+                       FontSize="18"
+                       FontWeight="SemiBold"
+                       Foreground="#06123d" />
+            <TextBlock Text="Shortcut, entry Installed apps Windows, file aplikasi, model AI offline, cache, dan data lokal akan diproses sesuai opsi berikut."
+                       Margin="0,16,0,0"
+                       FontFamily="Segoe UI"
+                       FontSize="18"
+                       LineHeight="28"
+                       Foreground="#52617d"
+                       TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
+
+        <Border Margin="0,260,0,0"
+                Width="610"
+                Padding="28"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Top"
+                Background="#ffffff"
+                BorderBrush="#d7e2f5"
+                BorderThickness="1"
+                CornerRadius="10"
+                Effect="{StaticResource CardShadow}"
+                Visibility="{Binding DataVisibility}">
+          <StackPanel>
+            <TextBlock Text="Pilih data yang dihapus"
+                       FontFamily="Segoe UI"
+                       FontSize="22"
+                       FontWeight="Bold"
+                       Foreground="#06123d"
+                       Margin="0,0,0,22" />
+            <CheckBox IsChecked="{Binding RemoveAppData}" Style="{StaticResource OptionCheckBox}" Content="Hapus data aplikasi" />
+            <TextBlock Text="History grafik, Local Storage, cache Electron, dan data lokal."
+                       Margin="34,-12,0,18"
+                       FontFamily="Segoe UI"
+                       FontSize="16"
+                       Foreground="#52617d" />
+            <CheckBox IsChecked="{Binding RemoveMapCache}" Style="{StaticResource OptionCheckBox}" Content="Hapus cache peta dan POI" />
+            <TextBlock Text="Tile/cache peta, POI viewport, dan data offline sementara."
+                       Margin="34,-12,0,18"
+                       FontFamily="Segoe UI"
+                       FontSize="16"
+                       Foreground="#52617d" />
+            <CheckBox IsChecked="{Binding RemoveDeviceConfig}" Style="{StaticResource OptionCheckBox}" Content="Hapus konfigurasi Raspberry dan kamera" />
+            <TextBlock Text="Sesi realtime, konfigurasi perangkat, stream, dan data temporer."
+                       Margin="34,-12,0,0"
+                       FontFamily="Segoe UI"
+                       FontSize="16"
+                       Foreground="#52617d"
+                       TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
+
+        <StackPanel Margin="0,250,0,0" Visibility="{Binding ProgressVisibility}">
+          <DockPanel Width="600">
+            <TextBlock Text="Progress Penghapusan"
+                       DockPanel.Dock="Left"
+                       FontFamily="Segoe UI"
+                       FontSize="22"
+                       FontWeight="Bold"
+                       Foreground="#06123d" />
+            <TextBlock Text="{Binding ProgressText}"
+                       DockPanel.Dock="Right"
+                       HorizontalAlignment="Right"
+                       FontFamily="Segoe UI"
+                       FontSize="22"
+                       FontWeight="SemiBold"
+                       Foreground="#065ed8" />
+          </DockPanel>
+          <ProgressBar Width="600"
+                       Height="22"
+                       Margin="0,18,0,0"
+                       HorizontalAlignment="Left"
+                       Minimum="0"
+                       Maximum="100"
+                       Value="{Binding ProgressValue, Mode=OneWay}"
+                       Foreground="#0b67e8"
+                       Background="#e6edf7"
+                       BorderThickness="0" />
+          <TextBlock Text="{Binding StatusText}"
+                     Margin="0,18,0,18"
+                     FontFamily="Segoe UI"
+                     FontSize="18"
+                     Foreground="#52617d"
+                     TextWrapping="Wrap" />
+          <Border Width="600" Padding="22" Background="#ffffff" BorderBrush="#d7e2f5" BorderThickness="1" CornerRadius="10" Effect="{StaticResource CardShadow}">
+            <ItemsControl ItemsSource="{Binding RemovalItems}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Grid Margin="0,0,0,18">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="40" />
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="120" />
+                    </Grid.ColumnDefinitions>
+                    <Ellipse Width="18" Height="18" Fill="{Binding DotBrush}" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4,6,0,0" />
+                    <StackPanel Grid.Column="1">
+                      <TextBlock Text="{Binding Title}" FontFamily="Segoe UI" FontSize="18" FontWeight="SemiBold" Foreground="#06123d" />
+                      <TextBlock Text="{Binding Detail}" FontFamily="Segoe UI" FontSize="15" Foreground="#52617d" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <TextBlock Grid.Column="2" Text="{Binding Status}" FontFamily="Segoe UI" FontSize="15" FontWeight="SemiBold" Foreground="{Binding StatusBrush}" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </Border>
+        </StackPanel>
+
+        <StackPanel Margin="0,248,0,0" Width="600" Visibility="{Binding DoneVisibility}">
+          <Border Width="104" Height="104" CornerRadius="52" Background="#2ccb6f" HorizontalAlignment="Center" Margin="0,0,0,28">
+            <TextBlock Text="&#xE73E;" FontFamily="Segoe MDL2 Assets" FontSize="54" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Border>
+          <TextBlock Text="ITS Maps Windows telah berhasil dihapus dari komputer Anda."
+                     FontFamily="Segoe UI"
+                     FontSize="24"
+                     FontWeight="SemiBold"
+                     Foreground="#06123d"
+                     TextAlignment="Center"
+                     TextWrapping="Wrap" />
+          <TextBlock Text="Data aplikasi, cache peta, konfigurasi Raspberry, dan folder instalasi akan dibersihkan sesuai opsi yang dipilih."
+                     Margin="0,28,0,0"
+                     FontFamily="Segoe UI"
+                     FontSize="19"
+                     LineHeight="30"
+                     Foreground="#52617d"
+                     TextAlignment="Center"
+                     TextWrapping="Wrap" />
+        </StackPanel>
+      </Grid>
+
+      <TextBlock Text="ITS Maps Windows 1.0.12"
+                 HorizontalAlignment="Left"
+                 VerticalAlignment="Bottom"
+                 Margin="72,0,0,42"
+                 FontFamily="Segoe UI"
+                 FontSize="18"
+                 Foreground="#6f8ccc" />
+
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,68,28">
+        <Button Content="&lt; Kembali" Width="178" Height="58" Margin="0,0,18,0" Style="{StaticResource SecondaryButton}" Click="OnBack" IsEnabled="{Binding BackEnabled}" Visibility="{Binding BackVisibility}" />
+        <Button Content="Batal" Width="178" Height="58" Margin="0,0,18,0" Style="{StaticResource SecondaryButton}" Click="OnCancel" Visibility="{Binding CancelVisibility}" />
+        <Button Content="{Binding NextButtonText}" Width="198" Height="58" Style="{StaticResource PrimaryButton}" Click="OnNext" Visibility="{Binding NextVisibility}" />
+      </StackPanel>
+    </Grid>
+  </Viewbox>
+</Window>
