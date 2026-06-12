@@ -213,7 +213,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         using var dialog = new System.Windows.Forms.FolderBrowserDialog
         {
-            Description = "Pilih folder instalasi ITS Maps Windows",
+            Description = "Pilih folder instalasi ITS Maps",
             UseDescriptionForTitle = true,
             ShowNewFolderButton = true,
             SelectedPath = Directory.Exists(InstallPath) ? InstallPath : Path.GetDirectoryName(InstallPath) ?? InstallerServices.GetDefaultInstallPath(InstallForAllUsers)
@@ -222,7 +222,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var owner = new DialogOwner(new WindowInteropHelper(this).Handle);
         if (dialog.ShowDialog(owner) == System.Windows.Forms.DialogResult.OK)
         {
-            InstallPath = Path.Combine(dialog.SelectedPath, "ITS Maps Windows");
+            InstallPath = Path.Combine(dialog.SelectedPath, "ITS Maps");
         }
     }
 
@@ -242,8 +242,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         var result = System.Windows.MessageBox.Show(
-            "Batalkan instalasi ITS Maps Windows?",
-            "ITS Maps Windows Setup",
+            "Batalkan instalasi ITS Maps?",
+            "ITS Maps Setup",
             MessageBoxButton.YesNo,
             MessageBoxImage.Question);
 
@@ -295,7 +295,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             System.Windows.MessageBox.Show(
                 $"Instalasi gagal.\n\n{ex.Message}",
-                "ITS Maps Windows Setup",
+                "ITS Maps Setup",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
             _page = InstallPage.Location;
@@ -318,7 +318,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         if (_installCompleted && RunAfterInstall)
         {
-            var appExe = Path.Combine(InstallPath, "ITS Maps Windows.exe");
+            var appExe = Path.Combine(InstallPath, InstallerServices.AppExeName);
             if (File.Exists(appExe))
             {
                 Process.Start(new ProcessStartInfo(appExe) { UseShellExecute = true });
@@ -404,9 +404,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             InstallPage.Welcome => "Aplikasi ini dikembangkan oleh Mahasiswa Telkom University",
             InstallPage.License => "Harap baca dengan saksama perjanjian lisensi berikut sebelum melanjutkan instalasi.",
             InstallPage.Options => "Pilih opsi instalasi yang paling sesuai dengan kebutuhan Anda.",
-            InstallPage.Location => "Pilih folder tujuan untuk menginstal ITS Maps Windows.\nProgram akan diinstal pada folder berikut.",
-            InstallPage.Installing => "Setup sedang menginstal file ITS Maps Windows di komputer Anda.",
-            InstallPage.Finished => "ITS Maps Windows telah berhasil diinstal dan siap digunakan.",
+            InstallPage.Location => "Pilih folder tujuan untuk menginstal ITS Maps.\nProgram akan diinstal pada folder berikut.",
+            InstallPage.Installing => "Setup sedang menginstal file ITS Maps di komputer Anda.",
+            InstallPage.Finished => "ITS Maps telah berhasil diinstal dan siap digunakan.",
             _ => string.Empty
         };
     }
@@ -470,10 +470,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         PERJANJIAN LISENSI PENGGUNA AKHIR
         ITS MAPS WINDOWS
 
-        Harap baca perjanjian lisensi pengguna akhir ini dengan saksama sebelum menginstal atau menggunakan aplikasi ITS Maps Windows. Dengan menginstal, menyalin, atau menggunakan aplikasi ini, Anda menyetujui syarat dan ketentuan berikut.
+        Harap baca perjanjian lisensi pengguna akhir ini dengan saksama sebelum menginstal atau menggunakan aplikasi ITS Maps. Dengan menginstal, menyalin, atau menggunakan aplikasi ini, Anda menyetujui syarat dan ketentuan berikut.
 
         1. DEFINISI
-        "Aplikasi" berarti perangkat lunak ITS Maps Windows beserta seluruh pembaruan, modul, dan dokumentasi yang menyertainya.
+        "Aplikasi" berarti perangkat lunak ITS Maps beserta seluruh pembaruan, modul, dan dokumentasi yang menyertainya.
 
         2. LISENSI PENGGUNAAN
         Kami memberikan lisensi terbatas, non-eksklusif, dan tidak dapat dipindahtangankan untuk menggunakan aplikasi pada perangkat yang Anda miliki atau kendalikan.

@@ -3,6 +3,7 @@ name: Build Windows EXE
 on:
   push:
     branches: ["main", "codex/**"]
+    tags: ["its-maps-v*"]
     paths:
       - "web/**"
       - ".github/workflows/build-windows.yml"
@@ -12,7 +13,7 @@ jobs:
   build-windows:
     runs-on: windows-latest
     permissions:
-      contents: read
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -50,6 +51,21 @@ jobs:
         with:
           name: ITS-Maps-Windows-Setup-${{ env.VERSION }}-x64
           if-no-files-found: error
-          path: |
-            web/release/ITS-Maps-Windows-Custom-Setup-${{ env.VERSION }}-x64.exe
-            web/dist/artifacts/apps/ITS-Maps-Windows-Custom-Setup-${{ env.VERSION }}-x64.download
+          path: web/release/ITS-Maps-Windows-Custom-Setup-${{ env.VERSION }}-x64.exe
+
+      - name: Publish Windows release asset
+        if: startsWith(github.ref, 'refs/tags/its-maps-v')
+        working-directory: web
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $asset = "release\ITS-Maps-Windows-Custom-Setup-$env:VERSION-x64.exe"
+          $notes = "ITS Maps $env:VERSION Windows custom setup. Installer besar disimpan di GitHub Release agar Firebase Hosting tidak penuh."
+          gh release view $tag --repo "${{ github.repository }}" 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $asset --clobber --repo "${{ github.repository }}"
+          } else {
+            gh release create $tag $asset --repo "${{ github.repository }}" --title "ITS Maps $env:VERSION" --notes $notes
+          }

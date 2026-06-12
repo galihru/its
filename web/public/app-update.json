@@ -3,18 +3,18 @@
   "appName": "ITS Maps",
   "ownerName": "Hanifa Septhi Larasati",
   "institution": "Telkom University",
-  "versionCode": 16,
-  "versionName": "1.0.16",
-  "windowsUrl": "https://itstelkom.web.app/artifacts/apps/ITS-Maps-Windows-Custom-Setup-1.0.16-x64.download",
-  "desktopUrl": "https://itstelkom.web.app/artifacts/apps/ITS-Maps-Windows-Custom-Setup-1.0.16-x64.download",
+  "versionCode": 18,
+  "versionName": "1.0.18",
+  "windowsUrl": "https://github.com/galihru/its/releases/download/its-maps-v1.0.18/ITS-Maps-Windows-Custom-Setup-1.0.18-x64.exe",
+  "desktopUrl": "https://github.com/galihru/its/releases/download/its-maps-v1.0.18/ITS-Maps-Windows-Custom-Setup-1.0.18-x64.exe",
   "pwaUrl": "https://itstelkom.web.app/",
   "logoUrl": "https://itstelkom.web.app/favicon.svg",
-  "updatedAt": "2026-06-12T18:42:57+07:00",
+  "updatedAt": "2026-06-12T21:18:00+07:00",
   "force": false,
   "autoDownload": true,
   "releaseNotes": [
-    "Memprioritaskan WebRTC Firebase signaling saat device kamera memakai mode WebRTC agar app tidak membuka tunnel HLS yang sedang 503.",
-    "Menambahkan WebRTC player di Windows renderer, status timeout yang jelas, custom video controls, ambient light, dan panel AI fullscreen flex dengan Gaussian blur.",
-    "Menambahkan background update check saat login Windows sehingga notifikasi dan auto-install update bisa berjalan walau jendela ITS Maps tidak dibuka."
+    "Memperbaiki kamera tunnel Cloudflare agar website dan ITS Maps Windows memakai iframe halaman kamera saat WebRTC/HLS tidak mengirim frame.",
+    "Merapikan overlay YOLO supaya kotak hanya digambar di atas frame yang benar-benar bisa dibaca canvas, bukan di atas iframe cross-origin.",
+    "Mengurangi ukuran/frekuensi publish thumbnail YOLO ke Firebase dan memindahkan installer Windows besar ke GitHub Release agar hosting Firebase tidak penuh."
   ]
 }

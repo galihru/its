@@ -9,8 +9,10 @@ public sealed record UninstallOptions(bool RemoveAppData = true, bool RemoveMapC
 
 public sealed class UninstallerServices
 {
-    private const string ProductName = "ITS Maps Windows";
-    private const string RegistryKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\ITS Maps Windows";
+    private const string ProductName = "ITS Maps";
+    private const string OldProductName = "ITS Maps Windows";
+    private const string RegistryKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\ITS Maps";
+    private const string OldRegistryKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\ITS Maps Windows";
 
     public UninstallerServices()
     {
@@ -110,11 +112,14 @@ public sealed class UninstallerServices
 
     private static string ResolveInstallPath()
     {
-        using var key = Registry.CurrentUser.OpenSubKey(RegistryKeyPath);
-        var registryPath = key?.GetValue("InstallLocation") as string;
-        if (!string.IsNullOrWhiteSpace(registryPath))
+        foreach (var keyPath in new[] { RegistryKeyPath, OldRegistryKeyPath })
         {
-            return registryPath;
+            using var key = Registry.CurrentUser.OpenSubKey(keyPath);
+            var registryPath = key?.GetValue("InstallLocation") as string;
+            if (!string.IsNullOrWhiteSpace(registryPath))
+            {
+                return registryPath;
+            }
         }
 
         var exe = Environment.ProcessPath;
@@ -128,6 +133,7 @@ public sealed class UninstallerServices
         try
         {
             Registry.CurrentUser.DeleteSubKeyTree(RegistryKeyPath, throwOnMissingSubKey: false);
+            Registry.CurrentUser.DeleteSubKeyTree(OldRegistryKeyPath, throwOnMissingSubKey: false);
         }
         catch
         {
@@ -138,10 +144,14 @@ public sealed class UninstallerServices
     private static void DeleteShortcuts()
     {
         var startMenuDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.StartMenu), "Programs", ProductName);
+        var oldStartMenuDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.StartMenu), "Programs", OldProductName);
         TryDeleteDirectory(startMenuDir);
+        TryDeleteDirectory(oldStartMenuDir);
 
         var desktopShortcut = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), $"{ProductName}.lnk");
+        var oldDesktopShortcut = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), $"{OldProductName}.lnk");
         TryDeleteFile(desktopShortcut);
+        TryDeleteFile(oldDesktopShortcut);
     }
 
     private static void DeleteAppData()
@@ -150,6 +160,8 @@ public sealed class UninstallerServices
         {
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), ProductName),
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), ProductName),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), OldProductName),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), OldProductName),
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "its-maps-windows"),
             Path.Combine(Path.GetTempPath(), "ITSMapsUninstall")
         };
@@ -165,7 +177,9 @@ public sealed class UninstallerServices
         var roots = new[]
         {
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), ProductName),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), ProductName)
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), ProductName),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), OldProductName),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), OldProductName)
         };
 
         foreach (var root in roots)
@@ -214,7 +228,8 @@ public sealed class UninstallerServices
         var trimmedPath = path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         var trimmedRoot = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         return !trimmedPath.Equals(trimmedRoot, StringComparison.OrdinalIgnoreCase)
-               && trimmedPath.EndsWith(ProductName, StringComparison.OrdinalIgnoreCase);
+               && (trimmedPath.EndsWith(ProductName, StringComparison.OrdinalIgnoreCase)
+                   || trimmedPath.EndsWith(OldProductName, StringComparison.OrdinalIgnoreCase));
     }
 
     private static void TryDeleteDirectory(string path)

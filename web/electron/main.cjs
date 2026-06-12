@@ -7,9 +7,9 @@ const { pathToFileURL } = require("node:url");
 
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
 const APP_UPDATE_URL = "https://itstelkom.web.app/app-update.json";
-const WINDOWS_EXE_NAME = "ITS-Maps-Windows-Custom-Setup-1.0.16-x64.exe";
+const WINDOWS_EXE_NAME = "ITS-Maps-Windows-Custom-Setup-1.0.18-x64.exe";
 const BACKGROUND_UPDATE_ARG = "--background-update-check";
-const APP_USER_MODEL_ID = "id.ac.telkomuniversity.its.maps.windows";
+const APP_USER_MODEL_ID = "id.ac.telkomuniversity.its";
 const UPDATE_HISTORY_FILE = "update-history.json";
 const isBackgroundUpdate = process.argv.includes(BACKGROUND_UPDATE_ARG);
 let mainWindow = null;
@@ -21,6 +21,7 @@ let rendererDataReady = false;
 let splashFallbackTimer = null;
 
 if (process.platform === "win32") {
+  app.setName("ITS Maps");
   app.setAppUserModelId(APP_USER_MODEL_ID);
 }
 
@@ -212,7 +213,7 @@ function openRendererPanel(panel) {
 
 function notifyUpdate(title, body, panel = "settings") {
   if (!Notification.isSupported()) return;
-  const notification = new Notification({ title, body, icon: iconPath() });
+  const notification = new Notification({ title, body });
   notification.on("click", () => openRendererPanel(panel));
   notification.show();
 }

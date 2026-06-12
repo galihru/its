@@ -10,10 +10,16 @@ internal sealed record InstallerProgress(double Percent, string Message);
 
 internal sealed class InstallerServices
 {
-    private const string ProductName = "ITS Maps Windows";
-    private const string Version = "1.0.14";
+    private const string ProductName = "ITS Maps";
+    private const string OldProductName = "ITS Maps Windows";
     private const string Publisher = "Hanifa Septhi Larasati - Telkom University";
-    private const string RegistryKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\ITS Maps Windows";
+    private const string RegistryKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\ITS Maps";
+    private const string OldRegistryKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\ITS Maps Windows";
+    internal const string AppExeName = "ITS Maps.exe";
+    private static string Version =>
+        Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion?.Split('+')[0]
+        ?? Assembly.GetExecutingAssembly().GetName().Version?.ToString(3)
+        ?? "1.0.0";
 
     public static string GetDefaultInstallPath(bool allUsers)
     {
@@ -23,12 +29,35 @@ internal sealed class InstallerServices
         return Path.Combine(root, ProductName);
     }
 
+    public static string? GetExistingInstallPath()
+    {
+        foreach (var keyPath in new[] { RegistryKeyPath, OldRegistryKeyPath })
+        {
+            try
+            {
+                using var key = Registry.CurrentUser.OpenSubKey(keyPath);
+                var installLocation = key?.GetValue("InstallLocation") as string;
+                if (!string.IsNullOrWhiteSpace(installLocation) && Directory.Exists(installLocation))
+                {
+                    return installLocation;
+                }
+            }
+            catch
+            {
+                // Keep silent update resilient when registry is partially broken.
+            }
+        }
+
+        return null;
+    }
+
     public async Task InstallAsync(string installPath, bool createDesktopShortcut, bool runAfterInstall, IProgress<InstallerProgress> progress)
     {
         installPath = Path.GetFullPath(installPath);
         ValidateInstallPath(installPath);
 
         progress.Report(new InstallerProgress(4, "Menyiapkan folder instalasi..."));
+        WaitForRunningAppExit();
         PrepareInstallDirectory(installPath);
 
         progress.Report(new InstallerProgress(10, "Mengekstrak aplikasi, model AI, data peta, dan kamera..."));
@@ -72,6 +101,40 @@ internal sealed class InstallerServices
         foreach (var file in Directory.EnumerateFiles(installPath))
         {
             File.Delete(file);
+        }
+    }
+
+    private static void WaitForRunningAppExit()
+    {
+        var currentPid = Environment.ProcessId;
+        var processNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "ITS Maps",
+            "ITS Maps Windows",
+        };
+
+        foreach (var process in Process.GetProcesses())
+        {
+            using (process)
+            {
+                try
+                {
+                    if (process.Id == currentPid || !processNames.Contains(process.ProcessName)) continue;
+
+                    if (process.MainWindowHandle != IntPtr.Zero)
+                    {
+                        process.CloseMainWindow();
+                        if (process.WaitForExit(8000)) continue;
+                    }
+
+                    process.Kill(entireProcessTree: true);
+                    process.WaitForExit(8000);
+                }
+                catch
+                {
+                    // If Windows denies process access, deletion below will surface the real failure.
+                }
+            }
         }
     }
 
@@ -144,13 +207,22 @@ internal sealed class InstallerServices
 
     private static void RegisterInstalledApp(string installPath)
     {
+        try
+        {
+            Registry.CurrentUser.DeleteSubKeyTree(OldRegistryKeyPath, throwOnMissingSubKey: false);
+        }
+        catch
+        {
+            // Old uninstall entry cleanup is best effort.
+        }
+
         using var key = Registry.CurrentUser.CreateSubKey(RegistryKeyPath);
         if (key == null)
         {
             throw new InvalidOperationException("Gagal menulis registry Installed apps.");
         }
 
-        var appExe = Path.Combine(installPath, "ITS Maps Windows.exe");
+        var appExe = Path.Combine(installPath, AppExeName);
         var uninstallerExe = Path.Combine(installPath, "Uninstall ITS Maps.exe");
         key.SetValue("DisplayName", ProductName, RegistryValueKind.String);
         key.SetValue("DisplayVersion", Version, RegistryValueKind.String);
@@ -180,18 +252,34 @@ internal sealed class InstallerServices
 
     private static void CreateShortcuts(string installPath, bool createDesktopShortcut)
     {
-        var appExe = Path.Combine(installPath, "ITS Maps Windows.exe");
+        var appExe = Path.Combine(installPath, AppExeName);
         var uninstallExe = Path.Combine(installPath, "Uninstall ITS Maps.exe");
         var startMenuDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.StartMenu), "Programs", ProductName);
         Directory.CreateDirectory(startMenuDir);
 
-        CreateShortcut(Path.Combine(startMenuDir, $"{ProductName}.lnk"), appExe, installPath, "Buka ITS Maps Windows");
-        CreateShortcut(Path.Combine(startMenuDir, "Uninstall ITS Maps.lnk"), uninstallExe, installPath, "Uninstall ITS Maps Windows");
+        DeleteLegacyShortcuts();
+        CreateShortcut(Path.Combine(startMenuDir, $"{ProductName}.lnk"), appExe, installPath, "Buka ITS Maps");
+        CreateShortcut(Path.Combine(startMenuDir, "Uninstall ITS Maps.lnk"), uninstallExe, installPath, "Uninstall ITS Maps");
 
         if (createDesktopShortcut)
         {
             var desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
-            CreateShortcut(Path.Combine(desktop, $"{ProductName}.lnk"), appExe, installPath, "Buka ITS Maps Windows");
+            CreateShortcut(Path.Combine(desktop, $"{ProductName}.lnk"), appExe, installPath, "Buka ITS Maps");
+        }
+    }
+
+    private static void DeleteLegacyShortcuts()
+    {
+        var legacyStartMenuDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.StartMenu), "Programs", OldProductName);
+        var legacyDesktopShortcut = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), $"{OldProductName}.lnk");
+        try
+        {
+            if (Directory.Exists(legacyStartMenuDir)) Directory.Delete(legacyStartMenuDir, recursive: true);
+            if (File.Exists(legacyDesktopShortcut)) File.Delete(legacyDesktopShortcut);
+        }
+        catch
+        {
+            // Shortcut cleanup is best effort.
         }
     }
 
