@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <AssemblyName>ITS Maps Windows Setup</AssemblyName>
+    <ApplicationIcon>..\..\build\icon.ico</ApplicationIcon>
+    <Version>1.0.14</Version>
+    <Company>Hanifa Septhi Larasati - Telkom University</Company>
+    <Product>ITS Maps Windows Setup</Product>
+    <Description>Installer native ITS Maps Windows</Description>
+    <Copyright>Copyright (c) 2026 Hanifa Septhi Larasati - Telkom University</Copyright>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="..\..\src\icon\its.png" Link="Assets\logo.png" />
+    <Resource Include="..\..\src\windows\welcome.png" Link="Assets\welcome.png" />
+    <Resource Include="..\..\src\windows\lisensi.png" Link="Assets\lisensi.png" />
+    <Resource Include="..\..\src\windows\pilihopsiinstaller.png" Link="Assets\pilihopsiinstaller.png" />
+    <Resource Include="..\..\src\windows\opsipenyimpananapps.png" Link="Assets\opsipenyimpananapps.png" />
+    <Resource Include="..\..\src\windows\prosesinstalisasi.png" Link="Assets\prosesinstalisasi.png" />
+    <Resource Include="..\..\src\windows\selesaiinstaller.png" Link="Assets\selesaiinstaller.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Payload\app.zip" LogicalName="app.zip" Condition="Exists('Payload\app.zip')" />
+    <EmbeddedResource Include="Payload\ITS Maps Uninstall.exe" LogicalName="uninstaller.exe" Condition="Exists('Payload\ITS Maps Uninstall.exe')" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,20 @@
+{
+  "appId": "id.ac.telkomuniversity.its",
+  "appName": "ITS Maps",
+  "ownerName": "Hanifa Septhi Larasati",
+  "institution": "Telkom University",
+  "versionCode": 14,
+  "versionName": "1.0.14",
+  "windowsUrl": "https://itstelkom.web.app/artifacts/apps/ITS-Maps-Windows-Custom-Setup-1.0.14-x64.download",
+  "desktopUrl": "https://itstelkom.web.app/artifacts/apps/ITS-Maps-Windows-Custom-Setup-1.0.14-x64.download",
+  "pwaUrl": "https://itstelkom.web.app/",
+  "logoUrl": "https://itstelkom.web.app/favicon.svg",
+  "updatedAt": "2026-06-12T15:58:00+07:00",
+  "force": false,
+  "autoDownload": true,
+  "releaseNotes": [
+    "Memperbaiki GPS Windows agar tombol lokasi memakai Windows Location Service dan bergerak berkala di aplikasi .exe.",
+    "Menambahkan cache vision 2D lokal, legend simbol peta, label jalan mengikuti arah, dan label sungai/kanal.",
+    "Menyiapkan installer Windows 1.0.14 dan artifact .download untuk update otomatis tanpa uninstall."
+  ]
+}

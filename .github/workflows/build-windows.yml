@@ -1,0 +1,55 @@
+name: Build Windows EXE
+
+on:
+  push:
+    branches: ["main", "codex/**"]
+    paths:
+      - "web/**"
+      - ".github/workflows/build-windows.yml"
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Install dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Read package version
+        working-directory: web
+        shell: pwsh
+        run: |
+          $version = node -p "require('./package.json').version"
+          "VERSION=$version" >> $env:GITHUB_ENV
+
+      - name: Build custom Windows installer
+        working-directory: web
+        shell: pwsh
+        run: npm run desktop:custom-installer
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: ITS-Maps-Windows-Setup-${{ env.VERSION }}-x64
+          if-no-files-found: error
+          path: |
+            web/release/ITS-Maps-Windows-Custom-Setup-${{ env.VERSION }}-x64.exe
+            web/dist/artifacts/apps/ITS-Maps-Windows-Custom-Setup-${{ env.VERSION }}-x64.download
