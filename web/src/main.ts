@@ -13,6 +13,42 @@ const APP_SCREENSHOT_MODULES = import.meta.glob("./ss/**/*.{png,jpg,jpeg,webp,av
   import: "default",
 }) as Record<string, string>;
 
+const POI_ASSET_MODULES = import.meta.glob("./poi/*.{png,jpg,jpeg,webp,avif}", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
+function poiAssetUrl(fileName: string): string {
+  return Object.entries(POI_ASSET_MODULES).find(([path]) => path.endsWith(`/${fileName}`))?.[1] || ITS_APP_ICON;
+}
+
+function escapeMapServiceHtml(v: string): string {
+  return v.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;").replaceAll("'", "&#039;");
+}
+
+const FREE_MAP_SERVICE_STACK = [
+  ["OpenStreetMap", "Data nama jalan, bangunan, POI, arah jalan, trotoar, dan koordinat. Lisensi data memakai ODbL dari OSMF.", "https://www.openstreetmap.org/copyright"],
+  ["CARTO Voyager", "Basemap 2D raster tanpa API key berbayar di aplikasi. Tile berbasis data OpenStreetMap dan tetap memakai atribusi CARTO/OSM.", "https://carto.com/attributions"],
+  ["Overpass API", "Query POI, bangunan bernama, jalan, arah jalan, dan fitur sekitar berdasarkan viewport. Tidak perlu API key, tetapi sebaiknya self-host bila trafik besar.", "https://overpass-api.de/"],
+  ["OSRM Project", "Routing dan estimasi rute berbasis data OpenStreetMap. Untuk produksi/traffic besar bisa self-host OSRM sendiri; dokumentasi Node/API ada di link ini.", "https://project-osrm.org/docs/v26.6.1/nodejs/api"],
+  ["MapLibre GL JS", "Renderer open-source untuk mode 3D/vector map tanpa vendor/API key berbayar.", "https://maplibre.org/"],
+  ["OpenFreeMap", "Style/vector tile 3D gratis tanpa API key untuk bangunan dan orientasi visual.", "https://openfreemap.org/"],
+  ["Leaflet", "Library open-source untuk peta 2D, marker, kontrol, dan interaksi touch/mouse.", "https://leafletjs.com/"],
+  ["Esri World Imagery", "Mode satelit memakai tile publik tanpa API key di kode aplikasi. Jika ingin 100% self-hosted, ganti sumber ini dengan server imagery milik sendiri.", "https://www.esri.com/en-us/legal/terms/full-master-agreement"],
+] as const;
+
+function mapServiceStackHtml(): string {
+  return FREE_MAP_SERVICE_STACK.map(([name, description, url]) => `
+    <article>
+      <strong>${escapeMapServiceHtml(name)}</strong>
+      <p>${escapeMapServiceHtml(description)}</p>
+      <a href="${escapeMapServiceHtml(url)}" target="_blank" rel="noopener">${escapeMapServiceHtml(url.replace(/^https?:\/\//, ""))}</a>
+    </article>
+  `).join("");
+}
+
+
 // ─── Type augmentation untuk leaflet-rotate ─────────────────────
 declare module "leaflet" {
   interface Map {
@@ -167,6 +203,21 @@ type PoiRecord = {
   lng: number;
 };
 
+type RoadGuideRecord = {
+  id: string;
+  name: string;
+  ref: string;
+  highway: string;
+  oneway: boolean;
+  hasSidewalk: boolean;
+  hasMedian: boolean;
+  treeLined: boolean;
+  lanes: number;
+  surface: string;
+  roadType: "expressway" | "avenue" | "street" | "service" | "foot";
+  points: L.LatLng[];
+};
+
 // ─── Constants ──────────────────────────────────────────────────
 
 const DEFAULT_CONFIG: Required<AppConfig> = {
@@ -193,7 +244,7 @@ const WEBRTC_ICE_SERVERS: RTCIceServer[] = [
 const BEARING_STEP = 90;
 const BEARING_SNAP = 5;
 const MAPLIBRE_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
-const MAPLIBRE_3D_PITCH = 52;
+const MAPLIBRE_3D_PITCH = 66;
 const LAST_DEVICE_POSITIONS_STORAGE_KEY = "its-web-device-positions:v1";
 
 // ─── DOM bootstrap ──────────────────────────────────────────────
@@ -606,6 +657,7 @@ const state = {
   trafficRefreshTimer: 0,
   offlineReported: new Set<string>(),
   overpassLayer: null as L.LayerGroup | null,
+  roadGuideLayer: null as L.LayerGroup | null,
   modeControl: null as L.Control | null,
   routeRequestSeq: 0,
   prevPositionById: new Map<string, L.LatLng>(),
@@ -652,6 +704,7 @@ if (map.attributionControl) {
 
 // Add Overpass vector layer for clickable features (kept separate from POI markers)
 state.overpassLayer = L.layerGroup().addTo(map);
+state.roadGuideLayer = L.layerGroup().addTo(map);
 
 // ─── Scale Control ──────────────────────────────────────────────
 // Custom scale ruler yang dinamis sesuai zoom level
@@ -786,13 +839,46 @@ const POI_VISUALS: Record<PoiKind, { icon: string; color: string }> = {
   other: { icon: "POI", color: "#475569" },
 };
 
+const POI_SPRITES: Partial<Record<PoiKind, { image: string; x: number; y: number }>> = {
+  worship: { image: poiAssetUrl("poi5.png"), x: 0, y: 52 },
+  monument: { image: poiAssetUrl("monas.png"), x: 50, y: 50 },
+  park: { image: poiAssetUrl("tamanminiindonesia.png"), x: 50, y: 50 },
+  campus: { image: poiAssetUrl("poi1.png"), x: 0, y: 52 },
+  school: { image: poiAssetUrl("poi1.png"), x: 0, y: 52 },
+  station: { image: poiAssetUrl("poi3.png"), x: 50, y: 52 },
+  terminal: { image: poiAssetUrl("poi3.png"), x: 50, y: 52 },
+  transport: { image: poiAssetUrl("poi3.png"), x: 50, y: 52 },
+};
+
+const POI_HERO_BY_KIND: Partial<Record<PoiKind, string>> = {
+  worship: poiAssetUrl("poi5.png"),
+  monument: poiAssetUrl("monas.png"),
+  park: poiAssetUrl("tamanminiindonesia.png"),
+  campus: poiAssetUrl("gedungsate.png"),
+  school: poiAssetUrl("poi1.png"),
+  station: poiAssetUrl("poi3.png"),
+  terminal: poiAssetUrl("poi3.png"),
+  transport: poiAssetUrl("poi3.png"),
+};
+
+function customPoiImageForTags(tags: Record<string, string>, kind: PoiKind): string {
+  const name = `${tags.name || ""} ${tags["name:id"] || ""}`.toLowerCase();
+  if (name.includes("monas") || name.includes("monumen nasional")) return poiAssetUrl("monas.png");
+  if (name.includes("gedung sate")) return poiAssetUrl("gedungsate.png");
+  if (name.includes("taman mini")) return poiAssetUrl("tamanminiindonesia.png");
+  if (name.includes("konferensi asia afrika") || name.includes("kaa")) return poiAssetUrl("musium kaa.png");
+  if (name.includes("alun-alun") || name.includes("alun alun")) return poiAssetUrl("alunalunbandung.png");
+  if (name.includes("prj") || name.includes("jakarta international expo")) return poiAssetUrl("monumenPRJB.png");
+  return POI_HERO_BY_KIND[kind] || ITS_APP_ICON;
+}
+
 function classifyPoiKind(tags: Record<string, string>): PoiKind {
   const amenity = tags.amenity;
   const tourism = tags.tourism;
-  if (amenity === "hospital") return "hospital";
+  if (amenity === "hospital" || tags.healthcare === "hospital" || tags.healthcare === "clinic" || tags.healthcare === "doctor") return "hospital";
   if (amenity === "place_of_worship" || tags.religion) return "worship";
-  if (amenity === "school" || amenity === "kindergarten" || tags.education === "school") return "school";
-  if (amenity === "university" || amenity === "college" || tourism === "university") return "campus";
+  if (amenity === "school" || amenity === "kindergarten" || tags.education === "school" || tags.building === "school") return "school";
+  if (amenity === "university" || amenity === "college" || tourism === "university" || tags.building === "university") return "campus";
   if (amenity === "restaurant" || amenity === "cafe" || amenity === "fast_food") return "restaurant";
   if (amenity === "parking" || tags.parking) return "parking";
   if (amenity === "bus_station" || amenity === "ferry_terminal" || amenity === "terminal") return "terminal";
@@ -800,10 +886,10 @@ function classifyPoiKind(tags: Record<string, string>): PoiKind {
   if (amenity === "bus_stop" || tags.highway === "bus_stop" || tags.public_transport === "platform") return "shelter";
   if (amenity === "grave_yard" || tags.landuse === "cemetery") return "cemetery";
   if (amenity === "public_transport" || tags.public_transport) return "transport";
-  if (amenity === "office" || tags.office) return "office";
+  if (amenity === "office" || tags.office || tags.craft || tags.man_made) return "office";
   if (tags.shop) return "mall";
-  if (tags.historic === "monument" || tourism === "attraction" || tags.building === "monument") return "monument";
-  if (tags.leisure === "park") return "park";
+  if (tags.historic === "monument" || tourism === "attraction" || tags.building === "monument" || tags.tourism === "museum") return "monument";
+  if (tags.leisure === "park" || tags.landuse === "grass" || tags.place === "neighbourhood" || tags.place === "suburb") return "park";
   return "other";
 }
 
@@ -818,10 +904,15 @@ function poiMarkerSizeByZoom(): number {
 
 function makePoiIcon(poi: PoiRecord, size: number): L.DivIcon {
   const visual = poiVisual(poi.kind);
-  const width = Math.max(size + 12, 22 + visual.icon.length * 5);
+  const sprite = POI_SPRITES[poi.kind];
+  const width = Math.max(size + 16, 24 + visual.icon.length * 5);
+  const spriteHtml = sprite
+    ? `<span class="poi-marker-sprite" style="--poi-sprite:url('${escapeHtml(sprite.image)}'); --poi-sprite-x:${sprite.x}%; --poi-sprite-y:${sprite.y}%;"></span>`
+    : "";
   return L.divIcon({
     className: "poi-marker-icon",
-    html: `<div class="poi-marker poi-kind-${poi.kind}" data-kind="${poi.kind}" title="${escapeHtml(poi.title)}" style="--poi-accent:${visual.color}; --poi-size:${size}px; --poi-width:${width}px;">
+    html: `<div class="poi-marker ${sprite ? "poi-marker-custom" : ""} poi-kind-${poi.kind}" data-kind="${poi.kind}" title="${escapeHtml(poi.title)}" style="--poi-accent:${visual.color}; --poi-size:${size}px; --poi-width:${width}px;">
+      ${spriteHtml}
       <span class="poi-marker-glyph">${escapeHtml(visual.icon)}</span>
     </div>`,
     iconSize: [width, size + 10],
@@ -830,7 +921,31 @@ function makePoiIcon(poi: PoiRecord, size: number): L.DivIcon {
 }
 
 function renderPoiModal(poi: PoiRecord): string {
+  const visual = poiVisual(poi.kind);
   return `
+    <div class="sheet-panel-header poi-panel-header">
+      <button class="sheet-icon-btn modal-close" data-action="close" aria-label="Kembali" title="Kembali">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+      <div class="sheet-title-cluster">
+        <div class="sheet-place-icon" style="--poi-accent:${visual.color};">${escapeHtml(poi.icon)}</div>
+        <div class="sheet-title-copy">
+          <h2 class="modal-title">${escapeHtml(poi.title)}</h2>
+          <p>${escapeHtml(poi.kind)}${poi.address ? ` · ${escapeHtml(poi.address)}` : ""}</p>
+        </div>
+      </div>
+      <div class="sheet-header-actions">
+        <button class="sheet-icon-btn btn-share" data-action="share" aria-label="Bagikan lokasi" title="Bagikan">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a3 3 0 1 0-2.83-4H15a3 3 0 0 0 1.2 2.4L8.8 10.1a3 3 0 1 0 0 3.8l7.4 3.7A3 3 0 1 0 17 16a2.9 2.9 0 0 0-.8.1l-7.4-3.7a3 3 0 0 0 0-.8l7.4-3.7A2.9 2.9 0 0 0 18 8Z"/></svg>
+        </button>
+        <button class="sheet-icon-btn btn-start" data-action="start" aria-label="Mulai rute" title="Rute">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l7 19-7-4-7 4 7-19Z"/></svg>
+        </button>
+        <button class="sheet-icon-btn btn-camera" data-action="camera" aria-label="Buka kamera AR" title="Kamera">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l1.6-2h6.8L17 8h3v10H4V8Zm8 8a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/></svg>
+        </button>
+      </div>
+    </div>
     <div class="modal-header poi-modal-header">
       <button class="modal-close" data-action="close">×</button>
       <h2 class="modal-title">${escapeHtml(poi.title)}</h2>
@@ -841,7 +956,7 @@ function renderPoiModal(poi: PoiRecord): string {
     </div>
     <div class="modal-content poi-modal-content">
       <div class="poi-hero">
-        <img class="poi-hero-image" src="${escapeHtml(poi.imageUrl)}" alt="${escapeHtml(poi.title)}">
+        <img class="poi-hero-image ${poi.imageUrl === ITS_APP_ICON ? "poi-hero-image-contained" : ""}" src="${escapeHtml(poi.imageUrl)}" alt="${escapeHtml(poi.title)}">
         <div class="poi-hero-overlay">
           <span class="poi-badge">${escapeHtml(poi.kind.toUpperCase())}</span>
           <span class="poi-rating">★ ${escapeHtml(poi.rating)}</span>
@@ -863,7 +978,7 @@ function renderPoiModal(poi: PoiRecord): string {
 }
 
 function openPoiModal(poi: PoiRecord): void {
-  closeModal();
+  closeModal(false);
   closePromptPanels();
   state.activeModalPoiId = poi.id;
   const overlay = createSwipeableSheetModal(
@@ -874,15 +989,16 @@ function openPoiModal(poi: PoiRecord): void {
       ${renderPoiModal(poi)}
     `,
   );
-  overlay.querySelector(".m-layer-backdrop")!.addEventListener("click", closeModal);
+  overlay.querySelector(".m-layer-backdrop")!.addEventListener("click", () => closeModal());
   const sheet = overlay.querySelector<HTMLElement>(".m-poi-sheet");
   if (!sheet) return;
   setupSheetSwipe(sheet, closeModal);
-  sheet.querySelector<HTMLButtonElement>(".modal-close")?.addEventListener("click", closeModal);
+  sheet.querySelector<HTMLButtonElement>(".modal-close")?.addEventListener("click", () => closeModal());
 
   // Wire up share and start buttons and populate distance/ETA + image
   const shareBtn = sheet.querySelector<HTMLButtonElement>(".btn-share");
   const startBtn = sheet.querySelector<HTMLButtonElement>(".btn-start");
+  const cameraBtn = sheet.querySelector<HTMLButtonElement>(".btn-camera");
   shareBtn?.addEventListener("click", async () => {
     const url = `https://www.openstreetmap.org/?mlat=${poi.lat}&mlon=${poi.lng}#map=${DEFAULT_ZOOM}/${poi.lat}/${poi.lng}`;
     try {
@@ -901,13 +1017,14 @@ function openPoiModal(poi: PoiRecord): void {
       openARCameraSheet(poi);
     }
   });
+  cameraBtn?.addEventListener("click", () => openARCameraSheet(poi));
 
   // Compute distance/ETA via OSRM. Image source stays from POI data/library so it
   // remains deterministic in desktop and mobile previews.
   const heroImg = sheet.querySelector<HTMLImageElement>(".poi-hero-image");
   if (heroImg) {
     heroImg.onerror = () => {
-      heroImg.src = POI_LIBRARY[poi.kind]?.imageUrl || POI_LIBRARY.other.imageUrl;
+      heroImg.src = ITS_APP_ICON;
     };
   }
 
@@ -1538,6 +1655,10 @@ function poiNameFromTags(tags: Record<string, string>, fallback: string): string
     || tags.shop
     || tags.tourism
     || tags.office
+    || tags.healthcare
+    || tags.craft
+    || tags.place
+    || tags.building
     || fallback;
 }
 
@@ -1575,9 +1696,10 @@ function poiPriority(poi: PoiRecord): number {
 
 function visiblePoiLimit(): number {
   const zoom = map.getZoom();
-  if (zoom < 14) return 28;
-  if (zoom < 16) return 48;
-  return 86;
+  if (zoom < 14) return 52;
+  if (zoom < 16) return 110;
+  if (zoom < 18) return 180;
+  return 240;
 }
 
 function rankPoisForView(pois: PoiRecord[]): PoiRecord[] {
@@ -1618,13 +1740,32 @@ async function fetchOverpassFeaturesForBounds(bounds: L.LatLngBounds): Promise<P
       node["public_transport"](${bbox});
       way["public_transport"](${bbox});
       relation["public_transport"](${bbox});
+      node["public_transport"~"station|platform|stop_position"](${bbox});
+      way["public_transport"~"station|platform|stop_position"](${bbox});
       node["highway"="bus_stop"](${bbox});
-      node["railway"="station"](${bbox});
-      way["railway"="station"](${bbox});
-      relation["railway"="station"](${bbox});
+      node["amenity"="bus_station"](${bbox});
+      way["amenity"="bus_station"](${bbox});
+      node["railway"~"station|halt|tram_stop|subway_entrance"](${bbox});
+      way["railway"~"station|halt|tram_stop|subway_entrance"](${bbox});
+      relation["railway"~"station|halt|tram_stop|subway_entrance"](${bbox});
       node["historic"](${bbox});
       way["historic"](${bbox});
       relation["historic"](${bbox});
+      node["healthcare"](${bbox});
+      way["healthcare"](${bbox});
+      relation["healthcare"](${bbox});
+      node["craft"](${bbox});
+      way["craft"](${bbox});
+      node["emergency"](${bbox});
+      way["emergency"](${bbox});
+      node["place"~"neighbourhood|suburb|quarter|village|hamlet"](${bbox});
+      way["place"~"neighbourhood|suburb|quarter|village|hamlet"](${bbox});
+      node["man_made"]["name"](${bbox});
+      way["man_made"]["name"](${bbox});
+      node["sport"]["name"](${bbox});
+      way["sport"]["name"](${bbox});
+      node["building"]["name"](${bbox});
+      way["building"]["name"](${bbox});
     );
     out center tags;
   `;
@@ -1644,7 +1785,7 @@ async function fetchOverpassFeaturesForBounds(bounds: L.LatLngBounds): Promise<P
       const lat = el.type === 'node' ? el.lat : (el.center && el.center.lat) || el.lat || 0;
       const lng = el.type === 'node' ? el.lon : (el.center && el.center.lon) || el.lon || 0;
       const kind = classifyPoiKind(tags);
-      const imageUrl = tags.image || tags['image:source'] || POI_LIBRARY[kind].imageUrl;
+      const imageUrl = tags.image || tags['image:source'] || customPoiImageForTags(tags, kind);
       const description = tags.description || tags['note'] || POI_LIBRARY[kind].description;
       const address = poiAddressFromTags(tags);
       return {
@@ -1653,7 +1794,7 @@ async function fetchOverpassFeaturesForBounds(bounds: L.LatLngBounds): Promise<P
         title: name || `POI ${el.id}`,
         description: description || '',
         address: address || '',
-        imageUrl: imageUrl || POI_LIBRARY[kind].imageUrl,
+        imageUrl: imageUrl || ITS_APP_ICON,
         rating: POI_LIBRARY[kind].rating,
         icon: poiVisual(kind).icon,
         lat, lng,
@@ -1664,6 +1805,285 @@ async function fetchOverpassFeaturesForBounds(bounds: L.LatLngBounds): Promise<P
     console.warn("Overpass fetch failed:", err);
     return [];
   }
+}
+
+let lastRoadGuideFetchBounds: L.LatLngBounds | null = null;
+
+function numberTag(tags: Record<string, string>, key: string): number {
+  const raw = tags[key];
+  if (!raw) return 0;
+  const parsed = Number(String(raw).split(";")[0].trim());
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function roadNameLooksAvenue(name: string): boolean {
+  return /\b(raya|boulevard|avenue|arteri|ring road|lingkar|protokol|jenderal|perintis|kemerdekaan|sudirman|thamrin|gatot|tol)\b/i.test(name);
+}
+
+function detectRoadType(tags: Record<string, string>, name: string): RoadGuideRecord["roadType"] {
+  const highway = tags.highway || "";
+  if (/motorway|trunk/.test(highway) || /\btol\b/i.test(name)) return "expressway";
+  if (/footway|path|pedestrian|cycleway|steps/.test(highway)) return "foot";
+  if (/service|track/.test(highway)) return "service";
+  const lanes = numberTag(tags, "lanes") || numberTag(tags, "lanes:forward") + numberTag(tags, "lanes:backward");
+  if (/primary|secondary|tertiary/.test(highway) || lanes >= 4 || roadNameLooksAvenue(name)) return "avenue";
+  return "street";
+}
+
+function roadRenderClass(road: RoadGuideRecord): "major" | "street" | "foot" | "service" {
+  if (road.roadType === "expressway" || road.roadType === "avenue") return "major";
+  if (road.roadType === "foot") return "foot";
+  if (road.roadType === "service") return "service";
+  return "street";
+}
+
+function roadGuideStyle(road: RoadGuideRecord, casing = false): L.PolylineOptions {
+  const cls = roadRenderClass(road);
+  if (casing) {
+    return {
+      color: road.roadType === "expressway" ? "#fff7d6" : cls === "major" ? "#ffffff" : "#f8fafc",
+      weight: road.roadType === "expressway" ? 13 : cls === "major" ? 11 : cls === "foot" ? 4 : 7,
+      opacity: cls === "foot" ? 0.75 : 0.88,
+      interactive: false,
+    };
+  }
+  if (cls === "foot") {
+    return {
+      color: road.hasSidewalk ? "#77d5c6" : "#b7c6d8",
+      weight: 2.2,
+      opacity: 0.84,
+      dashArray: "7 7",
+      interactive: false,
+    };
+  }
+  if (cls === "major") {
+    return {
+      color: road.roadType === "expressway" ? "#ffb36c" : road.roadType === "avenue" ? "#ffd878" : "#ffe08a",
+      weight: road.roadType === "expressway" ? 8.4 : road.roadType === "avenue" ? 7.4 : 6.6,
+      opacity: 0.9,
+      interactive: false,
+    };
+  }
+  if (cls === "service") {
+    return { color: "#d8e1ea", weight: 3.4, opacity: 0.82, interactive: false };
+  }
+  return { color: "#ffffff", weight: 4.2, opacity: 0.92, interactive: false };
+}
+
+function mapLibrePitchByZoom(zoom: number): number {
+  if (zoom < 14) return 38;
+  return clamp(42 + (zoom - 14) * 6, 42, MAPLIBRE_3D_PITCH);
+}
+
+function roadMedianStyle(road: RoadGuideRecord): L.PolylineOptions {
+  return {
+    color: road.treeLined ? "#56c786" : "#82d6bb",
+    weight: road.treeLined ? 3 : 2,
+    opacity: 0.84,
+    dashArray: road.treeLined ? "1 9" : "10 12",
+    lineCap: "round",
+    interactive: false,
+  };
+}
+
+function roadLaneDividerStyle(road: RoadGuideRecord): L.PolylineOptions {
+  return {
+    color: road.roadType === "expressway" ? "#fff3b0" : "#ffffff",
+    weight: 1.2,
+    opacity: 0.8,
+    dashArray: road.oneway ? "8 12" : "14 14",
+    interactive: false,
+  };
+}
+
+function roadGuideMidpoint(points: L.LatLng[]): { latlng: L.LatLng; bearing: number } | null {
+  if (points.length < 2) return null;
+  const index = Math.max(0, Math.min(points.length - 2, Math.floor(points.length / 2) - 1));
+  const a = points[index];
+  const b = points[index + 1];
+  return {
+    latlng: L.latLng((a.lat + b.lat) / 2, (a.lng + b.lng) / 2),
+    bearing: computeBearing(a.lat, a.lng, b.lat, b.lng),
+  };
+}
+
+function makeRoadArrowIcon(bearing: number, road: RoadGuideRecord): L.DivIcon {
+  const cls = roadRenderClass(road);
+  return L.divIcon({
+    className: "road-guide-arrow-icon",
+    html: `<span class="road-guide-arrow road-guide-${cls} road-guide-${road.roadType}" style="--road-bearing:${bearing}deg"></span>`,
+    iconSize: [18, 18],
+    iconAnchor: [9, 9],
+  });
+}
+
+function makeRoadTypeIcon(road: RoadGuideRecord): L.DivIcon {
+  const label = road.roadType === "expressway"
+    ? "TOL"
+    : road.roadType === "avenue"
+      ? "AVE"
+      : road.roadType === "foot"
+        ? "WALK"
+        : road.roadType === "service"
+          ? "SRV"
+          : "JLN";
+  return L.divIcon({
+    className: "road-guide-type-icon",
+    html: `<span class="road-guide-type road-type-${road.roadType}">${label}</span>`,
+    iconSize: [1, 1],
+    iconAnchor: [0, 0],
+  });
+}
+
+function makeRoadNameIcon(name: string): L.DivIcon {
+  return L.divIcon({
+    className: "road-guide-name-icon",
+    html: `<span>${escapeHtml(name)}</span>`,
+    iconSize: [1, 1],
+    iconAnchor: [0, 0],
+  });
+}
+
+function roadGuideSamplePoints(points: L.LatLng[], maxCount: number): { latlng: L.LatLng; bearing: number }[] {
+  if (points.length < 2 || maxCount <= 0) return [];
+  const samples: { latlng: L.LatLng; bearing: number }[] = [];
+  const step = Math.max(1, Math.floor((points.length - 1) / Math.max(1, maxCount)));
+  for (let i = step; i < points.length - 1 && samples.length < maxCount; i += step) {
+    const a = points[i - 1];
+    const b = points[i];
+    samples.push({
+      latlng: L.latLng((a.lat + b.lat) / 2, (a.lng + b.lng) / 2),
+      bearing: computeBearing(a.lat, a.lng, b.lat, b.lng),
+    });
+  }
+  return samples;
+}
+
+async function fetchRoadGuidesForBounds(bounds: L.LatLngBounds): Promise<RoadGuideRecord[]> {
+  const bbox = buildOverpassBBoxString(bounds);
+  const q = `
+    [out:json][timeout:15];
+    (
+      way["highway"~"motorway|trunk|primary|secondary|tertiary|residential|unclassified|service|living_street|pedestrian|footway|path|cycleway|steps"](${bbox});
+    );
+    out tags geom 140;
+  `;
+
+  try {
+    const res = await fetch("https://overpass-api.de/api/interpreter", {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" },
+      body: q,
+    });
+    if (!res.ok) throw new Error(`Overpass road HTTP ${res.status}`);
+    const data = await res.json();
+    const elements = Array.isArray(data.elements) ? data.elements : [];
+    return elements
+      .map((el: any): RoadGuideRecord | null => {
+        const tags = el.tags || {};
+        const geometry = Array.isArray(el.geometry) ? el.geometry : [];
+        const points = geometry
+          .map((p: any) => L.latLng(Number(p.lat), Number(p.lon)))
+          .filter((p: L.LatLng) => isValidCoordinate(p.lat, p.lng));
+        if (points.length < 2 || !tags.highway) return null;
+        const name = tags["name:id"] || tags.name || tags.ref || tags["addr:street"] || "";
+        const lanes = numberTag(tags, "lanes") || (numberTag(tags, "lanes:forward") + numberTag(tags, "lanes:backward"));
+        const roadType = detectRoadType(tags, name);
+        return {
+          id: `road-${el.id}`,
+          name,
+          ref: tags.ref || "",
+          highway: tags.highway,
+          oneway: tags.oneway === "yes" || tags.oneway === "1" || tags.junction === "roundabout",
+          hasSidewalk: Boolean(tags.sidewalk && tags.sidewalk !== "no") || /footway|pedestrian|path/.test(tags.highway),
+          hasMedian: tags.dual_carriageway === "yes"
+            || Boolean(tags.divider && tags.divider !== "no")
+            || roadType === "avenue"
+            || roadType === "expressway",
+          treeLined: tags.tree_lined === "yes"
+            || tags["tree_lined:both"] === "yes"
+            || (roadType === "avenue" && !/flyover|bridge/.test(tags.layer || "")),
+          lanes,
+          surface: tags.surface || "",
+          roadType,
+          points,
+        };
+      })
+      .filter(Boolean) as RoadGuideRecord[];
+  } catch (err) {
+    console.warn("Overpass road guide failed:", err);
+    return [];
+  }
+}
+
+async function refreshRoadGuideLayer(force = false): Promise<void> {
+  if (!state.roadGuideLayer) state.roadGuideLayer = L.layerGroup().addTo(map);
+  if (state.baseMode !== "street") {
+    state.roadGuideLayer.clearLayers();
+    return;
+  }
+
+  const zoom = map.getZoom();
+  if (zoom < 15) {
+    state.roadGuideLayer.clearLayers();
+    return;
+  }
+
+  const bounds = map.getBounds();
+  if (!force && lastRoadGuideFetchBounds && lastRoadGuideFetchBounds.contains(bounds.getSouthWest()) && lastRoadGuideFetchBounds.contains(bounds.getNorthEast())) return;
+  lastRoadGuideFetchBounds = bounds.pad(0.2);
+
+  const roads = await fetchRoadGuidesForBounds(bounds);
+  state.roadGuideLayer.clearLayers();
+  const limit = zoom >= 18 ? 120 : zoom >= 16 ? 84 : 52;
+  roads
+    .sort((a, b) => {
+      const ca = roadRenderClass(a);
+      const cb = roadRenderClass(b);
+      const weight = { major: 0, street: 1, foot: 2, service: 3 };
+      return weight[ca] - weight[cb];
+    })
+    .slice(0, limit)
+    .forEach((road, index) => {
+      const cls = roadRenderClass(road);
+      if (cls !== "foot") {
+        L.polyline(road.points, roadGuideStyle(road, true)).addTo(state.roadGuideLayer as L.LayerGroup);
+      }
+      L.polyline(road.points, roadGuideStyle(road, false)).addTo(state.roadGuideLayer as L.LayerGroup);
+      if (road.hasMedian) {
+        L.polyline(road.points, roadMedianStyle(road)).addTo(state.roadGuideLayer as L.LayerGroup);
+      }
+      if (road.roadType === "avenue" || road.roadType === "expressway") {
+        L.polyline(road.points, roadLaneDividerStyle(road)).addTo(state.roadGuideLayer as L.LayerGroup);
+      }
+      const mid = roadGuideMidpoint(road.points);
+      if (!mid) return;
+      const shouldShowArrow = road.oneway || cls === "major" || index % 2 === 0;
+      if (shouldShowArrow) {
+        const arrowCount = road.roadType === "avenue" || road.roadType === "expressway" ? 3 : road.oneway ? 2 : 1;
+        roadGuideSamplePoints(road.points, arrowCount).forEach((sample) => {
+          L.marker(sample.latlng, {
+            icon: makeRoadArrowIcon(sample.bearing, road),
+            interactive: false,
+            zIndexOffset: 112,
+          }).addTo(state.roadGuideLayer as L.LayerGroup);
+        });
+      }
+      if (road.name && zoom >= 16 && index % (zoom >= 18 ? 2 : 4) === 0) {
+        L.marker(mid.latlng, {
+          icon: makeRoadNameIcon(road.name),
+          interactive: false,
+          zIndexOffset: 109,
+        }).addTo(state.roadGuideLayer as L.LayerGroup);
+      }
+      if (zoom >= 17 && road.roadType !== "foot" && index % (zoom >= 18 ? 3 : 5) === 0) {
+        L.marker(mid.latlng, {
+          icon: makeRoadTypeIcon(road),
+          interactive: false,
+          zIndexOffset: 108,
+        }).addTo(state.roadGuideLayer as L.LayerGroup);
+      }
+    });
 }
 
 let lastOverpassFetchBounds: L.LatLngBounds | null = null;
@@ -1824,9 +2244,11 @@ map.on('click', async (ev: L.LeafletMouseEvent) => {
 map.on('moveend', () => {
   if (state.baseMode === '3d') {
     if (state.overpassLayer) state.overpassLayer.clearLayers();
+    if (state.roadGuideLayer) state.roadGuideLayer.clearLayers();
     return;
   }
   void refreshOverpassLayer();
+  void refreshRoadGuideLayer();
 });
 
 // ─── Helpers ────────────────────────────────────────────────────
@@ -2337,6 +2759,18 @@ function renderDeviceModal(device: DeviceRecord, traffic: TrafficState): string 
   const recommendation = escapeHtml(traffic.recommendation);
   const statsGrid = renderVehicleStatsGrid(device, traffic, "modal-vehicle-grid");
   return `
+    <div class="sheet-panel-header device-panel-header">
+      <button class="sheet-icon-btn modal-close" data-action="close" aria-label="Kembali" title="Kembali">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+      <div class="sheet-title-cluster">
+        <div class="sheet-device-icon" aria-hidden="true">${makeTrafficLightSvg(traffic, 28)}</div>
+        <div class="sheet-title-copy">
+          <h2 class="modal-title">${escapeHtml(device.label)}</h2>
+          <p>${escapeHtml(device.status)} · ${road}</p>
+        </div>
+      </div>
+    </div>
     <div class="modal-header">
       <button class="modal-close" data-action="close">×</button>
       <h2 class="modal-title">${escapeHtml(device.label)}</h2>
@@ -2402,8 +2836,17 @@ function closePromptPanels(): void {
   clearSidePanelWidth(0);
 }
 
-function closeModal(): void {
-  document.querySelectorAll(".modal-wrapper, #m-device-modal, #m-poi-modal").forEach((m) => m.remove());
+function closeModal(animate = true): void {
+  const modals = Array.from(document.querySelectorAll<HTMLElement>(".modal-wrapper, #m-device-modal, #m-poi-modal"));
+  modals.forEach((modal) => {
+    if (!animate) {
+      modal.remove();
+      return;
+    }
+    modal.classList.remove("open");
+    modal.classList.add("closing");
+    window.setTimeout(() => modal.remove(), 260);
+  });
   state.activeModalDeviceId = null;
   state.activeModalPoiId = null;
   window.clearInterval(state.trafficRefreshTimer);
@@ -2446,7 +2889,7 @@ function createSwipeableSheetModal(id: string, sheetClass: string, bodyHtml: str
 }
 
 function openModal(device: DeviceRecord): void {
-  closeModal();
+  closeModal(false);
   closePromptPanels();
   state.activeModalDeviceId = device.id;
   state.activeModalPoiId = null;
@@ -2461,14 +2904,14 @@ function openModal(device: DeviceRecord): void {
     `,
   );
 
-  overlay.querySelector(".m-layer-backdrop")!.addEventListener("click", closeModal);
+  overlay.querySelector(".m-layer-backdrop")!.addEventListener("click", () => closeModal());
   const sheet = overlay.querySelector<HTMLElement>(".m-device-sheet");
   if (!sheet) return;
   setupSheetSwipe(sheet, closeModal);
   sheet.querySelectorAll<HTMLButtonElement>(".modal-tab-btn").forEach((btn) => {
     btn.addEventListener("click", () => setSheetActiveTab(sheet, btn.dataset.tab || "system"));
   });
-  sheet.querySelector<HTMLButtonElement>(".modal-close")?.addEventListener("click", closeModal);
+  sheet.querySelector<HTMLButtonElement>(".modal-close")?.addEventListener("click", () => closeModal());
 
   window.clearInterval(state.trafficRefreshTimer);
   state.trafficRefreshTimer = window.setInterval(() => {
@@ -2489,7 +2932,7 @@ function refreshOpenDeviceModal(device: DeviceRecord): void {
     <div class="m-sheet-handle-bar"></div>
     ${renderDeviceModal(device, nextTraffic)}
   `;
-  sheet.querySelector<HTMLButtonElement>(".modal-close")?.addEventListener("click", closeModal);
+  sheet.querySelector<HTMLButtonElement>(".modal-close")?.addEventListener("click", () => closeModal());
   sheet.querySelectorAll<HTMLButtonElement>(".modal-tab-btn").forEach((btn) => {
     btn.addEventListener("click", () => setSheetActiveTab(sheet, btn.dataset.tab || "system"));
   });
@@ -2668,7 +3111,7 @@ async function ensureMapLibreMap(): Promise<any | null> {
       center: map.getCenter(),
       zoom: map.getZoom(),
       bearing: map.getBearing?.() ?? 0,
-      pitch: MAPLIBRE_3D_PITCH,
+      pitch: mapLibrePitchByZoom(map.getZoom()),
       attributionControl: false,
       interactive: false,
       preserveDrawingBuffer: false,
@@ -2707,7 +3150,36 @@ async function ensureMapLibreMap(): Promise<any | null> {
           });
         }
 
-        // Add POI symbol layer using text labels with emoji icons (simple, no drift)
+        if (!maplibreMap.getLayer("poi-halo")) {
+          maplibreMap.addLayer({
+            id: "poi-halo",
+            type: "circle",
+            source: "poi-source",
+            paint: {
+              "circle-radius": ["interpolate", ["linear"], ["zoom"], 14, 4, 18, 10],
+              "circle-color": [
+                "match", ["get", "kind"],
+                "hospital", "#ef4444",
+                "mall", "#8b5cf6",
+                "campus", "#2563eb",
+                "school", "#0f6cbd",
+                "station", "#2563eb",
+                "terminal", "#0f766e",
+                "shelter", "#0284c7",
+                "park", "#16a34a",
+                "worship", "#d97706",
+                "restaurant", "#e11d48",
+                "monument", "#a16207",
+                "#475569"
+              ],
+              "circle-opacity": 0.9,
+              "circle-stroke-color": "#ffffff",
+              "circle-stroke-width": 2
+            }
+          });
+        }
+
+        // Add POI symbol layer using compact text labels (simple, no drift)
         if (!maplibreMap.getLayer("poi-symbols")) {
           maplibreMap.addLayer({
             id: "poi-symbols",
@@ -2722,9 +3194,12 @@ async function ensureMapLibreMap(): Promise<any | null> {
               "text-ignore-placement": true
             },
             paint: {
+              "text-color": "#111827",
+              "text-halo-color": "#ffffff",
+              "text-halo-width": 1.4,
               "text-opacity": 1
             }
-          }, "building");
+          });
         }
 
         // Add click handler for POI (allow MapLibre to detect clicks)
@@ -2800,6 +3275,12 @@ async function ensureMapLibreMap(): Promise<any | null> {
           // 3. Bangunan 3D Berwarna berdasarkan Tinggi Gedung
           if (layer.type === 'fill-extrusion' || id.includes('building')) {
             try {
+              const buildingHeightExpression = [
+                "interpolate", ["linear"], ["zoom"],
+                14, 0,
+                15.5, ["*", ["to-number", ["coalesce", ["get", "render_height"], ["get", "height"], ["*", ["to-number", ["coalesce", ["get", "building:levels"], 2]], 3], 9]], 0.45],
+                18, ["*", ["to-number", ["coalesce", ["get", "render_height"], ["get", "height"], ["*", ["to-number", ["coalesce", ["get", "building:levels"], 2]], 3], 9]], 1.25]
+              ];
               maplibreMap.setPaintProperty(id, 'fill-extrusion-color', [
                 'interpolate',
                 ['linear'],
@@ -2810,6 +3291,8 @@ async function ensureMapLibreMap(): Promise<any | null> {
                 50, '#a78bfa',
                 100, '#f87171'
               ]);
+              maplibreMap.setPaintProperty(id, 'fill-extrusion-height', buildingHeightExpression);
+              maplibreMap.setPaintProperty(id, 'fill-extrusion-base', 0);
               maplibreMap.setPaintProperty(id, 'fill-extrusion-opacity', 0.92);
             } catch {
               /* ignore layer incompatibility */
@@ -2857,7 +3340,7 @@ function syncMapLibreView(force = false): void {
   const center = map.getCenter();
   const zoom = map.getZoom();
   const bearing = map.getBearing?.() ?? 0;
-  const pitch = MAPLIBRE_3D_PITCH;
+  const pitch = mapLibrePitchByZoom(zoom);
 
   const currentCenter = maplibreMap.getCenter();
   const currentZoom = maplibreMap.getZoom();
@@ -2878,7 +3361,7 @@ function syncMapLibreView(force = false): void {
       center,
       zoom,
       bearing,
-      pitch: MAPLIBRE_3D_PITCH,
+      pitch,
 
     });
     // Do not hide Leaflet POI markers in 3D — prefer custom Leaflet icons consistently
@@ -2942,6 +3425,7 @@ async function setBaseMap(mode: BaseMapMode): Promise<void> {
   }
 
   state.baseMode = mode;
+  void refreshRoadGuideLayer(true);
 }
 
 // ─── Camera tile ────────────────────────────────────────────────
@@ -3544,6 +4028,7 @@ function setupVideoAiSwipe(sheetEl: HTMLElement, onClose: () => void, onWidthCha
   };
   sheetEl.addEventListener("pointerup", finish);
   sheetEl.addEventListener("pointercancel", finish);
+  installWheelSheetDismiss(sheetEl, onClose);
 }
 
 // Tablet & POI interactions
@@ -4368,6 +4853,56 @@ function closeLayerModal(): void {
 
 // ─── 3. Generic Sheet Swipe Handler ──────────────────────────────────────────
 
+function sheetSwipeHandleTarget(target: HTMLElement | null): boolean {
+  return Boolean(target?.closest(
+    "[data-swipe-handle], .m-sheet-handle-bar, .m-layer-title, .modal-header, .poi-modal-header, .sheet-panel-header, .windows-download-head, .windows-download-detail-head, .map-license-head, .m-profil-inner",
+  ));
+}
+
+function nearestScrollableSheetTarget(target: HTMLElement | null, sheetEl: HTMLElement): HTMLElement {
+  let node: HTMLElement | null = target;
+  while (node && node !== sheetEl) {
+    const style = window.getComputedStyle(node);
+    const canScroll = /(auto|scroll)/.test(style.overflowY) && node.scrollHeight > node.clientHeight + 2;
+    if (canScroll) return node;
+    node = node.parentElement;
+  }
+  return sheetEl;
+}
+
+function canStartSheetDismiss(target: HTMLElement | null, sheetEl: HTMLElement, horizontal: boolean): boolean {
+  if (horizontal) return true;
+  const scrollTarget = nearestScrollableSheetTarget(target, sheetEl);
+  return scrollTarget.scrollTop <= 1;
+}
+
+function installWheelSheetDismiss(sheetEl: HTMLElement, onClose: () => void): void {
+  let offset = 0;
+  let resetTimer = 0;
+  sheetEl.addEventListener("wheel", (event) => {
+    if (usesDesktopSidePanel()) return;
+    const target = event.target as HTMLElement | null;
+    const scrollTarget = nearestScrollableSheetTarget(target, sheetEl);
+    const atTop = scrollTarget.scrollTop <= 1;
+    const atBottom = scrollTarget.scrollTop + scrollTarget.clientHeight >= scrollTarget.scrollHeight - 2;
+    const pullDownFromTop = atTop && event.deltaY < -8;
+    const pushPastBottom = atBottom && event.deltaY > 10;
+    const wheelPull = pullDownFromTop ? Math.abs(event.deltaY) : pushPastBottom ? event.deltaY * 0.55 : 0;
+    if (!wheelPull) return;
+    event.preventDefault();
+    offset = clamp(offset + wheelPull, 0, 190);
+    sheetEl.style.transition = "none";
+    sheetEl.style.transform = `translateY(${offset}px)`;
+    window.clearTimeout(resetTimer);
+    resetTimer = window.setTimeout(() => {
+      sheetEl.style.transition = "";
+      if (offset > 74) onClose();
+      else sheetEl.style.transform = "";
+      offset = 0;
+    }, 110);
+  }, { passive: false });
+}
+
 function setupSheetSwipe(sheetEl: HTMLElement, onClose: () => void): void {
   let startAxis = 0;
   let currentAxis = 0;
@@ -4377,10 +4912,10 @@ function setupSheetSwipe(sheetEl: HTMLElement, onClose: () => void): void {
 
   const onPointerDown = (e: PointerEvent) => {
     const target = e.target as HTMLElement;
-    const startsOnHandle = Boolean(target.closest(".m-sheet-handle-bar, .m-layer-title, .modal-header, .poi-modal-header"));
+    const startsOnHandle = sheetSwipeHandleTarget(target);
     if (!startsOnHandle && target.closest("button, a, input, label, select, textarea")) return;
-    if (!startsOnHandle && sheetEl.scrollTop > 0) return;
     const horizontal = usesDesktopSidePanel();
+    if (!startsOnHandle && !canStartSheetDismiss(target, sheetEl, horizontal)) return;
     startAxis = horizontal ? e.clientX : e.clientY;
     currentAxis = 0;
     dragging = true;
@@ -4425,6 +4960,7 @@ function setupSheetSwipe(sheetEl: HTMLElement, onClose: () => void): void {
   sheetEl.addEventListener("pointermove", onPointerMove);
   sheetEl.addEventListener("pointerup", onPointerEnd);
   sheetEl.addEventListener("pointercancel", onPointerEnd);
+  installWheelSheetDismiss(sheetEl, onClose);
 }
 
 // ─── 4. ITS Sheet (Swipeable, Dynamic Map Resize) ────────────────────────────
@@ -4867,6 +5403,7 @@ initMobileUI();
 void refreshSnapshot();
 // Also fetch nearby POIs immediately so tablet filters have data even if devices are empty
 void refreshOverpassLayer();
+void refreshRoadGuideLayer(true);
 }
 
 // ─── PWA: Service Worker registration and install prompt handler ─────
@@ -4949,6 +5486,52 @@ function clearPromptSidePanelWidth(delayMs = 260): void {
   }, delayMs);
 }
 
+function promptSheetSwipeHandleTarget(target: HTMLElement | null): boolean {
+  return Boolean(target?.closest(
+    "[data-swipe-handle], .windows-download-head, .windows-download-detail-head, .map-license-head",
+  ));
+}
+
+function promptNearestScrollableTarget(target: HTMLElement | null, sheetEl: HTMLElement): HTMLElement {
+  let node: HTMLElement | null = target;
+  while (node && node !== sheetEl) {
+    const style = window.getComputedStyle(node);
+    const canScroll = /(auto|scroll)/.test(style.overflowY) && node.scrollHeight > node.clientHeight + 2;
+    if (canScroll) return node;
+    node = node.parentElement;
+  }
+  return sheetEl;
+}
+
+function promptCanStartDismiss(target: HTMLElement | null, sheetEl: HTMLElement, horizontal: boolean): boolean {
+  if (horizontal) return true;
+  return promptNearestScrollableTarget(target, sheetEl).scrollTop <= 1;
+}
+
+function installPromptWheelDismiss(sheetEl: HTMLElement, onClose: () => void): void {
+  let offset = 0;
+  let resetTimer = 0;
+  sheetEl.addEventListener("wheel", (event) => {
+    if (promptUsesDesktopSidePanel()) return;
+    const scrollTarget = promptNearestScrollableTarget(event.target as HTMLElement | null, sheetEl);
+    const atTop = scrollTarget.scrollTop <= 1;
+    const atBottom = scrollTarget.scrollTop + scrollTarget.clientHeight >= scrollTarget.scrollHeight - 2;
+    const pull = atTop && event.deltaY < -8 ? Math.abs(event.deltaY) : atBottom && event.deltaY > 10 ? event.deltaY * 0.55 : 0;
+    if (!pull) return;
+    event.preventDefault();
+    offset = Math.min(190, Math.max(0, offset + pull));
+    sheetEl.style.transition = "none";
+    sheetEl.style.transform = `translateY(${offset}px)`;
+    window.clearTimeout(resetTimer);
+    resetTimer = window.setTimeout(() => {
+      sheetEl.style.transition = "";
+      if (offset > 74) onClose();
+      else sheetEl.style.transform = "";
+      offset = 0;
+    }, 110);
+  }, { passive: false });
+}
+
 function closeFloatingMapPanels(): void {
   document.querySelectorAll("#windows-download-modal, #map-license-modal, #m-device-modal, #m-poi-modal").forEach((modal) => modal.remove());
   document.body.classList.remove("app-download-panel-open", "map-license-panel-open", "map-modal-panel-open");
@@ -4978,28 +5561,12 @@ function itsShowMapLicenseModal(): void {
           <span>ITS Maps</span>
           <h2 id="map-license-title">Lisensi Peta</h2>
         </div>
-        <button type="button" aria-label="Tutup Lisensi Peta" title="Tutup" data-license-close>x</button>
+        <button type="button" aria-label="Tutup Lisensi Peta" title="Tutup" data-license-close>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
       </header>
       <div class="map-license-list">
-        <article>
-          <strong>OpenStreetMap</strong>
-          <p>Data nama jalan, bangunan, area, koordinat, dan POI berasal dari kontributor OpenStreetMap. Data digunakan sesuai Open Database License (ODbL).</p>
-          <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">openstreetmap.org/copyright</a>
-        </article>
-        <article>
-          <strong>CARTO Voyager</strong>
-          <p>Tile 2D memakai CARTO Voyager sebagai basemap visual berbasis data OpenStreetMap agar tampilan peta lebih bersih.</p>
-          <a href="https://carto.com/attributions" target="_blank" rel="noopener">carto.com/attributions</a>
-        </article>
-        <article>
-          <strong>Overpass API</strong>
-          <p>POI diambil berdasarkan viewport peta untuk menampilkan fasilitas sekitar seperti sekolah, tempat ibadah, rumah sakit, terminal, dan area publik.</p>
-          <a href="https://overpass-api.de/" target="_blank" rel="noopener">overpass-api.de</a>
-        </article>
-        <article>
-          <strong>Esri World Imagery & OpenFreeMap</strong>
-          <p>Mode satelit memakai Esri World Imagery. Mode 3D memakai MapLibre dengan style OpenFreeMap untuk bangunan dan orientasi visual.</p>
-        </article>
+        ${mapServiceStackHtml()}
       </div>
     </section>
   `;
@@ -5176,7 +5743,6 @@ function itsCreateWindowsDownloadButton(): void {
   host.innerHTML = `
     <button type="button" class="windows-download-trigger" aria-label="Download ITS Maps ${info.platformName}" title="Download ITS Maps ${info.platformName}" data-tooltip="Download ITS Maps ${info.platformName}">
       <img src="${ITS_APP_ICON}" alt="">
-      <strong class="windows-download-trigger-label">Download ${info.extension}</strong>
       <span class="windows-download-badge" aria-hidden="true"></span>
     </button>
     <div class="windows-download-hover-card" aria-hidden="true">
@@ -5208,7 +5774,6 @@ function itsShowWindowsDownloadModal(): void {
   modal.innerHTML = `
     <section class="windows-download-sheet" role="dialog" aria-modal="true" aria-labelledby="windows-download-title">
       <div class="windows-download-grip" data-swipe-handle aria-hidden="true"></div>
-      <button type="button" class="windows-download-close" aria-label="Tutup" title="Tutup" data-windows-close>x</button>
       <div class="windows-download-view windows-download-summary active" data-download-view="summary">
         <div class="windows-download-head">
           <img class="windows-download-icon" src="${ITS_APP_ICON}" alt="">
@@ -5216,6 +5781,9 @@ function itsShowWindowsDownloadModal(): void {
             <h2 id="windows-download-title">ITS Maps ${info.platformName}</h2>
             <p>Versi ${ITS_APP_VERSION}</p>
           </div>
+          <button type="button" class="windows-download-close" aria-label="Tutup" title="Tutup" data-windows-close>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+          </button>
         </div>
         <div class="windows-download-modal-actions">
           <button type="button" class="windows-download-primary" data-windows-download>Download ${info.extension}</button>
@@ -5231,17 +5799,22 @@ function itsShowWindowsDownloadModal(): void {
         <p class="windows-download-description">${info.shortDescription}</p>
         <button type="button" class="windows-download-detail-row" data-download-detail>
           <span>Lihat detail aplikasi</span>
-          <strong aria-hidden="true">&gt;</strong>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
         </button>
       </div>
       <div class="windows-download-view windows-download-detail" data-download-view="detail">
-        <button type="button" class="windows-download-back" data-download-back aria-label="Kembali">&lt;</button>
-        <div class="windows-download-head detail-head">
+        <div class="windows-download-detail-head">
+          <button type="button" class="windows-download-back" data-download-back aria-label="Kembali" title="Kembali">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+          </button>
           <img class="windows-download-icon" src="${ITS_APP_ICON}" alt="">
           <div>
             <h2>ITS Maps ${info.platformName}</h2>
             <p>Versi ${ITS_APP_VERSION}</p>
           </div>
+          <button type="button" class="windows-download-close" aria-label="Tutup" title="Tutup" data-windows-close>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+          </button>
         </div>
         <p class="windows-download-description long">${info.longDescription}</p>
         <div class="windows-download-section-title">Akses aplikasi</div>
@@ -5287,7 +5860,9 @@ function itsShowWindowsDownloadModal(): void {
   modal.addEventListener("click", (event) => {
     if (event.target === modal) closeDownloadModal();
   });
-  modal.querySelector<HTMLButtonElement>("[data-windows-close]")?.addEventListener("click", closeDownloadModal);
+  modal.querySelectorAll<HTMLButtonElement>("[data-windows-close]").forEach((button) => {
+    button.addEventListener("click", closeDownloadModal);
+  });
   modal.querySelector<HTMLButtonElement>("[data-windows-download]")?.addEventListener("click", () => itsDownloadApp(info));
   modal.querySelector<HTMLButtonElement>("[data-download-detail]")?.addEventListener("click", () => {
     modal.classList.add("detail-open");
@@ -5317,11 +5892,10 @@ function setupPromptSheetSwipe(sheetEl: HTMLElement, onClose: () => void): void 
 
   sheetEl.addEventListener("pointerdown", (event) => {
     const target = event.target as HTMLElement;
-    const startsOnHandle = Boolean(target.closest("[data-swipe-handle]"));
-    const startsOnHeader = Boolean(target.closest(".windows-download-head, .map-license-head"));
-    if (!startsOnHandle && !startsOnHeader && target.closest("button, a, input, label, select, textarea")) return;
-    if (!startsOnHandle && !startsOnHeader && sheetEl.scrollTop > 0) return;
+    const startsOnHandle = promptSheetSwipeHandleTarget(target);
+    if (!startsOnHandle && target.closest("button, a, input, label, select, textarea")) return;
     const horizontal = window.matchMedia("(min-width: 721px)").matches;
+    if (!startsOnHandle && !promptCanStartDismiss(target, sheetEl, horizontal)) return;
     startAxis = horizontal ? event.clientX : event.clientY;
     currentAxis = 0;
     dragging = true;
@@ -5361,6 +5935,7 @@ function setupPromptSheetSwipe(sheetEl: HTMLElement, onClose: () => void): void 
 
   sheetEl.addEventListener("pointerup", finish);
   sheetEl.addEventListener("pointercancel", finish);
+  installPromptWheelDismiss(sheetEl, onClose);
 }
 
 if (!staticRoute) {

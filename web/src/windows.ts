@@ -781,7 +781,7 @@ function licensePanelHtml(): string {
     ["CARTO / OpenStreetMap", "Basemap dan data jalan/POI", "ODbL dan ketentuan provider"],
     ["Overpass API", "Query POI sekitar viewport", "OpenStreetMap data"],
     ["hls.js", "Fallback live stream HLS kamera Raspberry", "Apache-2.0"],
-    ["Mapbox Maki", "Ikon kartografi POI", "CC0 / BSD style distribution"],
+    ["Ikon POI lokal", "Ikon marker aplikasi dan aset POI dari folder src/poi", "Aset aplikasi lokal"],
     ["Electron", "Runtime desktop Windows", "MIT"],
     ["Firebase RTDB", "Sinkronisasi Raspberry, Windows, dan website", "Google Firebase terms"],
     ["YOLO ONNX", "Model AI offline untuk deteksi video", "Sesuai lisensi model yang dibundle"],

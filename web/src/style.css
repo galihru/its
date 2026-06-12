@@ -598,7 +598,8 @@ body {
   width: min(430px, calc(100vw - 28px));
   max-height: min(760px, calc(100vh - 28px));
   overflow: auto;
-  padding: 18px;
+  padding: 18px 18px max(34px, calc(env(safe-area-inset-bottom) + 20px));
+  scroll-padding-bottom: 96px;
   border: 1px solid #dbe4ef;
   border-radius: 14px;
   background: #fff;
@@ -614,26 +615,22 @@ body {
 }
 
 .windows-download-close {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
   border: 1px solid #dbe4ef;
-  border-radius: 8px;
+  border-radius: 9px;
   background: #fff;
   color: #334155;
-  font-size: 14px;
-  font-weight: 900;
   cursor: pointer;
 }
 
 .windows-download-head {
   display: grid;
-  grid-template-columns: 58px minmax(0, 1fr);
+  grid-template-columns: 58px minmax(0, 1fr) 34px;
   gap: 13px;
   align-items: center;
-  padding-right: 38px;
 }
 
 .windows-download-icon {
@@ -741,12 +738,12 @@ body {
   }
 
   .windows-download-trigger {
-    width: auto;
-    min-width: 0;
-    height: 40px;
-    grid-template-columns: 28px auto;
-    gap: 7px;
-    padding: 0 12px 0 8px;
+    width: 46px;
+    min-width: 46px;
+    height: 46px;
+    grid-template-columns: 1fr;
+    gap: 0;
+    padding: 0;
     place-items: center;
     border-color: rgba(37, 99, 235, 0.12);
     border-radius: 12px;
@@ -755,21 +752,12 @@ body {
   }
 
   .windows-download-trigger img {
-    width: 28px;
-    height: 28px;
+    width: 31px;
+    height: 31px;
   }
 
   .windows-download-trigger::after {
     display: none;
-  }
-
-  .windows-download-trigger-label {
-    display: block;
-    color: #2563eb;
-    font-size: 12px;
-    font-weight: 900;
-    line-height: 1;
-    white-space: nowrap;
   }
 
   .windows-download-modal {
@@ -784,20 +772,8 @@ body {
     border-bottom: 0;
     border-left: 0;
     border-radius: 16px 16px 0 0;
-    padding: 22px 16px max(18px, env(safe-area-inset-bottom));
+    padding: 22px 16px max(64px, calc(env(safe-area-inset-bottom) + 34px));
     transform: translateY(100%);
-  }
-
-  .windows-download-sheet::before {
-    content: "";
-    position: absolute;
-    top: 8px;
-    left: 50%;
-    width: 38px;
-    height: 4px;
-    border-radius: 999px;
-    background: #cbd5e1;
-    transform: translateX(-50%);
   }
 
   .windows-download-modal.open .windows-download-sheet {
@@ -812,10 +788,6 @@ body {
     padding-top: 0;
     background: #fff;
   }
-}
-
-.windows-download-trigger-label {
-  display: none;
 }
 
 .windows-download-hover-card {
@@ -908,6 +880,16 @@ body {
   cursor: pointer;
 }
 
+.windows-download-detail-row svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .windows-download-view {
   display: none;
 }
@@ -927,18 +909,49 @@ body {
 .windows-download-back {
   width: 34px;
   height: 34px;
-  margin-bottom: 10px;
+  display: grid;
+  place-items: center;
   border: 1px solid #dbe4ef;
   border-radius: 9px;
   background: #fff;
   color: #0f172a;
-  font-size: 16px;
-  font-weight: 900;
   cursor: pointer;
 }
 
-.windows-download-head.detail-head {
-  padding-right: 0;
+.windows-download-back svg,
+.windows-download-close svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.windows-download-detail-head {
+  display: grid;
+  grid-template-columns: 34px 54px minmax(0, 1fr) 34px;
+  align-items: center;
+  gap: 10px;
+}
+
+.windows-download-detail-head h2,
+.windows-download-detail-head p {
+  margin: 0;
+}
+
+.windows-download-detail-head h2 {
+  color: #0f172a;
+  font-size: 18px;
+  line-height: 1.15;
+}
+
+.windows-download-detail-head p {
+  margin-top: 3px;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 900;
 }
 
 .windows-download-description.long {
@@ -1020,18 +1033,27 @@ body {
     display: none;
   }
 
-  .windows-download-trigger-label {
-    display: block;
-  }
-
   .windows-download-grip {
     display: block;
+    width: 44px;
+    height: 20px;
+    margin: -10px auto 8px;
+    border-radius: 999px;
+    background: transparent;
+    touch-action: none;
+    position: relative;
+  }
+
+  .windows-download-grip::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 8px;
     width: 38px;
     height: 4px;
-    margin: -8px auto 14px;
     border-radius: 999px;
     background: #cbd5e1;
-    touch-action: none;
+    transform: translateX(-50%);
   }
 
   .windows-download-sheet {
@@ -1079,7 +1101,8 @@ body {
   width: min(560px, calc(100vw - 28px));
   max-height: min(760px, calc(100vh - 28px));
   overflow: auto;
-  padding: 18px;
+  padding: 18px 18px max(34px, calc(env(safe-area-inset-bottom) + 18px));
+  scroll-padding-bottom: 96px;
   border: 1px solid rgba(203, 213, 225, 0.9);
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.96);
@@ -1122,12 +1145,23 @@ body {
 .map-license-head button {
   width: 34px;
   height: 34px;
+  display: grid;
+  place-items: center;
   border: 1px solid #dbe4ef;
   border-radius: 9px;
   background: #fff;
   color: #334155;
-  font-weight: 900;
   cursor: pointer;
+}
+
+.map-license-head button svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .map-license-list {
@@ -1210,12 +1244,25 @@ body {
 
   .map-license-grip {
     display: block;
+    width: 44px;
+    height: 20px;
+    margin: -10px auto 8px;
+    border-radius: 999px;
+    background: transparent;
+    touch-action: none;
+    position: relative;
+  }
+
+  .map-license-grip::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 8px;
     width: 38px;
     height: 4px;
-    margin: -8px auto 14px;
     border-radius: 999px;
     background: #cbd5e1;
-    touch-action: none;
+    transform: translateX(-50%);
   }
 }
 
@@ -1862,6 +1909,18 @@ body {
   transform: translateY(0);
 }
 
+#m-device-modal.closing .m-device-sheet,
+#m-poi-modal.closing .m-poi-sheet {
+  transform: translateY(100%);
+}
+
+.m-device-sheet .m-sheet-handle-bar,
+.m-poi-sheet .m-sheet-handle-bar,
+.m-layer-sheet .m-sheet-handle-bar,
+.m-tablet-sheet .m-sheet-handle-bar {
+  touch-action: none;
+}
+
 #m-tablet-categories {
   position: fixed;
   inset: 0;
@@ -2022,6 +2081,108 @@ body {
   background: #f3f4f6;
 }
 
+.sheet-panel-header {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 2px 12px;
+  border-bottom: 1px solid #edf2f7;
+  touch-action: none;
+}
+
+.sheet-icon-btn {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #dbe4ef;
+  border-radius: 10px;
+  background: #fff;
+  color: #0f172a;
+  cursor: pointer;
+}
+
+.sheet-icon-btn svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.sheet-icon-btn svg path[fill] {
+  stroke: none;
+}
+
+.sheet-panel-header .modal-close {
+  position: static;
+  font-size: 0;
+}
+
+.sheet-title-cluster {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.sheet-place-icon,
+.sheet-device-icon {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: #f8fafc;
+  color: #111827;
+  border: 1px solid #dbe4ef;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.sheet-place-icon {
+  border-color: color-mix(in srgb, var(--poi-accent, #2563eb) 48%, #dbe4ef);
+}
+
+.sheet-title-copy {
+  min-width: 0;
+}
+
+.sheet-title-copy .modal-title {
+  padding: 0;
+  text-align: left;
+  font-size: 16px;
+  font-weight: 900;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sheet-title-copy p {
+  margin: 3px 0 0;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 750;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sheet-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.poi-panel-header + .modal-header,
+.device-panel-header + .modal-header {
+  display: none;
+}
+
 .modal-tabs {
   display: flex;
   border-bottom: 1px solid #e5e7eb;
@@ -2130,6 +2291,12 @@ body {
   display: block;
 }
 
+.poi-hero-image-contained {
+  object-fit: contain;
+  padding: 34px;
+  background: linear-gradient(180deg, #f8fafc, #eef4fb);
+}
+
 .poi-hero-overlay {
   position: absolute;
   inset: auto 10px 10px 10px;
@@ -2203,6 +2370,103 @@ body {
   white-space: nowrap;
 }
 
+.road-guide-arrow-icon,
+.road-guide-name-icon,
+.road-guide-type-icon {
+  background: transparent !important;
+  border: 0 !important;
+  pointer-events: none !important;
+}
+
+.road-guide-arrow {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  display: block;
+  opacity: 0.82;
+  transform: rotate(var(--road-bearing, 0deg));
+}
+
+.road-guide-arrow::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  border-top: 2px solid #94a3b8;
+  border-right: 2px solid #94a3b8;
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.road-guide-major::before {
+  border-color: #8a8f98;
+}
+
+.road-guide-expressway::before {
+  border-color: #b7791f;
+}
+
+.road-guide-avenue::before {
+  border-color: #778391;
+}
+
+.road-guide-foot::before {
+  border-color: #54bba6;
+}
+
+.road-guide-name-icon span {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  padding: 2px 5px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.84);
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.road-guide-type {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, 54%);
+  min-width: 26px;
+  padding: 2px 5px;
+  border: 1px solid rgba(255, 255, 255, 0.92);
+  border-radius: 6px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 8px;
+  font-weight: 900;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.road-type-expressway {
+  background: #f59e0b;
+  color: #fff7ed;
+}
+
+.road-type-avenue {
+  background: #16a34a;
+  color: #f0fdf4;
+}
+
+.road-type-service {
+  background: #94a3b8;
+  color: #ffffff;
+}
+
+.road-type-street {
+  background: #ffffff;
+  color: #475569;
+}
+
 /* ─── POI Markers ───────────────────────────────── */
 .poi-marker-icon {
   background: transparent !important;
@@ -2221,6 +2485,7 @@ body {
 @media (min-width: 721px) {
   #m-device-modal,
   #m-poi-modal {
+    flex-direction: row;
     align-items: stretch;
     justify-content: flex-end;
     pointer-events: none;
@@ -2252,6 +2517,11 @@ body {
   #m-poi-modal.open .m-poi-sheet {
     transform: translateX(0);
   }
+
+  #m-device-modal.closing .m-device-sheet,
+  #m-poi-modal.closing .m-poi-sheet {
+    transform: translateX(100%);
+  }
 }
 
 .poi-marker {
@@ -2268,6 +2538,7 @@ body {
   border: 2px solid color-mix(in srgb, var(--poi-accent, #3b82f6) 76%, white);
   box-shadow: none;
   filter: none;
+  pointer-events: none;
 }
 
 .poi-marker::before {
@@ -2278,6 +2549,28 @@ body {
   border-radius: 999px;
   background: var(--poi-accent, #3b82f6);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--poi-accent, #3b82f6) 18%, transparent);
+}
+
+.poi-marker-custom {
+  padding-left: 3px;
+  gap: 5px;
+}
+
+.poi-marker-custom::before {
+  display: none;
+}
+
+.poi-marker-sprite {
+  width: calc(var(--poi-size, 18px) + 4px);
+  height: calc(var(--poi-size, 18px) + 4px);
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background-color: #ffffff;
+  background-image: var(--poi-sprite);
+  background-repeat: no-repeat;
+  background-size: 500% auto;
+  background-position: var(--poi-sprite-x, 50%) var(--poi-sprite-y, 52%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.8);
 }
 
 .poi-marker-glyph {
@@ -2712,11 +3005,25 @@ body.its-sheet-open #m-bottom-nav {
 }
 
 .m-sheet-handle-bar {
+  position: relative;
+  width: 44px;
+  height: 20px;
+  background: transparent;
+  border-radius: 999px;
+  margin: -2px auto 8px;
+  touch-action: none;
+}
+
+.m-sheet-handle-bar::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 8px;
   width: 36px;
   height: 4px;
-  background: #e2e8f0;
-  border-radius: 2px;
-  margin: 0 auto 16px;
+  border-radius: 999px;
+  background: #cbd5e1;
+  transform: translateX(-50%);
 }
 
 .m-layer-title {
@@ -2852,7 +3159,8 @@ body.its-sheet-open #m-bottom-nav {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
-  padding: 0 0 80px 0;
+  padding: 0 0 max(180px, calc(env(safe-area-inset-bottom) + 140px)) 0;
+  scroll-padding-bottom: max(180px, calc(env(safe-area-inset-bottom) + 140px));
 }
 
 .m-its-section {
