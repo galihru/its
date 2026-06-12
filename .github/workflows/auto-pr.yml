@@ -60,6 +60,71 @@ jobs:
           Auto-merge hanya dijalankan jika repository mengaktifkan variable \`AUTO_PR_ENABLE_AUTOMERGE=true\` dan aturan branch GitHub mengizinkan auto-merge.
           EOF
 
+          open_fallback_pr() {
+            local reason="$1"
+            local fallback_repo="$GITHUB_REPOSITORY"
+            local fallback_head="$HEAD_BRANCH"
+            local fallback_error
+            local fallback_body
+            local fallback_existing
+            local fallback_url
+
+            fallback_error="$(mktemp)"
+            fallback_body="$(mktemp)"
+            cat > "$fallback_body" <<EOF
+          ## Ringkasan
+          - Membuka pull request fallback otomatis dari branch \`${fallback_head}\`.
+          - Target fallback: \`${fallback_repo}:${TARGET_BASE}\`.
+          - Target upstream \`${target_repo}\` belum bisa dibuat otomatis karena: ${reason}.
+
+          ## Validasi
+          - Workflow ini memastikan branch tetap punya PR otomatis walau token upstream dibatasi.
+          - Untuk PR langsung ke upstream, tambahkan \`AUTO_PR_TOKEN\` dengan akses pull request write ke repository target.
+          EOF
+
+            if ! fallback_existing="$(gh pr list \
+              --repo "$fallback_repo" \
+              --head "$fallback_head" \
+              --base "$TARGET_BASE" \
+              --state open \
+              --json number \
+              --jq '.[0].number // empty' 2>"$fallback_error")"; then
+              cat "$fallback_error"
+              echo "::warning::Fallback PR creation also cannot list pull requests for ${fallback_repo}."
+              return 1
+            fi
+
+            if [[ -n "$fallback_existing" ]]; then
+              if ! gh pr edit "$fallback_existing" \
+                --repo "$fallback_repo" \
+                --title "$title" \
+                --body-file "$fallback_body" 2>"$fallback_error"; then
+                cat "$fallback_error"
+                echo "::warning::Fallback PR #${fallback_existing} exists, but this token cannot edit it."
+                return 1
+              fi
+              fallback_url="$(gh pr view "$fallback_existing" --repo "$fallback_repo" --json url --jq '.url')"
+              echo "Updated fallback PR: $fallback_url"
+              pr_url="$fallback_url"
+              return 0
+            fi
+
+            if ! fallback_url="$(gh pr create \
+              --repo "$fallback_repo" \
+              --base "$TARGET_BASE" \
+              --head "$fallback_head" \
+              --title "$title" \
+              --body-file "$fallback_body" 2>"$fallback_error")"; then
+              cat "$fallback_error"
+              echo "::warning::Fallback PR creation is blocked for ${fallback_repo}."
+              return 1
+            fi
+
+            echo "Created fallback PR: $fallback_url"
+            pr_url="$fallback_url"
+            return 0
+          }
+
           pr_error="$(mktemp)"
           if ! existing="$(gh pr list \
             --repo "$target_repo" \
@@ -69,6 +134,9 @@ jobs:
             --json number \
             --jq '.[0].number // empty' 2>"$pr_error")"; then
             cat "$pr_error"
+            if [[ "$target_repo" != "$GITHUB_REPOSITORY" ]] && open_fallback_pr "token cannot list upstream pull requests"; then
+              exit 0
+            fi
             echo "::warning::GitHub token cannot list pull requests for ${target_repo}. Enable 'Allow GitHub Actions to create and approve pull requests' or add AUTO_PR_TOKEN with pull request write access."
             echo "Manual compare URL: https://github.com/${target_repo}/compare/${TARGET_BASE}...${head_ref}?expand=1"
             exit 0
@@ -93,6 +161,9 @@ jobs:
               --title "$title" \
               --body-file "$body_file" 2>"$pr_error")"; then
               cat "$pr_error"
+              if [[ "$target_repo" != "$GITHUB_REPOSITORY" ]] && open_fallback_pr "token cannot create upstream pull requests"; then
+                exit 0
+              fi
               echo "::warning::Automatic PR creation is blocked by repository permissions. Enable 'Allow GitHub Actions to create and approve pull requests' or add AUTO_PR_TOKEN. Compare URL: https://github.com/${target_repo}/compare/${TARGET_BASE}...${head_ref}?expand=1"
               exit 0
             fi
