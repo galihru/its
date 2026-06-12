@@ -3,18 +3,18 @@
   "appName": "ITS Maps",
   "ownerName": "Hanifa Septhi Larasati",
   "institution": "Telkom University",
-  "versionCode": 13,
-  "versionName": "1.0.13",
-  "windowsUrl": "https://itstelkom.web.app/artifacts/apps/ITS-Maps-Windows-Custom-Setup-1.0.13-x64.download",
-  "desktopUrl": "https://itstelkom.web.app/artifacts/apps/ITS-Maps-Windows-Custom-Setup-1.0.13-x64.download",
+  "versionCode": 14,
+  "versionName": "1.0.14",
+  "windowsUrl": "https://itstelkom.web.app/artifacts/apps/ITS-Maps-Windows-Custom-Setup-1.0.14-x64.download",
+  "desktopUrl": "https://itstelkom.web.app/artifacts/apps/ITS-Maps-Windows-Custom-Setup-1.0.14-x64.download",
   "pwaUrl": "https://itstelkom.web.app/",
   "logoUrl": "https://itstelkom.web.app/favicon.svg",
-  "updatedAt": "2026-06-12T14:38:16+07:00",
+  "updatedAt": "2026-06-12T15:58:00+07:00",
   "force": false,
   "autoDownload": true,
   "releaseNotes": [
-    "Menambahkan vision overlay 2D berbasis segmentasi satelit untuk membaca jalan, trotoar, vegetasi, air, dan bangunan sekitar viewport.",
-    "Memperkaya tampilan peta Carto/OSM dengan arah jalan, rel, palang perlintasan, median hijau, bundaran, POI, dan share link internal ITS Maps.",
-    "Menyiapkan installer Windows 1.0.13 dan artifact .download untuk update otomatis tanpa uninstall."
+    "Memperbaiki GPS Windows agar tombol lokasi memakai Windows Location Service dan bergerak berkala di aplikasi .exe.",
+    "Menambahkan cache vision 2D lokal, legend simbol peta, label jalan mengikuti arah, dan label sungai/kanal.",
+    "Menyiapkan installer Windows 1.0.14 dan artifact .download untuk update otomatis tanpa uninstall."
   ]
 }

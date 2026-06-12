@@ -7,7 +7,7 @@ const { pathToFileURL } = require("node:url");
 
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
 const APP_UPDATE_URL = "https://itstelkom.web.app/app-update.json";
-const WINDOWS_EXE_NAME = "ITS-Maps-Windows-Custom-Setup-1.0.13-x64.exe";
+const WINDOWS_EXE_NAME = "ITS-Maps-Windows-Custom-Setup-1.0.14-x64.exe";
 const UPDATE_HISTORY_FILE = "update-history.json";
 let mainWindow = null;
 let splashWindow = null;
@@ -34,10 +34,10 @@ function readWindowsLocation() {
   const script = `
 Add-Type -AssemblyName System.Device
 $watcher = New-Object System.Device.Location.GeoCoordinateWatcher ([System.Device.Location.GeoPositionAccuracy]::High)
-$started = $watcher.TryStart($false, [TimeSpan]::FromSeconds(10))
+$started = $watcher.TryStart($true, [TimeSpan]::FromSeconds(15))
 $loc = $watcher.Position.Location
 if ($loc.IsUnknown) {
-  [pscustomobject]@{ ok=$false; error="windows-location-unknown"; started=$started } | ConvertTo-Json -Compress
+  [pscustomobject]@{ ok=$false; error="windows-location-unknown"; started=$started; status=[string]$watcher.Status } | ConvertTo-Json -Compress
 } else {
   [pscustomobject]@{
     ok=$true
@@ -47,10 +47,11 @@ if ($loc.IsUnknown) {
     source="windows-location"
   } | ConvertTo-Json -Compress
 }
+$watcher.Stop()
 `;
   return new Promise((resolve) => {
     execFile("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script], {
-      timeout: 14_000,
+      timeout: 22_000,
       windowsHide: true,
       maxBuffer: 64 * 1024,
     }, (error, stdout) => {

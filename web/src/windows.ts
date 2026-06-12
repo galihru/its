@@ -664,7 +664,7 @@ function settingsPanelHtml(): string {
       <h3>Pembaruan aplikasi</h3>
       <div class="win-info-table">
         ${infoRow("Status", updateStatusLine())}
-        ${infoRow("Versi saat ini", state.updateStatus.current || "1.0.13")}
+        ${infoRow("Versi saat ini", state.updateStatus.current || "1.0.14")}
         ${infoRow("Versi terbaru", state.updateStatus.latest || "-")}
         ${infoRow("Progress", typeof state.updateStatus.progress === "number" ? `${state.updateStatus.progress}%` : "-")}
         ${infoRow("Histori terakhir", updateHistoryLine())}

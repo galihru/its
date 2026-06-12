@@ -1377,6 +1377,7 @@ body {
 }
 
 .mode-control {
+  position: relative;
   display: flex;
   gap: 4px;
   padding: 4px;
@@ -1397,12 +1398,96 @@ body {
   cursor: pointer;
 }
 
+.mode-control .mode-btn.active {
+  background: #2563eb;
+  color: #ffffff;
+}
+
 .mode-control .mode-btn:hover {
   background: #f1f5f9;
 }
 
+.mode-control .mode-btn.active:hover {
+  background: #1d4ed8;
+}
+
 .mode-control .mode-btn:active {
   transform: translateY(1px);
+}
+
+.mode-legend-btn {
+  width: 30px;
+  padding-inline: 0 !important;
+  border-left: 1px solid #e2e8f0 !important;
+  border-radius: 9px !important;
+}
+
+.map-symbol-legend {
+  position: absolute;
+  top: 46px;
+  right: 0;
+  display: grid;
+  gap: 7px;
+  min-width: 244px;
+  padding: 12px;
+  border: 1px solid rgba(203, 213, 225, 0.92);
+  border-radius: 10px;
+  background: #ffffff;
+  color: #334155;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.16);
+}
+
+.map-symbol-legend[hidden] {
+  display: none;
+}
+
+.map-symbol-legend strong {
+  color: #0f172a;
+  font-size: 12px;
+}
+
+.map-symbol-legend span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.map-symbol-legend i {
+  width: 24px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #cbd5e1;
+}
+
+.map-symbol-legend .legend-road {
+  background: #ffd878;
+  box-shadow: inset 0 0 0 1px #fff7d6;
+}
+
+.map-symbol-legend .legend-tree {
+  background: repeating-linear-gradient(90deg, #20b36b 0 3px, transparent 3px 9px);
+}
+
+.map-symbol-legend .legend-water {
+  background: #77cbe8;
+}
+
+.map-symbol-legend .legend-sidewalk {
+  background: repeating-linear-gradient(90deg, #c7d6e6 0 7px, #ffffff 7px 11px);
+}
+
+.map-symbol-legend .legend-rail {
+  background: repeating-linear-gradient(90deg, #596273 0 6px, #ffffff 6px 10px);
+}
+
+.map-symbol-legend .legend-ai {
+  width: 12px;
+  height: 12px;
+  background: #4ade80;
+  box-shadow: 14px 0 0 #7dd3fc, 28px 0 0 #f1d6bb;
 }
 
 .maplibre-overlay .maplibregl-canvas-container,
@@ -2429,7 +2514,8 @@ body {
 
 .road-guide-arrow-icon,
 .road-guide-name-icon,
-.road-guide-type-icon {
+.road-guide-type-icon,
+.water-guide-name-icon {
   background: transparent !important;
   border: 0 !important;
   pointer-events: none !important;
@@ -2476,14 +2562,40 @@ body {
   position: absolute;
   left: 50%;
   top: 50%;
-  transform: translate(-50%, -50%);
-  padding: 2px 5px;
-  border-radius: 5px;
-  background: rgba(255, 255, 255, 0.84);
+  transform: translate(-50%, -50%) rotate(var(--road-label-bearing, 0deg));
+  transform-origin: 50% 50%;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.58);
   color: #64748b;
   font-size: 10px;
   font-weight: 800;
   white-space: nowrap;
+  text-shadow:
+    -1px -1px 0 #ffffff,
+    1px -1px 0 #ffffff,
+    -1px 1px 0 #ffffff,
+    1px 1px 0 #ffffff;
+}
+
+.water-guide-name-icon span {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%) rotate(var(--water-label-bearing, 0deg));
+  transform-origin: 50% 50%;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.62);
+  color: #0284c7;
+  font-size: 10px;
+  font-weight: 900;
+  white-space: nowrap;
+  text-shadow:
+    -1px -1px 0 #ffffff,
+    1px -1px 0 #ffffff,
+    -1px 1px 0 #ffffff,
+    1px 1px 0 #ffffff;
 }
 
 .road-guide-type {

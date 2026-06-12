@@ -562,7 +562,7 @@
         </Grid>
       </Grid>
 
-      <TextBlock Text="ITS Maps Windows 1.0.13"
+      <TextBlock Text="ITS Maps Windows 1.0.14"
                  HorizontalAlignment="Left"
                  VerticalAlignment="Bottom"
                  Margin="70,0,0,44"

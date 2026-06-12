@@ -10,13 +10,18 @@ $appZip = Join-Path $payloadDir "app.zip"
 $uninstallerPayload = Join-Path $payloadDir "ITS Maps Uninstall.exe"
 $uninstallerPublish = Join-Path $webRoot "windows-native\ItsMapsUninstaller\bin\Release\net9.0-windows\win-x64\publish\ITS Maps Uninstall.exe"
 $installerPublish = Join-Path $webRoot "windows-native\ItsMapsInstaller\bin\Release\net9.0-windows\win-x64\publish\ITS Maps Windows Setup.exe"
-$customSetup = Join-Path $webRoot "release\ITS-Maps-Windows-Custom-Setup-1.0.13-x64.exe"
-$electronOutputRoot = Join-Path $webRoot ("release\electron-builder-work-" + [System.DateTime]::UtcNow.ToString("yyyyMMddHHmmssfff"))
-$electronAppDir = Join-Path $electronOutputRoot "win-unpacked"
-$publicUpdateArtifact = Join-Path $webRoot "public\artifacts\apps\ITS-Maps-Windows-Custom-Setup-1.0.13-x64.download"
-$distUpdateArtifact = Join-Path $webRoot "dist\artifacts\apps\ITS-Maps-Windows-Custom-Setup-1.0.13-x64.download"
 $packageJson = Join-Path $webRoot "package.json"
 $packageJsonOriginal = Get-Content -LiteralPath $packageJson -Raw
+$packageMeta = $packageJsonOriginal | ConvertFrom-Json
+$appVersion = [string] $packageMeta.version
+if (-not $appVersion) {
+  throw "package.json version is required"
+}
+$customSetup = Join-Path $webRoot "release\ITS-Maps-Windows-Custom-Setup-$appVersion-x64.exe"
+$electronOutputRoot = Join-Path $webRoot ("release\electron-builder-work-" + [System.DateTime]::UtcNow.ToString("yyyyMMddHHmmssfff"))
+$electronAppDir = Join-Path $electronOutputRoot "win-unpacked"
+$publicUpdateArtifact = Join-Path $webRoot "public\artifacts\apps\ITS-Maps-Windows-Custom-Setup-$appVersion-x64.download"
+$distUpdateArtifact = Join-Path $webRoot "dist\artifacts\apps\ITS-Maps-Windows-Custom-Setup-$appVersion-x64.download"
 $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
 Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem

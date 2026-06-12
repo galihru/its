@@ -266,6 +266,20 @@ type VisionFeatureRecord = {
   radius: number;
 };
 
+type CachedVisionFeature = {
+  kind: VisionFeatureKind;
+  lat: number;
+  lng: number;
+  score: number;
+  radius: number;
+};
+
+type VisionFeatureCacheEntry = {
+  key: string;
+  createdAt: number;
+  features: CachedVisionFeature[];
+};
+
 type SatelliteVisionCapture = {
   canvas: HTMLCanvasElement;
   width: number;
@@ -279,6 +293,22 @@ type VisionMaskData = {
   height: number;
   data: Uint8ClampedArray | Uint8Array;
   channels: number;
+};
+
+type NativeLocationResult = {
+  ok?: boolean;
+  lat?: number;
+  lng?: number;
+  accuracy?: number;
+  source?: string;
+  error?: string;
+};
+
+type ItsDesktopBridge = {
+  isElectron?: boolean;
+  platform?: string;
+  requestWindowsLocation?: () => Promise<NativeLocationResult>;
+  openLocationSettings?: () => Promise<boolean>;
 };
 
 // ─── Constants ──────────────────────────────────────────────────
@@ -311,6 +341,9 @@ const MAPLIBRE_3D_PITCH = 66;
 const VISION_SEGMENTATION_MODEL = "Xenova/segformer-b0-finetuned-ade-512-512";
 const VISION_MIN_ZOOM = 16;
 const VISION_CANVAS_SIZE = 512;
+const VISION_FEATURE_CACHE_STORAGE_KEY = "its-map-vision-features:v2";
+const VISION_FEATURE_CACHE_LIMIT = 54;
+const VISION_FEATURE_CACHE_MAX_AGE = 1000 * 60 * 60 * 24 * 45;
 const LAST_DEVICE_POSITIONS_STORAGE_KEY = "its-web-device-positions:v1";
 
 // ─── DOM bootstrap ──────────────────────────────────────────────
@@ -393,8 +426,8 @@ function staticTerminalResponse(command: string): string[] {
   }
   if (normalized === "installer") {
     return [
-      "Installer lokal: web/release/ITS-Maps-Windows-Custom-Setup-1.0.13-x64.exe.",
-      "Update artifact: web/dist/artifacts/apps/ITS-Maps-Windows-Custom-Setup-1.0.13-x64.download.",
+      "Installer lokal: web/release/ITS-Maps-Windows-Custom-Setup-1.0.14-x64.exe.",
+      "Update artifact: web/dist/artifacts/apps/ITS-Maps-Windows-Custom-Setup-1.0.14-x64.download.",
       "GitHub Actions workflow: Build Windows EXE.",
     ];
   }
@@ -407,7 +440,7 @@ function staticTerminalResponse(command: string): string[] {
       "Build web assets...",
       "Package Electron app directory...",
       "Publish native custom setup...",
-      "Custom setup ready: web/release/ITS-Maps-Windows-Custom-Setup-1.0.13-x64.exe",
+      "Custom setup ready: web/release/ITS-Maps-Windows-Custom-Setup-1.0.14-x64.exe",
     ];
   }
   if (normalized === "firebase deploy") return ["Deploy target: hosting:itstelkom", "Hosting URL: https://itstelkom.web.app"];
@@ -536,7 +569,7 @@ function docsPageHtml(): string {
       <p>Build web memakai TypeScript dan Vite. Build Windows custom menjalankan build web, packaging Electron, publish .NET installer/uninstaller, lalu menyiapkan artifact update. Firebase deploy memakai folder web/dist sebagai hosting live.</p>
       <div class="static-doc-list">
         <article><strong>Local web</strong><span>npm run build menghasilkan web/dist dan bisa dicek dengan npm run preview.</span></article>
-        <article><strong>Local Windows</strong><span>npm run desktop:custom-installer menghasilkan web/release/ITS-Maps-Windows-Custom-Setup-1.0.13-x64.exe.</span></article>
+        <article><strong>Local Windows</strong><span>npm run desktop:custom-installer menghasilkan web/release/ITS-Maps-Windows-Custom-Setup-1.0.14-x64.exe.</span></article>
         <article><strong>GitHub</strong><span>Workflow Build Windows EXE berjalan otomatis setelah branch dipush dan mengupload artifact installer.</span></article>
       </div>
     </section>
@@ -551,7 +584,7 @@ function newsPageHtml(): string {
   return `
     <header class="static-hero" id="highlights">
       <span>What's New</span>
-      <h1>ITS Maps 1.0.13</h1>
+      <h1>ITS Maps 1.0.14</h1>
       <p>Catatan pembaruan untuk UI Windows, website, notifikasi, dokumentasi, dan workflow build.</p>
     </header>
     <section class="static-release" id="windows">
@@ -661,6 +694,7 @@ function bindStaticTerminals(): void {
 const app = document.querySelector<HTMLDivElement>("#app");
 if (!app) throw new Error("Missing #app element.");
 const staticRoute = staticRouteName(window.location.pathname);
+const desktopBridge = (window as Window & { itsDesktop?: ItsDesktopBridge }).itsDesktop;
 let itsInitialDataReady = false;
 let itsMapReady = false;
 if (staticRoute) {
@@ -718,6 +752,8 @@ const state = {
   tabletSearchQuery: "",
   routeLayer: null as L.LayerGroup | null,
   destinationMarker: null as L.Marker | null,
+  userLocationWatchId: null as number | null,
+  nativeLocationPollTimer: 0,
   activeModalDeviceId: null as string | null,
   activeModalPoiId: null as string | null,
   trafficRefreshTimer: 0,
@@ -1962,12 +1998,17 @@ function roadRenderClass(road: RoadGuideRecord): "major" | "street" | "foot" | "
   return "street";
 }
 
+function roadZoomScale(min = 0.78, max = 1.24): number {
+  return clamp(0.84 + (map.getZoom() - 15) * 0.12, min, max);
+}
+
 function roadGuideStyle(road: RoadGuideRecord, casing = false): L.PolylineOptions {
   const cls = roadRenderClass(road);
+  const scale = roadZoomScale();
   if (casing) {
     return {
       color: road.roadType === "expressway" ? "#fff7d6" : cls === "major" ? "#ffffff" : "#f8fafc",
-      weight: road.roadType === "expressway" ? 13 : cls === "major" ? 11 : cls === "foot" ? 4 : 7,
+      weight: (road.roadType === "expressway" ? 13 : cls === "major" ? 11 : cls === "foot" ? 4 : 7) * scale,
       opacity: cls === "foot" ? 0.75 : 0.88,
       interactive: false,
     };
@@ -1975,7 +2016,7 @@ function roadGuideStyle(road: RoadGuideRecord, casing = false): L.PolylineOption
   if (cls === "foot") {
     return {
       color: road.hasSidewalk ? "#77d5c6" : "#b7c6d8",
-      weight: 2.2,
+      weight: 2.2 * scale,
       opacity: 0.84,
       dashArray: "7 7",
       interactive: false,
@@ -1984,15 +2025,15 @@ function roadGuideStyle(road: RoadGuideRecord, casing = false): L.PolylineOption
   if (cls === "major") {
     return {
       color: road.roadType === "expressway" ? "#ffb36c" : road.roadType === "avenue" ? "#ffd878" : "#ffe08a",
-      weight: road.roadType === "expressway" ? 8.4 : road.roadType === "avenue" ? 7.4 : 6.6,
+      weight: (road.roadType === "expressway" ? 8.4 : road.roadType === "avenue" ? 7.4 : 6.6) * scale,
       opacity: 0.9,
       interactive: false,
     };
   }
   if (cls === "service") {
-    return { color: "#d8e1ea", weight: 3.4, opacity: 0.82, interactive: false };
+    return { color: "#d8e1ea", weight: 3.4 * scale, opacity: 0.82, interactive: false };
   }
-  return { color: "#ffffff", weight: 4.2, opacity: 0.92, interactive: false };
+  return { color: "#ffffff", weight: 4.2 * scale, opacity: 0.92, interactive: false };
 }
 
 function mapLibrePitchByZoom(zoom: number): number {
@@ -2001,9 +2042,10 @@ function mapLibrePitchByZoom(zoom: number): number {
 }
 
 function roadMedianStyle(road: RoadGuideRecord): L.PolylineOptions {
+  const scale = roadZoomScale(0.76, 1.18);
   return {
     color: road.treeLined ? "#56c786" : "#82d6bb",
-    weight: road.treeLined ? 3 : 2,
+    weight: (road.treeLined ? 3 : 2) * scale,
     opacity: 0.84,
     dashArray: road.treeLined ? "1 9" : "10 12",
     lineCap: "round",
@@ -2012,9 +2054,10 @@ function roadMedianStyle(road: RoadGuideRecord): L.PolylineOptions {
 }
 
 function roadLaneDividerStyle(road: RoadGuideRecord): L.PolylineOptions {
+  const scale = roadZoomScale(0.72, 1.12);
   return {
     color: road.roadType === "expressway" ? "#fff3b0" : "#ffffff",
-    weight: 1.2,
+    weight: 1.2 * scale,
     opacity: 0.8,
     dashArray: road.oneway ? "8 12" : "14 14",
     interactive: false,
@@ -2023,9 +2066,10 @@ function roadLaneDividerStyle(road: RoadGuideRecord): L.PolylineOptions {
 
 function roadSidewalkStyle(road: RoadGuideRecord): L.PolylineOptions {
   const cls = roadRenderClass(road);
+  const scale = roadZoomScale(0.76, 1.18);
   return {
     color: cls === "major" ? "rgb(215, 230, 247)" : "#c7d6e6",
-    weight: cls === "major" ? 14.5 : cls === "service" ? 6.5 : 9,
+    weight: (cls === "major" ? 14.5 : cls === "service" ? 6.5 : 9) * scale,
     opacity: cls === "foot" ? 0 : 0.62,
     dashArray: road.hasSidewalk ? "10 9" : "2 14",
     lineCap: "round",
@@ -2034,9 +2078,10 @@ function roadSidewalkStyle(road: RoadGuideRecord): L.PolylineOptions {
 }
 
 function roadAvenueTreeStyle(road: RoadGuideRecord): L.PolylineOptions {
+  const scale = roadZoomScale(0.72, 1.16);
   return {
     color: road.treeLined ? "#20b36b" : "#7bd389",
-    weight: road.treeLined ? 5 : 3.2,
+    weight: (road.treeLined ? 5 : 3.2) * scale,
     opacity: road.treeLined ? 0.9 : 0.55,
     dashArray: road.treeLined ? "1 13" : "2 18",
     lineCap: "round",
@@ -2045,9 +2090,10 @@ function roadAvenueTreeStyle(road: RoadGuideRecord): L.PolylineOptions {
 }
 
 function roadWaterMedianStyle(): L.PolylineOptions {
+  const scale = roadZoomScale(0.74, 1.18);
   return {
     color: "#77cbe8",
-    weight: 3.2,
+    weight: 3.2 * scale,
     opacity: 0.72,
     dashArray: "18 14",
     lineCap: "round",
@@ -2090,9 +2136,10 @@ function railSleeperStyle(): L.PolylineOptions {
 
 function waterGuideStyle(water: WaterGuideRecord): L.PolylineOptions {
   const isRiver = /river|canal/.test(water.waterway);
+  const scale = roadZoomScale(0.8, 1.2);
   return {
     color: isRiver ? "#77cbe8" : "#8bd8ef",
-    weight: isRiver ? 5.5 : 3.4,
+    weight: (isRiver ? 5.5 : 3.4) * scale,
     opacity: 0.82,
     lineCap: "round",
     interactive: false,
@@ -2170,10 +2217,21 @@ function makeRailCrossingIcon(crossing: CrossingGuideRecord): L.DivIcon {
   });
 }
 
-function makeRoadNameIcon(name: string): L.DivIcon {
+function makeRoadNameIcon(name: string, bearing: number): L.DivIcon {
+  const readableBearing = bearing > 90 && bearing < 270 ? bearing + 180 : bearing;
   return L.divIcon({
     className: "road-guide-name-icon",
-    html: `<span>${escapeHtml(name)}</span>`,
+    html: `<span style="--road-label-bearing:${readableBearing}deg">${escapeHtml(name)}</span>`,
+    iconSize: [1, 1],
+    iconAnchor: [0, 0],
+  });
+}
+
+function makeWaterNameIcon(name: string, bearing: number): L.DivIcon {
+  const readableBearing = bearing > 90 && bearing < 270 ? bearing + 180 : bearing;
+  return L.divIcon({
+    className: "water-guide-name-icon",
+    html: `<span style="--water-label-bearing:${readableBearing}deg">${escapeHtml(name)}</span>`,
     iconSize: [1, 1],
     iconAnchor: [0, 0],
   });
@@ -2203,13 +2261,14 @@ async function fetchRoadGuidesForBounds(bounds: L.LatLngBounds): Promise<RoadGui
     way["railway"~"rail|light_rail|tram|subway|narrow_gauge"](${bbox});
     node["railway"~"level_crossing|crossing|tram_crossing"](${bbox});
     way["waterway"~"river|stream|canal|drain|ditch"](${bbox});
+    way["man_made"~"canal|drain|ditch"](${bbox});
     way["natural"="water"](${bbox});
-    way["water"~"river|stream|canal|drain|ditch|pond|lake"](${bbox});
+    way["water"~"river|stream|canal|drain|ditch|pond|lake|reservoir"](${bbox});
     way["leisure"~"park|garden|recreation_ground"](${bbox});
     way["landuse"~"grass|forest|meadow|village_green|recreation_ground"](${bbox});
     way["natural"~"wood|grassland|scrub|tree_row"](${bbox});
   );
-  out tags geom 150;
+  out tags geom 650;
 `;
 
   try {
@@ -2288,11 +2347,11 @@ async function fetchRoadGuidesForBounds(bounds: L.LatLngBounds): Promise<RoadGui
         return;
       }
 
-      if (tags.waterway || tags.natural === "water" || tags.water) {
+      if (tags.waterway || tags.natural === "water" || tags.water || /canal|drain|ditch/.test(tags.man_made || "")) {
         bundle.waterways.push({
           id: `water-${el.id}`,
           name: tags.name || "",
-          waterway: tags.waterway || tags.water || tags.natural || "water",
+          waterway: tags.waterway || tags.water || tags.natural || tags.man_made || "water",
           points,
         });
         return;
@@ -2357,6 +2416,14 @@ async function refreshRoadGuideLayer(force = false): Promise<void> {
     } else {
       L.polyline(water.points, waterGuideStyle(water)).addTo(state.roadGuideLayer as L.LayerGroup);
     }
+    const mid = roadGuideMidpoint(water.points);
+    if (mid && water.name && zoom >= 16) {
+      L.marker(mid.latlng, {
+        icon: makeWaterNameIcon(water.name, mid.bearing),
+        interactive: false,
+        zIndexOffset: 110,
+      }).addTo(state.roadGuideLayer as L.LayerGroup);
+    }
   });
 
   guide.rails.slice(0, zoom >= 17 ? 55 : 30).forEach((rail) => {
@@ -2420,7 +2487,7 @@ async function refreshRoadGuideLayer(force = false): Promise<void> {
       }
       if (road.name && zoom >= 16 && index % (zoom >= 18 ? 2 : 4) === 0) {
         L.marker(mid.latlng, {
-          icon: makeRoadNameIcon(road.name),
+          icon: makeRoadNameIcon(road.name, mid.bearing),
           interactive: false,
           zIndexOffset: 109,
         }).addTo(state.roadGuideLayer as L.LayerGroup);
@@ -2447,6 +2514,7 @@ let visionSegmenterPromise: Promise<any> | null = null;
 let visionBusy = false;
 let lastVisionKey = "";
 let visionStatusHideTimer = 0;
+let visionFeatureCache: VisionFeatureCacheEntry[] = loadVisionFeatureCache();
 
 function showVisionStatus(message: string, progress?: number, done = false): void {
   let el = document.getElementById("vision-status") as HTMLDivElement | null;
@@ -2475,6 +2543,58 @@ function hideVisionStatusSoon(): void {
   visionStatusHideTimer = window.setTimeout(() => el?.remove(), 1200);
 }
 
+function loadVisionFeatureCache(): VisionFeatureCacheEntry[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(VISION_FEATURE_CACHE_STORAGE_KEY) || "[]") as VisionFeatureCacheEntry[];
+    if (!Array.isArray(parsed)) return [];
+    const now = Date.now();
+    return parsed
+      .filter((entry) => entry && typeof entry.key === "string" && Array.isArray(entry.features))
+      .filter((entry) => now - Number(entry.createdAt || 0) < VISION_FEATURE_CACHE_MAX_AGE)
+      .slice(0, VISION_FEATURE_CACHE_LIMIT);
+  } catch {
+    return [];
+  }
+}
+
+function saveVisionFeatureCache(): void {
+  try {
+    localStorage.setItem(VISION_FEATURE_CACHE_STORAGE_KEY, JSON.stringify(visionFeatureCache.slice(0, VISION_FEATURE_CACHE_LIMIT)));
+  } catch {
+    visionFeatureCache = visionFeatureCache.slice(0, Math.max(12, Math.floor(VISION_FEATURE_CACHE_LIMIT / 2)));
+  }
+}
+
+function cachedVisionFeatures(key: string): VisionFeatureRecord[] | null {
+  const hitIndex = visionFeatureCache.findIndex((entry) => entry.key === key);
+  if (hitIndex < 0) return null;
+  const [entry] = visionFeatureCache.splice(hitIndex, 1);
+  visionFeatureCache.unshift(entry);
+  return entry.features
+    .filter((feature) => isValidCoordinate(feature.lat, feature.lng))
+    .map((feature, index) => ({
+      id: `vision-cache-${key}-${index}`,
+      kind: feature.kind,
+      latlng: L.latLng(feature.lat, feature.lng),
+      score: feature.score,
+      radius: feature.radius,
+    }));
+}
+
+function rememberVisionFeatures(key: string, features: VisionFeatureRecord[]): void {
+  const compact = features.slice(0, 360).map((feature) => ({
+    kind: feature.kind,
+    lat: Number(feature.latlng.lat.toFixed(7)),
+    lng: Number(feature.latlng.lng.toFixed(7)),
+    score: Number(feature.score.toFixed(3)),
+    radius: Number(feature.radius.toFixed(2)),
+  }));
+  visionFeatureCache = visionFeatureCache.filter((entry) => entry.key !== key);
+  visionFeatureCache.unshift({ key, createdAt: Date.now(), features: compact });
+  visionFeatureCache = visionFeatureCache.slice(0, VISION_FEATURE_CACHE_LIMIT);
+  saveVisionFeatureCache();
+}
+
 async function loadVisionSegmenter(progress?: (value: number) => void): Promise<any> {
   if (visionSegmenterPromise) return visionSegmenterPromise;
   visionSegmenterPromise = (async () => {
@@ -2484,6 +2604,7 @@ async function loadVisionSegmenter(progress?: (value: number) => void): Promise<
     if (env) {
       env.allowRemoteModels = true;
       env.useBrowserCache = true;
+      env.allowLocalModels = false;
     }
 
     const progressByFile: Record<string, number> = {};
@@ -2648,24 +2769,23 @@ function visionMaskValue(mask: VisionMaskData, x: number, y: number, capture: Sa
 }
 
 function visionSampleStep(kind: VisionFeatureKind): number {
-  if (kind === "vegetation") return 26;
-  if (kind === "water") return 24;
-  if (kind === "sidewalk") return 28;
-  if (kind === "road") return 34;
-  return 42;
+  const zoom = map.getZoom();
+  const zoomFactor = zoom >= 18 ? 0.78 : zoom >= 17 ? 0.9 : 1.18;
+  const base = kind === "vegetation" ? 26 : kind === "water" ? 22 : kind === "sidewalk" ? 28 : kind === "road" ? 34 : 42;
+  return Math.round(base * zoomFactor);
 }
 
 function visionFeatureLimit(kind: VisionFeatureKind): number {
-  if (kind === "vegetation") return 120;
-  if (kind === "water") return 80;
-  if (kind === "sidewalk") return 86;
-  if (kind === "road") return 64;
-  return 44;
+  const zoom = map.getZoom();
+  const zoomFactor = zoom >= 18 ? 1.2 : zoom >= 17 ? 1 : 0.62;
+  const base = kind === "vegetation" ? 120 : kind === "water" ? 96 : kind === "sidewalk" ? 86 : kind === "road" ? 64 : 44;
+  return Math.round(base * zoomFactor);
 }
 
 function visionRadius(kind: VisionFeatureKind, score: number): number {
-  const base = kind === "vegetation" ? 2.8 : kind === "water" ? 3.4 : kind === "sidewalk" ? 2.2 : kind === "road" ? 2.6 : 2.4;
-  return clamp(base + score * 2, 2, 6);
+  const zoomScale = map.getZoom() >= 18 ? 1.08 : map.getZoom() >= 17 ? 0.96 : 0.76;
+  const base = kind === "vegetation" ? 2.8 : kind === "water" ? 3.2 : kind === "sidewalk" ? 2.2 : kind === "road" ? 2.5 : 2.4;
+  return clamp((base + score * 2) * zoomScale, 1.8, 6.2);
 }
 
 function extractVisionFeatures(result: any, capture: SatelliteVisionCapture): VisionFeatureRecord[] {
@@ -2785,6 +2905,14 @@ async function refreshVisionLayer(force = false): Promise<void> {
   if (visionBusy) return;
   const key = visionRefreshKey();
   if (!force && key === lastVisionKey) return;
+  const cached = cachedVisionFeatures(key);
+  if (cached && cached.length) {
+    lastVisionKey = key;
+    renderVisionFeatures(cached);
+    showVisionStatus(`Vision 2D dari cache lokal - ${cached.length} petunjuk`, 100, true);
+    hideVisionStatusSoon();
+    return;
+  }
   visionBusy = true;
   lastVisionKey = key;
   showVisionStatus("Memuat AI vision peta 2D...");
@@ -2798,6 +2926,7 @@ async function refreshVisionLayer(force = false): Promise<void> {
     const result = await segmenter(capture.canvas);
     const features = extractVisionFeatures(result, capture);
     renderVisionFeatures(features);
+    rememberVisionFeatures(key, features);
     showVisionStatus(`Vision 2D selesai - ${features.length} petunjuk real`, 100, true);
   } catch (err) {
     console.warn("Vision enhancement failed:", err);
@@ -4149,6 +4278,7 @@ async function setBaseMap(mode: BaseMapMode): Promise<void> {
   }
 
   state.baseMode = mode;
+  updateModeControlButtons();
   void refreshRoadGuideLayer(true);
   if (mode === "street") void refreshVisionLayer(true);
   else state.visionLayer?.clearLayers();
@@ -4545,23 +4675,103 @@ function goHome(): void {
   map.setBearing(0);
 }
 
-function locateUser(): void {
-  if (!navigator.geolocation) return;
-  navigator.geolocation.getCurrentPosition(
+function applyLocatedUser(lat: number, lng: number, accuracy?: number, center = true, source = "gps"): void {
+  const latlng: [number, number] = [lat, lng];
+  if (center) map.setView(latlng, Math.max(map.getZoom(), 16), { animate: true });
+  showVehicleMarker(latlng);
+  state.vehicleMarker?.bindPopup(`Lokasi Anda${accuracy ? ` ±${Math.round(accuracy)}m` : ""}`);
+  if (center) state.vehicleMarker?.openPopup();
+  state.vehicleMarker?.getElement()?.setAttribute("title", `Lokasi Anda (${source})`);
+  if (isTablet()) createTabletCategoryPanel();
+}
+
+function requestBrowserPosition(): Promise<GeolocationPosition> {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error("browser-geolocation-unavailable"));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(resolve, reject, {
+      enableHighAccuracy: true,
+      timeout: 9000,
+      maximumAge: 12_000,
+    });
+  });
+}
+
+async function requestNativeDesktopPosition(): Promise<NativeLocationResult | null> {
+  if (!desktopBridge?.requestWindowsLocation) return null;
+  try {
+    const result = await desktopBridge.requestWindowsLocation();
+    const lat = Number(result?.lat);
+    const lng = Number(result?.lng);
+    if (result?.ok && Number.isFinite(lat) && Number.isFinite(lng)) return { ...result, lat, lng };
+  } catch (err) {
+    console.warn("Native Windows location failed:", err);
+  }
+  return null;
+}
+
+function startDesktopLocationPolling(): void {
+  if (!desktopBridge?.requestWindowsLocation) return;
+  window.clearInterval(state.nativeLocationPollTimer);
+  state.nativeLocationPollTimer = window.setInterval(() => {
+    void requestNativeDesktopPosition().then((result) => {
+      if (!result?.ok || typeof result.lat !== "number" || typeof result.lng !== "number") return;
+      applyLocatedUser(result.lat, result.lng, result.accuracy, false, result.source || "windows-location");
+    });
+  }, 5000);
+}
+
+function startBrowserLocationWatch(): void {
+  if (!navigator.geolocation || state.userLocationWatchId !== null) return;
+  state.userLocationWatchId = navigator.geolocation.watchPosition(
     (pos) => {
-      const latlng: L.LatLngExpression = [pos.coords.latitude, pos.coords.longitude];
-      map.setView(latlng, Math.max(map.getZoom(), 16), { animate: true });
-      if (isTablet()) {
-        // tablet behaviour: show vehicle marker and open category panel
-        showVehicleMarker(latlng as [number, number]);
-        createTabletCategoryPanel();
-      } else {
-        // preserve original behaviour for non-tablet: show simple popup marker
-        L.circleMarker(latlng, { radius: 8 }).addTo(map).bindPopup("Lokasi Anda").openPopup();
+      applyLocatedUser(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy, false, "browser-gps");
+    },
+    () => {
+      if (state.userLocationWatchId !== null) {
+        navigator.geolocation.clearWatch(state.userLocationWatchId);
+        state.userLocationWatchId = null;
       }
     },
-    () => { /* silent */ },
-    { enableHighAccuracy: true, timeout: 8000, maximumAge: 30_000 },
+    { enableHighAccuracy: true, maximumAge: 2000, timeout: 12000 },
+  );
+}
+
+async function locateUser(): Promise<void> {
+  showGlobalNotice("warning", "Mencari lokasi", "Mengambil lokasi terkini dari Windows atau browser...");
+  const preferNative = Boolean(desktopBridge?.isElectron && desktopBridge.platform === "win32");
+  const native = preferNative ? await requestNativeDesktopPosition() : null;
+  if (native?.ok && typeof native.lat === "number" && typeof native.lng === "number") {
+    applyLocatedUser(native.lat, native.lng, native.accuracy, true, native.source || "windows-location");
+    startDesktopLocationPolling();
+    showGlobalNotice("success", "Lokasi aktif", "GPS Windows tersambung dan akan diperbarui berkala.");
+    return;
+  }
+
+  try {
+    const pos = await requestBrowserPosition();
+    applyLocatedUser(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy, true, "browser-gps");
+    startBrowserLocationWatch();
+    showGlobalNotice("success", "Lokasi aktif", "Lokasi browser tersambung dan bergerak realtime.");
+    return;
+  } catch {
+    const fallbackNative = preferNative ? null : await requestNativeDesktopPosition();
+    if (fallbackNative?.ok && typeof fallbackNative.lat === "number" && typeof fallbackNative.lng === "number") {
+      applyLocatedUser(fallbackNative.lat, fallbackNative.lng, fallbackNative.accuracy, true, fallbackNative.source || "windows-location");
+      startDesktopLocationPolling();
+      return;
+    }
+  }
+
+  showGlobalNotice(
+    "error",
+    "Lokasi belum tersedia",
+    "Aktifkan Location Services Windows lalu izinkan ITS Maps memakai lokasi.",
+    desktopBridge?.openLocationSettings
+      ? { actionLabel: "Settings lokasi", onAction: () => { void desktopBridge.openLocationSettings?.(); } }
+      : undefined,
   );
 }
 
@@ -4769,10 +4979,9 @@ const TABLET_CATEGORY_LABELS: Record<(typeof TABLET_CATEGORIES)[number], string>
 };
 
 function showVehicleMarker(latlng: [number, number]): void {
-  // remove existing
   if (state.vehicleMarker) {
-    try { map.removeLayer(state.vehicleMarker); } catch { }
-    state.vehicleMarker = null;
+    state.vehicleMarker.setLatLng(latlng);
+    return;
   }
   const icon = L.divIcon({
     className: "vehicle-marker-icon",
@@ -5099,6 +5308,16 @@ const ModeControl = L.Control.extend({
     const container = L.DomUtil.create('div', 'mode-control');
     container.innerHTML = `
     <button class="mode-btn" data-mode="street" title="Street">2D</button>
+    <button class="mode-btn mode-legend-btn" data-map-symbol-legend type="button" title="Legenda simbol peta" aria-label="Legenda simbol peta" aria-expanded="false">?</button>
+    <div class="map-symbol-legend" data-map-symbol-panel hidden>
+      <strong>Legenda 2D</strong>
+      <span><i class="legend-road"></i> Jalan utama / avenue</span>
+      <span><i class="legend-tree"></i> Median atau tepi berpohon</span>
+      <span><i class="legend-water"></i> Sungai, kanal, drainase</span>
+      <span><i class="legend-sidewalk"></i> Trotoar / jalur jalan kaki</span>
+      <span><i class="legend-rail"></i> Rel dan palang perlintasan</span>
+      <span><i class="legend-ai"></i> Petunjuk AI dari satelit</span>
+    </div>
     <button class="mode-btn" data-mode="3d" title="3D">3D</button>
     <button class="mode-btn" data-mode="satellite" title="Satellite">Sat</button>
   `;
@@ -5106,13 +5325,27 @@ const ModeControl = L.Control.extend({
     L.DomEvent.disableScrollPropagation(container);
     container.querySelectorAll<HTMLButtonElement>('.mode-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
+        if (btn.dataset.mapSymbolLegend !== undefined) return;
         const m = (btn.dataset.mode as BaseMapMode) || 'street';
         void setBaseMap(m);
       });
     });
+    const legendBtn = container.querySelector<HTMLButtonElement>("[data-map-symbol-legend]");
+    const legendPanel = container.querySelector<HTMLElement>("[data-map-symbol-panel]");
+    legendBtn?.addEventListener("click", () => {
+      const open = legendPanel?.hidden ?? true;
+      if (legendPanel) legendPanel.hidden = !open;
+      legendBtn.setAttribute("aria-expanded", String(open));
+    });
     return container;
   }
 });
+
+function updateModeControlButtons(): void {
+  document.querySelectorAll<HTMLButtonElement>(".mode-control [data-mode]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.mode === state.baseMode);
+  });
+}
 
 function syncModeControlVisibility(): void {
   const shouldShowModeControl = !isMobile() && !isTablet();
@@ -5121,6 +5354,7 @@ function syncModeControlVisibility(): void {
       state.modeControl = new ModeControl();
       state.modeControl.addTo(map);
     }
+    updateModeControlButtons();
     return;
   }
 
@@ -6350,12 +6584,12 @@ function itsShowMapLicenseModal(): void {
   }, 20);
 }
 
-const ITS_WINDOWS_INSTALL_URL = "https://itstelkom.web.app/artifacts/apps/ITS-Maps-Windows-Custom-Setup-1.0.13-x64.download";
-const ITS_WINDOWS_INSTALL_NAME = "ITS-Maps-Windows-Custom-Setup-1.0.13-x64.exe";
+const ITS_WINDOWS_INSTALL_URL = "https://itstelkom.web.app/artifacts/apps/ITS-Maps-Windows-Custom-Setup-1.0.14-x64.download";
+const ITS_WINDOWS_INSTALL_NAME = "ITS-Maps-Windows-Custom-Setup-1.0.14-x64.exe";
 const ITS_ANDROID_INSTALL_URL = "https://itstelkom.web.app/artifacts/apps/ITS.apk";
 const ITS_ANDROID_INSTALL_NAME = "ITS.apk";
 const ITS_IOS_INSTALL_URL = "https://itstelkom.web.app/?install=ios";
-const ITS_APP_VERSION = "1.0.13";
+const ITS_APP_VERSION = "1.0.14";
 const ITS_FALLBACK_PREVIEWS = [WIN_PREVIEW_WELCOME, WIN_PREVIEW_OPTIONS, WIN_PREVIEW_DONE];
 const ITS_APP_ACCESS_ITEMS = [
   ["Lokasi", "Dipakai untuk marker user realtime, jarak ke POI, tombol lokasi terkini, dan sinkronisasi posisi antar perangkat."],

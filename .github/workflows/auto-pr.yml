@@ -60,32 +60,50 @@ jobs:
           Auto-merge hanya dijalankan jika repository mengaktifkan variable \`AUTO_PR_ENABLE_AUTOMERGE=true\` dan aturan branch GitHub mengizinkan auto-merge.
           EOF
 
-          existing="$(gh pr list \
+          pr_error="$(mktemp)"
+          if ! existing="$(gh pr list \
             --repo "$target_repo" \
             --head "$head_ref" \
             --base "$TARGET_BASE" \
             --state open \
             --json number \
-            --jq '.[0].number // empty')"
+            --jq '.[0].number // empty' 2>"$pr_error")"; then
+            cat "$pr_error"
+            echo "::warning::GitHub token cannot list pull requests for ${target_repo}. Enable 'Allow GitHub Actions to create and approve pull requests' or add AUTO_PR_TOKEN with pull request write access."
+            echo "Manual compare URL: https://github.com/${target_repo}/compare/${TARGET_BASE}...${head_ref}?expand=1"
+            exit 0
+          fi
 
           if [[ -n "$existing" ]]; then
-            gh pr edit "$existing" \
+            if ! gh pr edit "$existing" \
               --repo "$target_repo" \
               --title "$title" \
-              --body-file "$body_file"
+              --body-file "$body_file" 2>"$pr_error"; then
+              cat "$pr_error"
+              echo "::warning::PR #${existing} exists, but this token cannot edit it."
+              exit 0
+            fi
             pr_url="$(gh pr view "$existing" --repo "$target_repo" --json url --jq '.url')"
             echo "Updated PR: $pr_url"
           else
-            pr_url="$(gh pr create \
+            if ! pr_url="$(gh pr create \
               --repo "$target_repo" \
               --base "$TARGET_BASE" \
               --head "$head_ref" \
               --title "$title" \
-              --body-file "$body_file")"
+              --body-file "$body_file" 2>"$pr_error")"; then
+              cat "$pr_error"
+              echo "::warning::Automatic PR creation is blocked by repository permissions. Enable 'Allow GitHub Actions to create and approve pull requests' or add AUTO_PR_TOKEN. Compare URL: https://github.com/${target_repo}/compare/${TARGET_BASE}...${head_ref}?expand=1"
+              exit 0
+            fi
             echo "Created PR: $pr_url"
           fi
 
           if [[ "$AUTO_MERGE" == "true" ]]; then
-            gh pr merge "$pr_url" --repo "$target_repo" --squash --auto --delete-branch=false
+            if ! gh pr merge "$pr_url" --repo "$target_repo" --squash --auto --delete-branch=false 2>"$pr_error"; then
+              cat "$pr_error"
+              echo "::warning::Auto-merge was requested but could not be enabled. Check branch protection and token permissions."
+              exit 0
+            fi
             echo "Auto-merge requested for: $pr_url"
           fi
