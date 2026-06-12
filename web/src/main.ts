@@ -751,8 +751,8 @@ if (staticRoute) {
     videoYoloNote: "",
     videoYoloDeviceId: "",
     videoYoloLastPublishAt: 0,
-    widgetYoloBusy: false,
-    widgetYoloKey: "",
+    videoYoloLastSourceKey: "",
+    videoYoloLastSnapshotAt: 0,
     hasCentered: false,
     baseMode: "street" as BaseMapMode,
     compassNeedle: null as SVGGElement | null,
@@ -3263,7 +3263,7 @@ if (staticRoute) {
       if (!item || typeof item !== "object") return [];
       const raw = item as Record<string, unknown>;
       const label = typeof raw.label === "string" ? raw.label.trim() : "";
-      const confidence = clamp(finiteNumber(raw.confidence) ?? 0, 0, 1);
+      const confidence = normalizeDetectionConfidence(finiteNumber(raw.confidence) ?? 0);
       const x = Math.max(0, finiteNumber(raw.x) ?? 0);
       const y = Math.max(0, finiteNumber(raw.y) ?? 0);
       const width = Math.max(0, finiteNumber(raw.width) ?? 0);
@@ -3273,6 +3273,30 @@ if (staticRoute) {
       const vehicle = typeof raw.vehicle === "boolean" ? raw.vehicle : VEHICLE_LABELS.has(key);
       return [{ label, confidence, vehicle, x, y, width, height }];
     }).sort((a, b) => b.confidence - a.confidence).slice(0, 80);
+  }
+  function normalizeDetectionConfidence(value: number): number {
+    if (!Number.isFinite(value) || value <= 0) return 0;
+    if (value <= 1) return value;
+    if (value <= 100) return clamp(value / 100, 0, 1);
+    return 1;
+  }
+  function detectionBoxIsUsable(d: YoloDetection, frameWidth: number, frameHeight: number): boolean {
+    if (![d.x, d.y, d.width, d.height, frameWidth, frameHeight].every(Number.isFinite)) return false;
+    if (frameWidth <= 0 || frameHeight <= 0 || d.width < 3 || d.height < 3) return false;
+    if (d.x >= frameWidth || d.y >= frameHeight || d.x + d.width <= 0 || d.y + d.height <= 0) return false;
+    const widthRatio = d.width / frameWidth;
+    const heightRatio = d.height / frameHeight;
+    const aspect = d.width / Math.max(1, d.height);
+    if (widthRatio > 0.82 || heightRatio > 0.82) return false;
+    if (widthRatio > 0.54 && heightRatio > 0.18) return false;
+    if (heightRatio > 0.54 && widthRatio > 0.18) return false;
+    if ((d.x <= 2 || d.y <= 2) && (widthRatio > 0.04 || heightRatio > 0.04)) return false;
+    if (aspect > 5.2 || aspect < 0.18) return false;
+    const areaRatio = (d.width * d.height) / Math.max(1, frameWidth * frameHeight);
+    if (areaRatio > 0.22) return false;
+    if (d.width > frameWidth * 0.96 && d.height > frameHeight * 0.48) return false;
+    if (d.height > frameHeight * 0.96 && d.width > frameWidth * 0.48) return false;
+    return true;
   }
   function normalizeEpoch(v: number): number {
     if (!Number.isFinite(v) || v <= 0) return 0;
@@ -3434,9 +3458,9 @@ if (staticRoute) {
   }
 
   function renderDetectionOverlay(device: DeviceRecord | null): string {
-    const detections = device?.detections || [];
     const frameWidth = device?.detectorFrameWidth || 0;
     const frameHeight = device?.detectorFrameHeight || 0;
+    const detections = (device?.detections || []).filter((d) => detectionBoxIsUsable(d, frameWidth, frameHeight));
     if (!detections.length || frameWidth <= 0 || frameHeight <= 0) return "";
     return `<div class="m-detection-overlay" aria-hidden="true">
   ${detections.slice(0, 12).map((d) => {
@@ -3520,11 +3544,25 @@ if (staticRoute) {
         : undefined;
     const trafficDuration = finiteNumber(rawRecord.trafficDuration)
       ?? finiteNumber(rawRecord.trafficDurationSec);
-    const vehicleCount = finiteNumber(rawRecord.vehicleCount)
-      ?? finiteNumber(rawRecord.vehicles)
-      ?? normalizeVehicleBreakdown(rawRecord.vehicleBreakdown)?.total;
-    const vehicleBreakdown = normalizeVehicleBreakdown(rawRecord.vehicleBreakdown);
-    const detections = normalizeDetections(rawRecord.detections);
+    const detectorFrameWidth = finiteNumber(rawRecord.detectorFrameWidth);
+    const detectorFrameHeight = finiteNumber(rawRecord.detectorFrameHeight);
+    const rawDetections = normalizeDetections(rawRecord.detections);
+    const detections = detectorFrameWidth && detectorFrameHeight
+      ? rawDetections.filter((det) => detectionBoxIsUsable(det, detectorFrameWidth, detectorFrameHeight))
+      : rawDetections;
+    const yoloSource = [
+      typeof rawRecord.trafficSource === "string" ? rawRecord.trafficSource : "",
+      typeof rawRecord.detectorCameraSource === "string" ? rawRecord.detectorCameraSource : "",
+    ].join(" ");
+    const invalidBrowserYoloPayload = /browser-yolo/i.test(yoloSource)
+      && rawDetections.length > 0
+      && detections.length === 0;
+    const vehicleBreakdown = invalidBrowserYoloPayload ? undefined : normalizeVehicleBreakdown(rawRecord.vehicleBreakdown);
+    const vehicleCount = invalidBrowserYoloPayload
+      ? 0
+      : finiteNumber(rawRecord.vehicleCount)
+        ?? finiteNumber(rawRecord.vehicles)
+        ?? vehicleBreakdown?.total;
     return {
       id,
       label: raw.label?.trim() || "Raspberry Pi 5 Controller",
@@ -3551,12 +3589,14 @@ if (staticRoute) {
       detectorNote: typeof rawRecord.detectorNote === "string" ? rawRecord.detectorNote.trim() || undefined : undefined,
       detectorUpdatedAt: finiteNumber(rawRecord.detectorUpdatedAt),
       detectorFps: finiteNumber(rawRecord.detectorFps),
-      detectorFrameWidth: finiteNumber(rawRecord.detectorFrameWidth),
-      detectorFrameHeight: finiteNumber(rawRecord.detectorFrameHeight),
+      detectorFrameWidth,
+      detectorFrameHeight,
       detectorCameraSource: typeof rawRecord.detectorCameraSource === "string" ? rawRecord.detectorCameraSource.trim() || undefined : undefined,
       detectorConfidence: finiteNumber(rawRecord.detectorConfidence),
       detectorOutputShape: typeof rawRecord.detectorOutputShape === "string" ? rawRecord.detectorOutputShape.trim() || undefined : undefined,
-      objectCount: Math.max(0, Math.round(finiteNumber(rawRecord.objectCount) ?? detections.length)),
+      objectCount: invalidBrowserYoloPayload
+        ? 0
+        : Math.max(0, Math.round(finiteNumber(rawRecord.objectCount) ?? detections.length)),
       detections,
       trafficSource: typeof rawRecord.trafficSource === "string" ? rawRecord.trafficSource.trim() || undefined : undefined,
       gpioBackend: typeof rawRecord.gpioBackend === "string" ? rawRecord.gpioBackend.trim() || undefined : undefined,
@@ -4348,6 +4388,16 @@ if (staticRoute) {
       || "";
   }
 
+  function latestCameraAnalysisSnapshot(device: DeviceRecord | null): string {
+    const dataset = device?.cameraDataset;
+    if (dataset?.source === "browser-yolo" && dataset.snapshot2Url?.trim()) {
+      return dataset.snapshot2Url.trim();
+    }
+    return dataset?.snapshot2Url?.trim()
+      || dataset?.snapshot1Url?.trim()
+      || (/browser-yolo/i.test(device?.trafficSource || "") ? "" : device?.cameraThumbnailUrl?.trim() || "");
+  }
+
   function usablePublicMediaUrl(value: unknown): string {
     const url = typeof value === "string" ? value.trim() : "";
     if (!url) return "";
@@ -4377,6 +4427,30 @@ if (staticRoute) {
     const [base, query = ""] = clean.split("?");
     const playlist = `${base.replace(/\/?$/, "/")}index.m3u8`;
     return query ? `${playlist}?${query}` : playlist;
+  }
+
+  function cameraEmbedUrl(value: string): string {
+    if (!value || isLikelyImageUrl(value)) return value;
+    try {
+      const url = new URL(value, window.location.href);
+      url.searchParams.set("controls", "false");
+      url.searchParams.set("muted", "true");
+      url.searchParams.set("autoplay", "true");
+      url.searchParams.set("playsinline", "true");
+      url.searchParams.set("disablepictureinpicture", "true");
+      return url.toString();
+    } catch {
+      return value;
+    }
+  }
+
+  function cameraHostLabel(url: string): string {
+    if (!url) return "";
+    try {
+      return new URL(url, window.location.href).hostname;
+    } catch {
+      return url.replace(/^https?:\/\//i, "").split("/")[0] || url;
+    }
   }
 
   function isLikelyHlsUrl(url: string): boolean {
@@ -4707,25 +4781,25 @@ if (staticRoute) {
   }
 
   function renderCameraSurface(device: DeviceRecord | null, imageClass: string, frameClass: string): string {
-    if (device && isWebRtcSignalingCamera(device)) return renderWebRtcSurface(device, imageClass);
+    const url = publicCameraPageUrl(device);
+    if (url) {
+      return isLikelyImageUrl(url)
+        ? `<img class="${imageClass}" src="${escapeHtml(url)}" alt="Camera preview" crossorigin="anonymous">`
+        : `<iframe class="${frameClass}" src="${escapeHtml(cameraEmbedUrl(url))}" allow="autoplay; camera; microphone; fullscreen" referrerpolicy="no-referrer" loading="lazy"></iframe>`;
+    }
     const hlsUrl = publicCameraHlsUrl(device);
     if (hlsUrl) {
       const poster = latestCameraSnapshot(device);
       const posterAttr = poster ? ` poster="${escapeHtml(poster)}"` : "";
       const pageUrl = publicCameraPageUrl(device) || hlsPageUrl(hlsUrl);
-      const pageAttr = pageUrl ? ` data-page-src="${escapeHtml(pageUrl)}"` : "";
+      const pageAttr = pageUrl ? ` data-page-src="${escapeHtml(cameraEmbedUrl(pageUrl))}"` : "";
       return `<div class="hls-video-wrap">
       <video class="${imageClass} hls-video" data-hls-video data-device-id="${escapeHtml(device?.id || "")}" data-src="${escapeHtml(hlsUrl)}"${pageAttr} autoplay playsinline muted preload="auto" crossorigin="anonymous" disablepictureinpicture${posterAttr}></video>
       <iframe class="${frameClass} hls-fallback-frame" data-hls-iframe hidden src="about:blank" allow="autoplay; camera; microphone; fullscreen" referrerpolicy="no-referrer" loading="lazy"></iframe>
       <div class="hls-video-message" data-hls-message hidden></div>
     </div>`;
     }
-    const url = publicCameraPageUrl(device);
-    if (url) {
-      return isLikelyImageUrl(url)
-        ? `<img class="${imageClass}" src="${escapeHtml(url)}" alt="Camera preview" crossorigin="anonymous">`
-        : `<iframe class="${frameClass}" src="${escapeHtml(url)}" allow="autoplay; camera; microphone; fullscreen" referrerpolicy="no-referrer" loading="lazy"></iframe>`;
-    }
+    if (device && isWebRtcSignalingCamera(device)) return renderWebRtcSurface(device, imageClass);
     return "";
   }
 
@@ -4815,7 +4889,7 @@ if (staticRoute) {
     const wrap = video.closest<HTMLElement>(".hls-video-wrap");
     const messageEl = wrap?.querySelector<HTMLElement>("[data-hls-message]");
     const iframe = wrap?.querySelector<HTMLIFrameElement>("[data-hls-iframe]");
-    const pageUrl = usablePublicMediaUrl(video.dataset.pageSrc) || hlsPageUrl(video.dataset.src || "");
+    const pageUrl = cameraEmbedUrl(usablePublicMediaUrl(video.dataset.pageSrc) || hlsPageUrl(video.dataset.src || ""));
     if (iframe && pageUrl) {
       if (iframe.src !== pageUrl) iframe.src = pageUrl;
       iframe.hidden = false;
@@ -4873,13 +4947,23 @@ if (staticRoute) {
     return `<svg viewBox="0 0 20 20" fill="none" width="16" height="16" aria-hidden="true"><path d="M6 5h3v10H6V5Zm5 0h3v10h-3V5Z" fill="currentColor"/></svg>`;
   }
 
+  function fullscreenSvg(): string {
+    return `<svg viewBox="0 0 16 16" fill="none" width="15" height="15" aria-hidden="true">
+      <path d="M1.5 6V1.5H6M10 1.5h4.5V6M14.5 10v4.5H10M6 14.5H1.5V10" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+    </svg>`;
+  }
+
   function customVideoRoot(button: HTMLElement): ParentNode {
-    return button.closest(".video-fullscreen-stage, .m-its-camera-box, .camera-card") || document;
+    return button.closest(".video-fullscreen-stage, .m-its-camera-box, .camera-card, .custom-video-card") || document;
   }
 
   function toggleCustomVideoPlayback(root: ParentNode): void {
     const videos = Array.from(root.querySelectorAll<HTMLVideoElement>("video"));
-    if (!videos.length) return;
+    if (!videos.length) {
+      const iframe = root.querySelector<HTMLIFrameElement>("iframe");
+      if (iframe?.src && iframe.src !== "about:blank") iframe.src = iframe.src;
+      return;
+    }
     const shouldPlay = videos.some((video) => video.paused);
     videos.forEach((video) => {
       if (shouldPlay) void video.play().catch(() => undefined);
@@ -4892,10 +4976,23 @@ if (staticRoute) {
     root.querySelectorAll<HTMLButtonElement>("[data-custom-video-play]").forEach((button) => {
       const scopedRoot = customVideoRoot(button);
       const videos = Array.from(scopedRoot.querySelectorAll<HTMLVideoElement>("video"));
-      const playing = videos.some((video) => !video.paused && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA);
+      const iframe = scopedRoot.querySelector<HTMLIFrameElement>("iframe");
+      const playing = videos.length
+        ? videos.some((video) => !video.paused && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA)
+        : Boolean(iframe && iframe.src && iframe.src !== "about:blank");
       button.innerHTML = playing ? pauseSvg() : playSvg();
       button.setAttribute("aria-label", playing ? "Jeda video" : "Putar video");
     });
+  }
+
+  function videoSurfaceStatusText(device: DeviceRecord | null): string {
+    const hlsUrl = publicCameraHlsUrl(device);
+    const pageUrl = publicCameraPageUrl(device);
+    const host = cameraHostLabel(pageUrl || hlsUrl || publicCameraUrl(device));
+    if (pageUrl && !hlsUrl) return host ? `stream ${host}` : "stream tunnel aktif";
+    if (hlsUrl) return host ? `stream ${host}` : "stream HLS aktif";
+    if (isWebRtcSignalingCamera(device)) return webRtcStatusText();
+    return latestCameraSnapshot(device) ? "snapshot kamera tersedia" : "Menunggu frame video live...";
   }
 
   function renderCameraTile(): void {
@@ -4909,7 +5006,6 @@ if (staticRoute) {
       : device && (webrtc || url || hlsUrl)
         ? `<div class="camera-live-badge"><span data-webrtc-dot data-status="${state.webrtc.status}"></span>LIVE</div>`
         : "";
-    processWidgetSnapshotYolo(device);
     syncCameraViews(device);
   }
 
@@ -5031,16 +5127,15 @@ if (staticRoute) {
     const device = state.device;
     const anchor = map.getCenter();
     const cameraSurface = renderCameraSurface(device, "camera-image camera-video-popup", "camera-frame");
+    const statusText = videoSurfaceStatusText(device);
     const content = cameraSurface
-      ? `<div class="camera-card">
+      ? `<div class="camera-card custom-video-card">
+      <div class="custom-video-status">${escapeHtml(statusText || "Menunggu frame video live...")}</div>
+      <div class="custom-video-live"><span></span>LIVE</div>
       ${cameraSurface}
       <div class="camera-popup-controls">
         <button type="button" data-custom-video-play aria-label="Putar video">${playSvg()}</button>
-        <button type="button" data-popup-fullscreen aria-label="Fullscreen">
-          <svg viewBox="0 0 16 16" fill="none" width="14" height="14" aria-hidden="true">
-            <path d="M1 6V1h5M10 1h5v5M15 10v5h-5M6 15H1v-5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-          </svg>
-        </button>
+        <button type="button" data-popup-fullscreen aria-label="Fullscreen">${fullscreenSvg()}</button>
       </div>
     </div>`
       : `<div class="camera-card">
@@ -5065,6 +5160,7 @@ if (staticRoute) {
     const traffic = activeDevice ? trafficStateForDevice(activeDevice) : null;
     const surface = renderCameraSurface(activeDevice, "video-fullscreen-media", "video-fullscreen-frame");
     const ambient = traffic?.color === "red" ? "#7f1d1d" : traffic?.color === "yellow" ? "#854d0e" : "#064e3b";
+    const statusText = videoSurfaceStatusText(activeDevice);
     const overlay = document.createElement("div");
     overlay.id = "video-fullscreen-modal";
     overlay.className = "video-fullscreen";
@@ -5079,13 +5175,14 @@ if (staticRoute) {
       </div>
       <div class="video-fullscreen-status">
         <span class="webrtc-dot" data-status="${state.webrtc.status}"></span>
-        <strong>${escapeHtml(activeDevice?.label || "Video Realtime")}</strong>
+        <strong>${escapeHtml(statusText || activeDevice?.label || "Video Realtime")}</strong>
       </div>
-      <div class="video-fullscreen-caption">${escapeHtml(webRtcStatusText())}</div>
+      <div class="video-fullscreen-live"><span></span>LIVE</div>
+      <div class="video-fullscreen-caption">${escapeHtml(statusText || "Menunggu frame video live...")}</div>
       <button type="button" class="video-fullscreen-play" data-custom-video-play aria-label="Putar video">${playSvg()}</button>
       <div class="video-fullscreen-controls">
         <button type="button" class="video-fullscreen-ai" data-video-ai>AI</button>
-        <button type="button" class="video-fullscreen-close" data-video-close aria-label="Keluar fullscreen">x</button>
+        <button type="button" class="video-fullscreen-close" data-video-close aria-label="Keluar fullscreen">${fullscreenSvg()}</button>
       </div>
     </section>
     <aside class="video-ai-panel" aria-label="AI kendaraan">
@@ -5110,6 +5207,7 @@ if (staticRoute) {
     let startDistance = 0;
     let startScale = 1;
     const surfaceEl = overlay.querySelector<HTMLElement>("[data-video-surface]");
+    const shellEl = overlay.querySelector<HTMLElement>(".video-fullscreen-shell");
     const aiPanel = overlay.querySelector<HTMLElement>(".video-ai-panel");
     const setScale = (next: number) => {
       scale = clamp(next, 0.82, 1.55);
@@ -5117,7 +5215,7 @@ if (staticRoute) {
     };
     const setAiWidth = (widthPx: number) => {
       if (!usesDesktopSidePanel()) return;
-      overlay.style.setProperty("--video-ai-live-width", `${Math.max(0, Math.round(widthPx))}px`);
+      shellEl?.style.setProperty("--video-ai-live-width", `${Math.max(0, Math.round(widthPx))}px`);
     };
     const closeVideo = () => {
       overlay.classList.remove("open", "ai-open");
@@ -5131,11 +5229,15 @@ if (staticRoute) {
       if (aiPanel) aiPanel.style.transform = "";
       overlay.classList.add("ai-open");
       requestAnimationFrame(() => setAiWidth(aiPanel?.getBoundingClientRect().width || 0));
+      drawExistingVideoDetections(overlay, deviceForVideoYolo() || activeDevice);
+      startVideoBrowserYolo(overlay, activeDevice);
     };
     const closeAi = () => {
       overlay.classList.remove("ai-open");
       if (aiPanel) aiPanel.style.transform = "";
       setAiWidth(0);
+      stopVideoBrowserYolo();
+      clearVideoYoloCanvas(overlay);
     };
 
     surfaceEl?.addEventListener("wheel", (event) => {
@@ -5178,7 +5280,6 @@ if (staticRoute) {
     syncCameraViews(activeDevice);
     attachWebRtcStream();
     setupHlsVideos(overlay);
-    startVideoBrowserYolo(overlay, activeDevice);
     syncCustomVideoButtons(overlay);
     window.setTimeout(() => overlay.classList.add("open"), 20);
   }
@@ -5188,15 +5289,18 @@ if (staticRoute) {
     state.videoYoloDeviceId = device?.id || state.device?.id || "";
     state.videoYoloStatus = "loading";
     state.videoYoloNote = "Menunggu frame video live...";
+    state.videoYoloLastSourceKey = "";
+    state.videoYoloLastSnapshotAt = 0;
     const tick = () => {
       if (!overlay.isConnected) {
         stopVideoBrowserYolo();
         return;
       }
+      if (!overlay.classList.contains("ai-open")) return;
       void processVideoYoloFrame(overlay);
     };
     tick();
-    state.videoYoloTimer = window.setInterval(tick, 1800);
+    state.videoYoloTimer = window.setInterval(tick, 4500);
   }
 
   function stopVideoBrowserYolo(): void {
@@ -5206,6 +5310,8 @@ if (staticRoute) {
     state.videoYoloStatus = "idle";
     state.videoYoloNote = "";
     state.videoYoloDeviceId = "";
+    state.videoYoloLastSourceKey = "";
+    state.videoYoloLastSnapshotAt = 0;
   }
 
   async function processVideoYoloFrame(overlay: HTMLElement): Promise<void> {
@@ -5214,9 +5320,12 @@ if (staticRoute) {
     try {
       const frameSource = await videoYoloSource(overlay);
       if (!frameSource) {
-        state.videoYoloStatus = "no-frame";
-        state.videoYoloNote = "Menunggu frame video live...";
+        const cached = deviceForVideoYolo();
+        const hasCachedDetections = Boolean(cached?.detections?.length && cached.detectorFrameWidth && cached.detectorFrameHeight);
+        state.videoYoloStatus = hasCachedDetections ? "online" : "no-frame";
+        state.videoYoloNote = hasCachedDetections ? "AI memakai hasil snapshot terakhir..." : "Menunggu frame video live...";
         clearVideoYoloCanvas(overlay);
+        drawExistingVideoDetections(overlay, cached);
         updateVideoAiPanel(overlay);
         return;
       }
@@ -5228,7 +5337,7 @@ if (staticRoute) {
       state.videoYoloNote = result.note;
       if (result.status === "online") {
         const canvas = overlay.querySelector<HTMLCanvasElement>("[data-video-yolo-canvas]");
-        if (canvas && frameSource.drawOverlay) drawYoloDetections(canvas, result.detections, result.frameWidth, result.frameHeight);
+        if (canvas) drawYoloDetections(canvas, result.detections, result.frameWidth, result.frameHeight);
         else clearVideoYoloCanvas(overlay);
         const device = deviceForVideoYolo();
         if (device) {
@@ -5245,21 +5354,40 @@ if (staticRoute) {
     }
   }
 
-  async function videoYoloSource(overlay: HTMLElement): Promise<{ source: HTMLVideoElement | HTMLImageElement; drawOverlay: boolean } | null> {
+  async function videoYoloSource(overlay: HTMLElement): Promise<{ source: HTMLVideoElement | HTMLImageElement; drawOverlay: boolean; key: string } | null> {
     const video = Array.from(overlay.querySelectorAll<HTMLVideoElement>("video"))
       .find((candidate) => !candidate.classList.contains("hls-fallback-hidden") && candidate.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && candidate.videoWidth > 0 && candidate.videoHeight > 0);
-    if (video) return { source: video, drawOverlay: true };
+    if (video) return { source: video, drawOverlay: true, key: `video:${video.currentSrc || video.dataset.src || ""}:${Math.floor(video.currentTime * 2)}` };
     const image = overlay.querySelector<HTMLImageElement>(".video-fullscreen-surface img");
-    if (image?.complete && image.naturalWidth && image.naturalHeight) return { source: image, drawOverlay: true };
-    const snapshot = latestCameraSnapshot(deviceForVideoYolo());
+    if (image?.complete && image.naturalWidth && image.naturalHeight) return { source: image, drawOverlay: true, key: `image:${image.currentSrc || image.src}` };
+    const snapshot = latestCameraAnalysisSnapshot(deviceForVideoYolo());
+    const snapshotKey = snapshot ? `snapshot:${snapshot.slice(0, 96)}:${snapshot.length}` : "";
+    if (snapshotKey && state.videoYoloLastSourceKey === snapshotKey && Date.now() - state.videoYoloLastSnapshotAt < 15000) return null;
+    if (snapshotKey) {
+      state.videoYoloLastSourceKey = snapshotKey;
+      state.videoYoloLastSnapshotAt = Date.now();
+    }
     const source = snapshot ? await loadImageSource(snapshot) : null;
-    return source ? { source, drawOverlay: false } : null;
+    return source ? { source, drawOverlay: false, key: snapshotKey } : null;
   }
 
   function clearVideoYoloCanvas(overlay: HTMLElement): void {
     const canvas = overlay.querySelector<HTMLCanvasElement>("[data-video-yolo-canvas]");
     const ctx = canvas?.getContext("2d");
     if (canvas && ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+
+  function drawExistingVideoDetections(overlay: HTMLElement, device: DeviceRecord | null): void {
+    const canvas = overlay.querySelector<HTMLCanvasElement>("[data-video-yolo-canvas]");
+    if (!canvas || !device?.detections?.length || !device.detectorFrameWidth || !device.detectorFrameHeight) return;
+    const detections = device.detections
+      .filter((d) => detectionBoxIsUsable(d, device.detectorFrameWidth || 0, device.detectorFrameHeight || 0))
+      .map((d) => ({ ...d }));
+    if (!detections.length) {
+      clearVideoYoloCanvas(overlay);
+      return;
+    }
+    drawYoloDetections(canvas, detections, device.detectorFrameWidth, device.detectorFrameHeight);
   }
 
   function deviceForVideoYolo(): DeviceRecord | null {
@@ -5295,7 +5423,7 @@ if (staticRoute) {
       detectorFrameWidth: result.frameWidth,
       detectorFrameHeight: result.frameHeight,
       detectorCameraSource: cameraSourceForBrowserYolo(device),
-      detectorConfidence: 0.12,
+      detectorConfidence: 0.45,
       detectorOutputShape: result.outputShape,
       cameraThumbnailUrl: result.annotatedThumbnailUrl || result.rawThumbnailUrl || device.cameraThumbnailUrl,
       cameraDataset: mergeCameraDataset(snapshotDataset, device.cameraDataset),
@@ -5336,29 +5464,6 @@ if (staticRoute) {
         const overlay = document.getElementById("video-fullscreen-modal");
         if (overlay) updateVideoAiPanel(overlay);
       });
-  }
-
-  function processWidgetSnapshotYolo(device: DeviceRecord | null): void {
-    const src = latestCameraSnapshot(device);
-    if (!device || !src || src.startsWith("data:image/")) return;
-    const key = `${device.id}:${src}`;
-    if (state.widgetYoloBusy || state.widgetYoloKey === key) return;
-    state.widgetYoloBusy = true;
-    state.widgetYoloKey = key;
-    void (async () => {
-      const image = await loadImageSource(src);
-      if (!image) return;
-      const result = await runBrowserYolo(image);
-      if (result.status !== "online") return;
-      applyVideoYoloResult(device, result);
-      publishVideoYoloIfNeeded(device, result);
-      renderCameraTile();
-      if (document.getElementById("m-its-scroll")) renderITSSheetContent();
-    })().catch((err) => {
-      console.warn("[ITS] widget snapshot YOLO failed:", err);
-    }).finally(() => {
-      state.widgetYoloBusy = false;
-    });
   }
 
   function updateVideoAiPanel(root: ParentNode): void {
@@ -5924,11 +6029,15 @@ if (staticRoute) {
   }
 
   function updateNoticeMessage(update: ControllerUpdateInfo): string {
-    const rawBundle = update.bundleSha?.replace(/\s+/g, "").toLowerCase() || "";
-    if (update.status === "error" && rawBundle.startsWith("<!doctypehtml")) {
+    if (isControllerHtmlBundleError(update)) {
       return "Controller menerima HTML website dari hosting, bukan paket update controller. Tidak ada filesystem Raspberry yang disentuh dashboard; URL update controller di Raspberry perlu diarahkan ke artefak controller yang benar.";
     }
     return update.message || "Status update controller berubah";
+  }
+
+  function isControllerHtmlBundleError(update: ControllerUpdateInfo): boolean {
+    const rawBundle = update.bundleSha?.replace(/\s+/g, "").toLowerCase() || "";
+    return update.status === "error" && rawBundle.startsWith("<!doctypehtml");
   }
 
   function maybeShowBrowserNotification(title: string, message: string): void {
@@ -6019,6 +6128,7 @@ if (staticRoute) {
     const key = `${device.id}:${update.status || ""}:${update.stage || ""}:${updatedAt}`;
     if (state.lastUpdateNoticeKey === key) return;
     state.lastUpdateNoticeKey = key;
+    if (isControllerHtmlBundleError(update)) return;
 
     const kind = update.status === "error"
       ? "error"
@@ -6653,7 +6763,6 @@ if (staticRoute) {
     setupHlsVideos(scroll);
     syncCameraViews(device);
     attachWebRtcStream();
-    processWidgetSnapshotYolo(device);
     requestAnimationFrame(() => drawTrafficChart());
     scroll.querySelector<HTMLButtonElement>(".m-camera-play")?.addEventListener("click", (event) => {
       toggleCustomVideoPlayback(customVideoRoot(event.currentTarget as HTMLElement));

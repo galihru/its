@@ -300,6 +300,8 @@ const state = {
   browserYoloStatus: "idle" as "idle" | "loading" | "online" | "no-frame" | "error",
   browserYoloNote: "",
   browserYoloSourceKey: "",
+  browserYoloLastSnapshotKey: "",
+  browserYoloLastSnapshotAt: 0,
   browserYoloLastPublishAt: 0,
   snapshotYoloBusy: false,
   snapshotYoloKey: "",
@@ -1096,7 +1098,14 @@ function mergeDeviceTelemetry(device: DeviceRecord, trafficRaw: unknown, yoloRaw
   const trafficUpdatedAt = normalizeEpoch(finiteNumber(traffic.updatedAt) ?? 0);
   const yoloFresh = yoloUpdatedAt > 0 && Date.now() - yoloUpdatedAt <= BROWSER_YOLO_FRESH_MS;
   const mergedDataset = mergeCameraDataset(device.cameraDataset, yoloFresh ? yoloDataset : undefined, trafficDataset);
-  const yoloBreakdown = yoloFresh ? normalizeVehicleBreakdown(yolo.vehicleBreakdown) : undefined;
+  const yoloFrameWidth = yoloFresh ? finiteNumber(yolo.frameWidth) : undefined;
+  const yoloFrameHeight = yoloFresh ? finiteNumber(yolo.frameHeight) : undefined;
+  const yoloDetections = yoloFresh ? normalizeDetections(yolo.detections) : [];
+  const yoloValidDetections = yoloFrameWidth && yoloFrameHeight
+    ? yoloDetections.filter((det) => detectionBoxIsUsable(det, yoloFrameWidth, yoloFrameHeight))
+    : yoloDetections;
+  const yoloPayloadValid = !yoloFresh || !yoloDetections.length || yoloValidDetections.length > 0;
+  const yoloBreakdown = yoloFresh && yoloPayloadValid ? normalizeVehicleBreakdown(yolo.vehicleBreakdown) : undefined;
   const trafficBreakdown = normalizeVehicleBreakdown(traffic.vehicleBreakdown);
   const yoloCameraUrl = yoloFresh ? usablePublicMediaUrl(stringValue(yolo.cameraUrl)) : "";
   const trafficCameraUrl = usablePublicMediaUrl(stringValue(traffic.cameraUrl));
@@ -1104,7 +1113,6 @@ function mergeDeviceTelemetry(device: DeviceRecord, trafficRaw: unknown, yoloRaw
   const trafficThumbnail = stringValue(traffic.thumbnailUrl);
   const yoloStatus = yoloFresh ? stringValue(yolo.status) : "";
   const trafficDetectorStatus = stringValue(traffic.detectorStatus);
-  const yoloDetections = yoloFresh ? normalizeDetections(yolo.detections) : [];
 
   return {
     ...device,
@@ -1116,18 +1124,18 @@ function mergeDeviceTelemetry(device: DeviceRecord, trafficRaw: unknown, yoloRaw
     detectorNote: (yoloFresh ? stringValue(yolo.note) : "") || stringValue(traffic.detectorNote) || device.detectorNote,
     detectorUpdatedAt: Math.max(device.detectorUpdatedAt || 0, yoloFresh ? yoloUpdatedAt : 0, trafficUpdatedAt) || device.detectorUpdatedAt,
     detectorFps: (yoloFresh ? finiteNumber(yolo.fps) : undefined) ?? device.detectorFps,
-    detectorFrameWidth: (yoloFresh ? finiteNumber(yolo.frameWidth) : undefined) ?? finiteNumber(traffic.detectorFrameWidth) ?? device.detectorFrameWidth,
-    detectorFrameHeight: (yoloFresh ? finiteNumber(yolo.frameHeight) : undefined) ?? finiteNumber(traffic.detectorFrameHeight) ?? device.detectorFrameHeight,
+    detectorFrameWidth: yoloFrameWidth ?? finiteNumber(traffic.detectorFrameWidth) ?? device.detectorFrameWidth,
+    detectorFrameHeight: yoloFrameHeight ?? finiteNumber(traffic.detectorFrameHeight) ?? device.detectorFrameHeight,
     vehicleBreakdown: yoloBreakdown || trafficBreakdown || device.vehicleBreakdown,
-    vehicleCount: (yoloFresh ? finiteNumber(yolo.vehicleCount) : undefined)
+    vehicleCount: (yoloFresh && yoloPayloadValid ? finiteNumber(yolo.vehicleCount) : undefined)
       ?? finiteNumber(traffic.vehicleCount)
       ?? device.vehicleCount,
     objectCount: Math.max(
       device.objectCount || 0,
-      Math.round(yoloFresh ? finiteNumber(yolo.objectCount) ?? 0 : 0),
+      Math.round(yoloFresh && yoloPayloadValid ? finiteNumber(yolo.objectCount) ?? 0 : 0),
       Math.round(finiteNumber(traffic.objectCount) ?? 0),
     ),
-    detections: yoloDetections.length ? yoloDetections : device.detections,
+    detections: yoloFresh ? yoloValidDetections : device.detections,
     trafficColor: isTrafficColor(traffic.trafficColor) ? traffic.trafficColor : device.trafficColor,
     trafficLevel: yoloFresh && isTrafficLevel(yolo.trafficLevel) ? yolo.trafficLevel : device.trafficLevel,
     trafficDuration: finiteNumber(traffic.trafficDurationSec) ?? finiteNumber(traffic.trafficDuration) ?? device.trafficDuration,
@@ -1211,11 +1219,22 @@ function normalizeOneDevice(raw: SnapshotDevice): DeviceRecord | null {
   const lastSeen = normalizeEpoch(finiteNumber(raw.lastSeen) ?? 0);
   const rawStatus = isDeviceStatus(record.status) ? record.status : "offline";
   const status = lastSeen > 0 && Date.now() - lastSeen > OFFLINE_AFTER_MS ? "offline" : rawStatus;
-  const detections = normalizeDetections(record.detections);
-  const vehicleBreakdown = normalizeVehicleBreakdown(record.vehicleBreakdown);
-  const vehicleCount = finiteNumber(record.vehicleCount)
-    ?? finiteNumber(record.vehicles)
-    ?? vehicleBreakdown?.total;
+  const detectorFrameWidth = finiteNumber(record.detectorFrameWidth);
+  const detectorFrameHeight = finiteNumber(record.detectorFrameHeight);
+  const rawDetections = normalizeDetections(record.detections);
+  const detections = detectorFrameWidth && detectorFrameHeight
+    ? rawDetections.filter((det) => detectionBoxIsUsable(det, detectorFrameWidth, detectorFrameHeight))
+    : rawDetections;
+  const yoloSource = `${stringValue(record.trafficSource)} ${stringValue(record.detectorCameraSource)}`;
+  const invalidBrowserYoloPayload = /browser-yolo/i.test(yoloSource)
+    && rawDetections.length > 0
+    && detections.length === 0;
+  const vehicleBreakdown = invalidBrowserYoloPayload ? undefined : normalizeVehicleBreakdown(record.vehicleBreakdown);
+  const vehicleCount = invalidBrowserYoloPayload
+    ? 0
+    : finiteNumber(record.vehicleCount)
+      ?? finiteNumber(record.vehicles)
+      ?? vehicleBreakdown?.total;
   const cameraMode = isCameraMode(record.cameraMode)
     ? record.cameraMode
     : stringValue(record.cameraUrl) ? "mjpeg" : undefined;
@@ -1249,10 +1268,12 @@ function normalizeOneDevice(raw: SnapshotDevice): DeviceRecord | null {
     detectorNote: stringValue(record.detectorNote),
     detectorUpdatedAt: finiteNumber(record.detectorUpdatedAt),
     detectorFps: finiteNumber(record.detectorFps),
-    detectorFrameWidth: finiteNumber(record.detectorFrameWidth),
-    detectorFrameHeight: finiteNumber(record.detectorFrameHeight),
+    detectorFrameWidth,
+    detectorFrameHeight,
     detectorCameraSource: stringValue(record.detectorCameraSource),
-    objectCount: Math.max(0, Math.round(finiteNumber(record.objectCount) ?? detections.length)),
+    objectCount: invalidBrowserYoloPayload
+      ? 0
+      : Math.max(0, Math.round(finiteNumber(record.objectCount) ?? detections.length)),
     detections,
     trafficLevel: isTrafficLevel(record.trafficLevel) ? record.trafficLevel : undefined,
     trafficSource: stringValue(record.trafficSource),
@@ -1898,7 +1919,7 @@ function renderCameraView(): void {
 
 function cameraSurfaceHtml(device: DeviceRecord | null): string {
   const media = cameraMediaHtml(device);
-  const live = Boolean(device && deviceIsOnline(device) && (isWebRtcSignalingCamera(device) || publicCameraUrl(device) || publicCameraHlsUrl(device)));
+  const live = Boolean(device && (isWebRtcSignalingCamera(device) || publicCameraUrl(device) || publicCameraHlsUrl(device)));
   return `
     <section class="win-camera-surface" data-camera-surface data-live-state="${live ? "online" : "offline"}">
       <div class="win-camera-frame" data-camera-frame data-ai-open="false">
@@ -1926,18 +1947,24 @@ function cameraMediaHtml(device: DeviceRecord | null): string {
   const hlsUrl = publicCameraHlsUrl(device);
   const pageUrl = publicCameraPageUrl(device);
   const poster = latestCameraSnapshot(device);
-  if (device && !deviceIsOnline(device)) {
-    return `<img src="${escapeHtml(poster || FALLBACK_IMAGE_URL)}" alt="Snapshot kamera offline" data-camera-image crossorigin="anonymous">`;
+  if (pageUrl && !isLikelyImageUrl(pageUrl)) {
+    return `
+      <iframe class="win-camera-fallback-frame" data-camera-iframe src="${escapeHtml(cameraEmbedUrl(pageUrl))}" allow="autoplay; camera; microphone; fullscreen" referrerpolicy="no-referrer"></iframe>
+      <div class="win-camera-media-message" data-camera-media-message hidden></div>
+    `;
   }
   if (device && isWebRtcSignalingCamera(device)) {
     return renderWebRtcSurface(device);
+  }
+  if (pageUrl && isLikelyImageUrl(pageUrl)) {
+    return `<img src="${escapeHtml(pageUrl)}" alt="${escapeHtml(device?.label || "Kamera Raspberry")}" data-camera-image crossorigin="anonymous">`;
   }
   if (url && isLikelyImageUrl(url)) {
     return `<img src="${escapeHtml(url)}" alt="${escapeHtml(device?.label || "Kamera Raspberry")}" data-camera-image crossorigin="anonymous">`;
   }
   if (hlsUrl) {
     const src = hlsUrl;
-    const pageAttr = pageUrl ? ` data-page-src="${escapeHtml(pageUrl)}"` : "";
+    const pageAttr = pageUrl ? ` data-page-src="${escapeHtml(cameraEmbedUrl(pageUrl))}"` : "";
     const posterAttr = poster ? ` poster="${escapeHtml(poster)}"` : "";
     return `
       <video data-camera-video muted playsinline autoplay preload="auto" disablepictureinpicture crossorigin="anonymous"${posterAttr} data-src="${escapeHtml(src)}"${pageAttr}></video>
@@ -1945,14 +1972,11 @@ function cameraMediaHtml(device: DeviceRecord | null): string {
       <div class="win-camera-media-message" data-camera-media-message hidden></div>
     `;
   }
-  if (pageUrl) {
-    return `
-      <iframe class="win-camera-fallback-frame" data-camera-iframe src="${escapeHtml(pageUrl)}" allow="autoplay; camera; microphone; fullscreen" referrerpolicy="no-referrer"></iframe>
-      <div class="win-camera-media-message" data-camera-media-message hidden></div>
-    `;
-  }
   if (poster) {
     return `<img src="${escapeHtml(poster)}" alt="${escapeHtml(device?.label || "Kamera Raspberry")}" data-camera-image crossorigin="anonymous">`;
+  }
+  if (device && !deviceIsOnline(device)) {
+    return `<img src="${escapeHtml(FALLBACK_IMAGE_URL)}" alt="Snapshot kamera offline" data-camera-image crossorigin="anonymous">`;
   }
   if (device?.webrtcEnabled || device?.cameraMode === "webrtc") {
     return `<div class="win-camera-placeholder">${cameraLargeIcon()}<span>WebRTC Raspberry menunggu URL publik atau signaling aktif.</span></div>`;
@@ -2014,7 +2038,6 @@ function setupCameraSurface(): void {
       }
     }
   }
-  startBrowserYolo(frame);
   syncFullscreenButtons();
 }
 
@@ -2107,7 +2130,7 @@ function showCameraFrameFallback(video: HTMLVideoElement, message: string): void
   const frame = video.closest<HTMLElement>("[data-camera-frame]");
   const iframe = frame?.querySelector<HTMLIFrameElement>("[data-camera-iframe]");
   const messageEl = frame?.querySelector<HTMLElement>("[data-camera-media-message]");
-  const pageUrl = usablePublicMediaUrl(video.dataset.pageSrc) || hlsPageUrl(video.dataset.src || "");
+  const pageUrl = cameraEmbedUrl(usablePublicMediaUrl(video.dataset.pageSrc) || hlsPageUrl(video.dataset.src || ""));
   if (!frame || !iframe || !pageUrl) {
     if (messageEl) {
       messageEl.hidden = false;
@@ -2173,6 +2196,8 @@ function resetCameraRuntime(): void {
   state.browserYoloStatus = "idle";
   state.browserYoloNote = "";
   state.browserYoloSourceKey = "";
+  state.browserYoloLastSnapshotKey = "";
+  state.browserYoloLastSnapshotAt = 0;
   if (state.hlsInstance?.destroy) {
     try { state.hlsInstance.destroy(); } catch { /* ignore */ }
   }
@@ -2187,10 +2212,11 @@ function startBrowserYolo(frame: HTMLElement): void {
   state.browserYoloNote = "Menunggu frame video live...";
   const tick = () => {
     if (state.browserYoloSourceKey !== sourceKey || !document.body.contains(frame)) return;
+    if (frame.dataset.aiOpen !== "true") return;
     void processBrowserYoloFrame(frame);
   };
   tick();
-  state.browserYoloTimer = window.setInterval(tick, 1800);
+  state.browserYoloTimer = window.setInterval(tick, 4500);
 }
 
 async function processBrowserYoloFrame(frame: HTMLElement): Promise<void> {
@@ -2199,9 +2225,11 @@ async function processBrowserYoloFrame(frame: HTMLElement): Promise<void> {
   try {
     const frameSource = await browserYoloSource(frame);
     if (!frameSource) {
-      state.browserYoloStatus = "no-frame";
-      state.browserYoloNote = "Menunggu frame video live...";
+      const hasCachedDetections = Boolean(state.device?.detections?.length && state.device.detectorFrameWidth && state.device.detectorFrameHeight);
+      state.browserYoloStatus = hasCachedDetections ? "online" : "no-frame";
+      state.browserYoloNote = hasCachedDetections ? "AI memakai hasil snapshot terakhir..." : "Menunggu frame video live...";
       clearYoloCanvas(frame);
+      drawExistingCameraDetections(frame, state.device);
       updateCameraAiPanel();
       return;
     }
@@ -2213,7 +2241,7 @@ async function processBrowserYoloFrame(frame: HTMLElement): Promise<void> {
     state.browserYoloNote = result.note;
     if (result.status === "online") {
       const canvas = frame.querySelector<HTMLCanvasElement>("[data-camera-yolo-canvas]");
-      if (canvas && frameSource.drawOverlay) drawYoloDetections(canvas, result.detections, result.frameWidth, result.frameHeight);
+      if (canvas) drawYoloDetections(canvas, result.detections, result.frameWidth, result.frameHeight);
       else clearYoloCanvas(frame);
       applyBrowserYoloResult(result);
       updateCameraSummary();
@@ -2235,7 +2263,13 @@ async function browserYoloSource(frame: HTMLElement): Promise<{ source: HTMLVide
   }
   const image = frame.querySelector<HTMLImageElement>("[data-camera-image]");
   if (image?.complete && image.naturalWidth && image.naturalHeight) return { source: image, drawOverlay: true };
-  const snapshot = latestCameraSnapshot(state.device);
+  const snapshot = latestCameraAnalysisSnapshot(state.device);
+  const snapshotKey = snapshot ? `${snapshot.slice(0, 96)}:${snapshot.length}` : "";
+  if (snapshotKey && state.browserYoloLastSnapshotKey === snapshotKey && Date.now() - state.browserYoloLastSnapshotAt < 15000) return null;
+  if (snapshotKey) {
+    state.browserYoloLastSnapshotKey = snapshotKey;
+    state.browserYoloLastSnapshotAt = Date.now();
+  }
   const source = snapshot ? await loadImageSource(snapshot) : null;
   return source ? { source, drawOverlay: false } : null;
 }
@@ -2244,6 +2278,17 @@ function clearYoloCanvas(frame: HTMLElement): void {
   const canvas = frame.querySelector<HTMLCanvasElement>("[data-camera-yolo-canvas]");
   const ctx = canvas?.getContext("2d");
   if (canvas && ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+}
+
+function drawExistingCameraDetections(frame: HTMLElement, device: DeviceRecord | null): void {
+  const canvas = frame.querySelector<HTMLCanvasElement>("[data-camera-yolo-canvas]");
+  if (!canvas || !device?.detections?.length || !device.detectorFrameWidth || !device.detectorFrameHeight) return;
+  const detections = device.detections.filter((det) => detectionBoxIsUsable(det, device.detectorFrameWidth || 0, device.detectorFrameHeight || 0));
+  if (!detections.length) {
+    clearYoloCanvas(frame);
+    return;
+  }
+  drawYoloDetections(canvas, detections, device.detectorFrameWidth, device.detectorFrameHeight);
 }
 
 function applyBrowserYoloResult(result: BrowserYoloResult): void {
@@ -2427,6 +2472,15 @@ function setAiOpen(open: boolean): void {
   const panel = frame.querySelector<HTMLElement>("[data-camera-ai-panel]");
   if (panel) panel.style.transform = "";
   frame.dataset.aiOpen = open ? "true" : "false";
+  if (open) {
+    drawExistingCameraDetections(frame, state.device);
+    startBrowserYolo(frame);
+  } else {
+    window.clearInterval(state.browserYoloTimer);
+    state.browserYoloTimer = 0;
+    state.browserYoloBusy = false;
+    clearYoloCanvas(frame);
+  }
   updateCameraAiPanel();
 }
 
@@ -2749,7 +2803,7 @@ function normalizeDetections(raw: unknown): YoloDetection[] {
     if (!item || typeof item !== "object") return [];
     const record = item as Record<string, unknown>;
     const label = stringValue(record.label);
-    const confidence = clamp(finiteNumber(record.confidence) ?? 0, 0, 1);
+    const confidence = normalizeDetectionConfidence(finiteNumber(record.confidence) ?? 0);
     const x = Math.max(0, finiteNumber(record.x) ?? 0);
     const y = Math.max(0, finiteNumber(record.y) ?? 0);
     const width = Math.max(0, finiteNumber(record.width) ?? 0);
@@ -2757,7 +2811,34 @@ function normalizeDetections(raw: unknown): YoloDetection[] {
     if (!label || confidence <= 0 || width <= 0 || height <= 0) return [];
     const key = label.trim().toLowerCase();
     return [{ label, confidence, vehicle: typeof record.vehicle === "boolean" ? record.vehicle : VEHICLE_LABELS.has(key), x, y, width, height }];
-  });
+  }).filter((det) => detectionBoxIsUsable(det, Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER));
+}
+
+function normalizeDetectionConfidence(value: number): number {
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  if (value <= 1) return value;
+  if (value <= 100) return clamp(value / 100, 0, 1);
+  return 1;
+}
+
+function detectionBoxIsUsable(det: YoloDetection, frameWidth: number, frameHeight: number): boolean {
+  if (![det.x, det.y, det.width, det.height, frameWidth, frameHeight].every(Number.isFinite)) return false;
+  if (frameWidth <= 0 || frameHeight <= 0 || det.width < 3 || det.height < 3) return false;
+  if (det.x >= frameWidth || det.y >= frameHeight || det.x + det.width <= 0 || det.y + det.height <= 0) return false;
+  if (frameWidth === Number.MAX_SAFE_INTEGER || frameHeight === Number.MAX_SAFE_INTEGER) return true;
+  const widthRatio = det.width / frameWidth;
+  const heightRatio = det.height / frameHeight;
+  const aspect = det.width / Math.max(1, det.height);
+  if (widthRatio > 0.82 || heightRatio > 0.82) return false;
+  if (widthRatio > 0.54 && heightRatio > 0.18) return false;
+  if (heightRatio > 0.54 && widthRatio > 0.18) return false;
+  if ((det.x <= 2 || det.y <= 2) && (widthRatio > 0.04 || heightRatio > 0.04)) return false;
+  if (aspect > 5.2 || aspect < 0.18) return false;
+  const areaRatio = (det.width * det.height) / Math.max(1, frameWidth * frameHeight);
+  if (areaRatio > 0.22) return false;
+  if (det.width > frameWidth * 0.96 && det.height > frameHeight * 0.48) return false;
+  if (det.height > frameHeight * 0.96 && det.width > frameWidth * 0.48) return false;
+  return true;
 }
 
 function normalizeCameraDataset(raw: unknown): TrafficCameraDataset | undefined {
@@ -2834,14 +2915,14 @@ function objectSummary(detections: YoloDetection[], fallbackOthers: number): str
 
 function cameraStatusText(device: DeviceRecord | null): string {
   if (!device) return "menunggu sinkronisasi kamera";
-  if (!deviceIsOnline(device)) {
-    return `Raspberry offline - terakhir ${formatAge(device.lastSeen)}${device.lastSeenText ? ` (${device.lastSeenText})` : ""}`;
-  }
   if (isWebRtcSignalingCamera(device)) return state.webrtc.status === "live" ? "WebRTC live" : "WebRTC Firebase signaling";
   const url = publicCameraUrl(device) || publicCameraHlsUrl(device);
   if (url) {
     const host = cameraHostLabel(url);
     return host ? `stream ${host}` : "stream kamera aktif";
+  }
+  if (!deviceIsOnline(device)) {
+    return `Raspberry offline - terakhir ${formatAge(device.lastSeen)}${device.lastSeenText ? ` (${device.lastSeenText})` : ""}`;
   }
   if (device.webrtcEnabled || device.cameraMode === "webrtc") return "WebRTC Firebase signaling";
   return "URL kamera belum dikirim Raspberry";
@@ -2886,6 +2967,16 @@ function latestCameraSnapshot(device: DeviceRecord | null): string {
     || "";
 }
 
+function latestCameraAnalysisSnapshot(device: DeviceRecord | null): string {
+  const dataset = device?.cameraDataset;
+  if (dataset?.source === "browser-yolo" && dataset.snapshot2Url?.trim()) {
+    return dataset.snapshot2Url.trim();
+  }
+  return dataset?.snapshot2Url?.trim()
+    || dataset?.snapshot1Url?.trim()
+    || (/browser-yolo/i.test(device?.trafficSource || "") ? "" : device?.cameraThumbnailUrl?.trim() || "");
+}
+
 function hlsPlaylistUrl(url: string): string {
   const clean = url.trim();
   if (!clean) return "";
@@ -2908,6 +2999,21 @@ function hlsPageUrl(url: string): string {
     return "";
   }
   return "";
+}
+
+function cameraEmbedUrl(value: string): string {
+  if (!value || isLikelyImageUrl(value)) return value;
+  try {
+    const url = new URL(value, window.location.href);
+    url.searchParams.set("controls", "false");
+    url.searchParams.set("muted", "true");
+    url.searchParams.set("autoplay", "true");
+    url.searchParams.set("playsinline", "true");
+    url.searchParams.set("disablepictureinpicture", "true");
+    return url.toString();
+  } catch {
+    return value;
+  }
 }
 
 function isLikelyHlsUrl(url: string): boolean {

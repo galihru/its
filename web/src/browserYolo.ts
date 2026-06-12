@@ -40,7 +40,7 @@ type ImageSource = HTMLVideoElement | HTMLImageElement | HTMLCanvasElement | Ima
 
 const YOLO_INPUT_SIZE = 640;
 const YOLO_CAPTURE_MAX_EDGE = 960;
-const YOLO_CONFIDENCE = 0.25;
+const YOLO_CONFIDENCE = 0.45;
 const YOLO_NMS = 0.45;
 const YOLO_MAX_DETECTIONS = 80;
 const ORT_WASM_VERSION = "1.26.0-dev.20260416-b7804b056c";
@@ -292,6 +292,13 @@ export async function publishBrowserYoloResult(
     vehicleBreakdown: result.vehicleBreakdown,
     detections: compactDetections,
     cameraThumbnailUrl: result.annotatedThumbnailUrl || result.rawThumbnailUrl || "",
+    cameraDataset: {
+      path: datasetPath,
+      source: "browser-yolo",
+      updatedAt: result.updatedAt,
+      snapshot1Url: result.annotatedThumbnailUrl || result.rawThumbnailUrl || "",
+      snapshot2Url: result.rawThumbnailUrl || result.annotatedThumbnailUrl || "",
+    },
     trafficSource: `adaptive-browser-yolo-${trafficLevel}`,
   };
   await Promise.all([
@@ -454,12 +461,12 @@ function parseSixAttributeOutput(
     const a3 = read(data, index(row, 3));
     const a4 = read(data, index(row, 4));
     const a5 = read(data, index(row, 5));
-    const pair = isClassId(a5) && isScore(a4) ? [Math.round(a5), a4]
-      : isClassId(a4) && isScore(a5) ? [Math.round(a4), a5]
+    const pair = isClassId(a5) && isProbabilityScore(a4) ? [Math.round(a5), a4]
+      : isClassId(a4) && isProbabilityScore(a5) ? [Math.round(a4), a5]
         : null;
     if (!pair) continue;
     const [classId, rawScore] = pair;
-    const score = normalizeScore(rawScore);
+    const score = clamp(rawScore, 0, 1);
     if (score < YOLO_CONFIDENCE) continue;
     const label = COCO_LABELS[classId] || `class-${classId}`;
     const detection = a2 > a0 && a3 > a1
@@ -545,13 +552,14 @@ function isClassId(value: number): boolean {
   return Math.abs(value - rounded) <= 0.001 && rounded >= 0 && rounded < COCO_LABELS.length;
 }
 
-function isScore(value: number): boolean {
-  return Number.isFinite(value);
+function isProbabilityScore(value: number): boolean {
+  return Number.isFinite(value) && value >= 0 && value <= 1.05;
 }
 
 function normalizeScore(value: number): number {
   if (!Number.isFinite(value)) return 0;
   if (value >= 0 && value <= 1) return value;
+  if (value > 1 && value <= 100) return value / 100;
   if (value > -50 && value < 50) return 1 / (1 + Math.exp(-value));
   return value > 0 ? 1 : 0;
 }
@@ -564,8 +572,16 @@ function boxIsReasonable(x: number, y: number, width: number, height: number, fr
   if (![x, y, width, height, frameWidth, frameHeight].every(Number.isFinite)) return false;
   if (width < 2 || height < 2 || frameWidth <= 0 || frameHeight <= 0) return false;
   if (x + width <= 0 || y + height <= 0 || x >= frameWidth || y >= frameHeight) return false;
+  const widthRatio = width / frameWidth;
+  const heightRatio = height / frameHeight;
+  const aspect = width / Math.max(1, height);
+  if (widthRatio > 0.82 || heightRatio > 0.82) return false;
+  if (widthRatio > 0.54 && heightRatio > 0.18) return false;
+  if (heightRatio > 0.54 && widthRatio > 0.18) return false;
+  if ((x <= 2 || y <= 2) && (widthRatio > 0.04 || heightRatio > 0.04)) return false;
+  if (aspect > 5.2 || aspect < 0.18) return false;
   const areaRatio = (width * height) / Math.max(1, frameWidth * frameHeight);
-  if (areaRatio > 0.86) return false;
+  if (areaRatio > 0.22) return false;
   if (width > frameWidth * 0.99 && height > frameHeight * 0.62) return false;
   if (height > frameHeight * 0.99 && width > frameWidth * 0.62) return false;
   return true;
