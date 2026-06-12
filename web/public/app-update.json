@@ -3,18 +3,18 @@
   "appName": "ITS Maps",
   "ownerName": "Hanifa Septhi Larasati",
   "institution": "Telkom University",
-  "versionCode": 14,
-  "versionName": "1.0.14",
-  "windowsUrl": "https://itstelkom.web.app/artifacts/apps/ITS-Maps-Windows-Custom-Setup-1.0.14-x64.download",
-  "desktopUrl": "https://itstelkom.web.app/artifacts/apps/ITS-Maps-Windows-Custom-Setup-1.0.14-x64.download",
+  "versionCode": 16,
+  "versionName": "1.0.16",
+  "windowsUrl": "https://itstelkom.web.app/artifacts/apps/ITS-Maps-Windows-Custom-Setup-1.0.16-x64.download",
+  "desktopUrl": "https://itstelkom.web.app/artifacts/apps/ITS-Maps-Windows-Custom-Setup-1.0.16-x64.download",
   "pwaUrl": "https://itstelkom.web.app/",
   "logoUrl": "https://itstelkom.web.app/favicon.svg",
-  "updatedAt": "2026-06-12T15:58:00+07:00",
+  "updatedAt": "2026-06-12T18:42:57+07:00",
   "force": false,
   "autoDownload": true,
   "releaseNotes": [
-    "Memperbaiki GPS Windows agar tombol lokasi memakai Windows Location Service dan bergerak berkala di aplikasi .exe.",
-    "Menambahkan cache vision 2D lokal, legend simbol peta, label jalan mengikuti arah, dan label sungai/kanal.",
-    "Menyiapkan installer Windows 1.0.14 dan artifact .download untuk update otomatis tanpa uninstall."
+    "Memprioritaskan WebRTC Firebase signaling saat device kamera memakai mode WebRTC agar app tidak membuka tunnel HLS yang sedang 503.",
+    "Menambahkan WebRTC player di Windows renderer, status timeout yang jelas, custom video controls, ambient light, dan panel AI fullscreen flex dengan Gaussian blur.",
+    "Menambahkan background update check saat login Windows sehingga notifikasi dan auto-install update bisa berjalan walau jendela ITS Maps tidak dibuka."
   ]
 }

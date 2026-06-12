@@ -1,8 +1,8 @@
 {
   "name": "its-maps-web",
   "private": true,
-  "version": "1.0.14",
-  "productName": "ITS Maps Windows",
+  "version": "1.0.16",
+  "productName": "ITS Maps",
   "description": "Aplikasi Windows ITS Maps untuk sinkronisasi Raspberry Pi, website, peta realtime, grafik lalu lintas, kamera, dan auto-update.",
   "author": {
     "name": "Hanifa Septhi Larasati - Telkom University"
@@ -37,7 +37,7 @@
   },
   "build": {
     "appId": "id.ac.telkomuniversity.its.maps.windows",
-    "productName": "ITS Maps Windows",
+    "productName": "ITS Maps",
     "copyright": "Copyright (c) 2026 Hanifa Septhi Larasati - Telkom University",
     "asar": true,
     "files": [
@@ -72,8 +72,8 @@
         }
       ],
       "icon": "build/icon.ico",
-      "executableName": "ITS Maps Windows",
-      "legalTrademarks": "ITS Maps Windows - Hanifa Septhi Larasati - Telkom University",
+      "executableName": "ITS Maps",
+      "legalTrademarks": "ITS Maps - Hanifa Septhi Larasati - Telkom University",
       "requestedExecutionLevel": "asInvoker"
     },
     "nsis": {
@@ -84,7 +84,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "ITS Maps Windows",
+      "shortcutName": "ITS Maps",
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
       "installerHeaderIcon": "build/icon.ico",
@@ -92,7 +92,7 @@
       "installerSidebar": "build/installerSidebar.bmp",
       "uninstallerSidebar": "build/uninstallerSidebar.bmp",
       "include": "build/installer.nsh",
-      "uninstallDisplayName": "ITS Maps Windows",
+      "uninstallDisplayName": "ITS Maps",
       "language": "1057",
       "installerLanguages": [
         "id_ID"
@@ -105,7 +105,7 @@
     },
     "extraMetadata": {
       "name": "its-maps-windows",
-      "version": "1.0.14"
+      "version": "1.0.16"
     }
   }
 }
