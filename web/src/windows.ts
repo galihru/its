@@ -1924,6 +1924,7 @@ function cameraSurfaceHtml(device: DeviceRecord | null): string {
 function cameraMediaHtml(device: DeviceRecord | null): string {
   const url = publicCameraUrl(device);
   const hlsUrl = publicCameraHlsUrl(device);
+  const pageUrl = publicCameraPageUrl(device);
   const poster = latestCameraSnapshot(device);
   if (device && !deviceIsOnline(device)) {
     return `<img src="${escapeHtml(poster || FALLBACK_IMAGE_URL)}" alt="Snapshot kamera offline" data-camera-image crossorigin="anonymous">`;
@@ -1934,13 +1935,19 @@ function cameraMediaHtml(device: DeviceRecord | null): string {
   if (url && isLikelyImageUrl(url)) {
     return `<img src="${escapeHtml(url)}" alt="${escapeHtml(device?.label || "Kamera Raspberry")}" data-camera-image crossorigin="anonymous">`;
   }
-  if (url || hlsUrl) {
-    const src = hlsUrl || url;
-    const pageAttr = url ? ` data-page-src="${escapeHtml(url)}"` : "";
+  if (hlsUrl) {
+    const src = hlsUrl;
+    const pageAttr = pageUrl ? ` data-page-src="${escapeHtml(pageUrl)}"` : "";
     const posterAttr = poster ? ` poster="${escapeHtml(poster)}"` : "";
     return `
       <video data-camera-video muted playsinline autoplay preload="auto" disablepictureinpicture crossorigin="anonymous"${posterAttr} data-src="${escapeHtml(src)}"${pageAttr}></video>
       <iframe class="win-camera-fallback-frame" data-camera-iframe hidden src="about:blank" allow="autoplay; camera; microphone; fullscreen" referrerpolicy="no-referrer"></iframe>
+      <div class="win-camera-media-message" data-camera-media-message hidden></div>
+    `;
+  }
+  if (pageUrl) {
+    return `
+      <iframe class="win-camera-fallback-frame" data-camera-iframe src="${escapeHtml(pageUrl)}" allow="autoplay; camera; microphone; fullscreen" referrerpolicy="no-referrer"></iframe>
       <div class="win-camera-media-message" data-camera-media-message hidden></div>
     `;
   }
@@ -1994,7 +2001,18 @@ function setupCameraSurface(): void {
     startCameraAmbient(video, surface);
   } else {
     const image = frame.querySelector<HTMLImageElement>("[data-camera-image]");
-    syncImageAmbient(surface, image, "camera");
+    const iframe = frame.querySelector<HTMLIFrameElement>("[data-camera-iframe]");
+    if (image) syncImageAmbient(surface, image, "camera");
+    else if (iframe) {
+      const poster = latestCameraSnapshot(state.device);
+      const ambientImage = poster ? new Image() : null;
+      if (ambientImage) {
+        ambientImage.src = poster;
+        syncImageAmbient(surface, ambientImage, "camera");
+      } else {
+        applyAmbientColors(surface, "camera", { r: 85, g: 142, b: 255 }, { r: 68, g: 218, b: 177 });
+      }
+    }
   }
   startBrowserYolo(frame);
   syncFullscreenButtons();
@@ -2089,9 +2107,8 @@ function showCameraFrameFallback(video: HTMLVideoElement, message: string): void
   const frame = video.closest<HTMLElement>("[data-camera-frame]");
   const iframe = frame?.querySelector<HTMLIFrameElement>("[data-camera-iframe]");
   const messageEl = frame?.querySelector<HTMLElement>("[data-camera-media-message]");
-  const pageUrl = usablePublicMediaUrl(video.dataset.pageSrc);
-  const hls = isLikelyHlsUrl(video.dataset.src || "");
-  if (!frame || !iframe || !pageUrl || hls) {
+  const pageUrl = usablePublicMediaUrl(video.dataset.pageSrc) || hlsPageUrl(video.dataset.src || "");
+  if (!frame || !iframe || !pageUrl) {
     if (messageEl) {
       messageEl.hidden = false;
       messageEl.textContent = message;
@@ -2180,8 +2197,8 @@ async function processBrowserYoloFrame(frame: HTMLElement): Promise<void> {
   if (state.browserYoloBusy) return;
   state.browserYoloBusy = true;
   try {
-    const source = await browserYoloSource(frame);
-    if (!source) {
+    const frameSource = await browserYoloSource(frame);
+    if (!frameSource) {
       state.browserYoloStatus = "no-frame";
       state.browserYoloNote = "Menunggu frame video live...";
       clearYoloCanvas(frame);
@@ -2191,12 +2208,13 @@ async function processBrowserYoloFrame(frame: HTMLElement): Promise<void> {
     state.browserYoloStatus = state.browserYoloStatus === "online" ? "online" : "loading";
     state.browserYoloNote = "YOLO ONNX memproses frame...";
     updateCameraAiPanel();
-    const result = await runBrowserYolo(source);
+    const result = await runBrowserYolo(frameSource.source);
     state.browserYoloStatus = result.status;
     state.browserYoloNote = result.note;
     if (result.status === "online") {
       const canvas = frame.querySelector<HTMLCanvasElement>("[data-camera-yolo-canvas]");
-      if (canvas) drawYoloDetections(canvas, result.detections, result.frameWidth, result.frameHeight);
+      if (canvas && frameSource.drawOverlay) drawYoloDetections(canvas, result.detections, result.frameWidth, result.frameHeight);
+      else clearYoloCanvas(frame);
       applyBrowserYoloResult(result);
       updateCameraSummary();
       updateCameraAiPanel();
@@ -2210,15 +2228,16 @@ async function processBrowserYoloFrame(frame: HTMLElement): Promise<void> {
   }
 }
 
-async function browserYoloSource(frame: HTMLElement): Promise<HTMLVideoElement | HTMLImageElement | null> {
+async function browserYoloSource(frame: HTMLElement): Promise<{ source: HTMLVideoElement | HTMLImageElement; drawOverlay: boolean } | null> {
   const video = frame.querySelector<HTMLVideoElement>("[data-camera-video]");
   if (video && !video.classList.contains("fallback-hidden") && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && video.videoWidth && video.videoHeight) {
-    return video;
+    return { source: video, drawOverlay: true };
   }
   const image = frame.querySelector<HTMLImageElement>("[data-camera-image]");
-  if (image?.complete && image.naturalWidth && image.naturalHeight) return image;
+  if (image?.complete && image.naturalWidth && image.naturalHeight) return { source: image, drawOverlay: true };
   const snapshot = latestCameraSnapshot(state.device);
-  return snapshot ? loadImageSource(snapshot) : null;
+  const source = snapshot ? await loadImageSource(snapshot) : null;
+  return source ? { source, drawOverlay: false } : null;
 }
 
 function clearYoloCanvas(frame: HTMLElement): void {
@@ -2287,7 +2306,7 @@ function toYoloDetection(det: BrowserYoloDetection): YoloDetection {
 
 function publishBrowserYoloIfNeeded(result: BrowserYoloResult): void {
   const device = state.device;
-  if (!device || Date.now() - state.browserYoloLastPublishAt < 5000) return;
+  if (!device || Date.now() - state.browserYoloLastPublishAt < 12000) return;
   state.browserYoloLastPublishAt = Date.now();
   const cameraUrl = cameraSourceForYolo(device);
   void publishBrowserYoloResult(firebaseRootUrl(), device.id, state.clientId, cameraUrl, result)
@@ -2849,9 +2868,15 @@ function publicCameraUrl(device: DeviceRecord | null): string {
 
 function publicCameraHlsUrl(device: DeviceRecord | null): string {
   const explicit = usablePublicMediaUrl(device?.cameraHlsUrl);
-  if (explicit) return explicit;
+  if (explicit) return hlsPlaylistUrl(explicit);
   const url = publicCameraUrl(device);
   return url && isLikelyHlsUrl(url) ? hlsPlaylistUrl(url) : "";
+}
+
+function publicCameraPageUrl(device: DeviceRecord | null): string {
+  const url = publicCameraUrl(device);
+  if (url && !isLikelyHlsUrl(url)) return hlsPageUrl(url) || url;
+  return hlsPageUrl(publicCameraHlsUrl(device));
 }
 
 function latestCameraSnapshot(device: DeviceRecord | null): string {
@@ -2863,14 +2888,30 @@ function latestCameraSnapshot(device: DeviceRecord | null): string {
 
 function hlsPlaylistUrl(url: string): string {
   const clean = url.trim();
+  if (!clean) return "";
   if (/\.m3u8(\?|$)/i.test(clean)) return clean;
   const [base, query = ""] = clean.split("?");
   const playlist = `${base.replace(/\/?$/, "/")}index.m3u8`;
   return query ? `${playlist}?${query}` : playlist;
 }
 
+function hlsPageUrl(url: string): string {
+  if (!url) return "";
+  try {
+    const parsed = new URL(url, window.location.href);
+    if (/\/index\.m3u8$/i.test(parsed.pathname)) {
+      parsed.pathname = parsed.pathname.replace(/index\.m3u8$/i, "");
+      parsed.search = "";
+      return parsed.toString();
+    }
+  } catch {
+    return "";
+  }
+  return "";
+}
+
 function isLikelyHlsUrl(url: string): boolean {
-  return /\.m3u8(\?|$)/i.test(url) || /\/cam\/?(\?|$)/i.test(url);
+  return /\.m3u8(\?|$)/i.test(url);
 }
 
 function isLikelyImageUrl(url: string): boolean {
@@ -2878,7 +2919,7 @@ function isLikelyImageUrl(url: string): boolean {
 }
 
 function isWebRtcSignalingCamera(device: DeviceRecord | null): boolean {
-  return Boolean(device && deviceIsOnline(device) && (device.cameraMode === "webrtc" || device.webrtcEnabled || device.cameraReady));
+  return Boolean(device && deviceIsOnline(device) && !publicCameraPageUrl(device) && !publicCameraHlsUrl(device) && (device.cameraMode === "webrtc" || device.webrtcEnabled || device.cameraReady));
 }
 
 function webRtcSignalPath(device: DeviceRecord): string {

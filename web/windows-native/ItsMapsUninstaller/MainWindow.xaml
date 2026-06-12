@@ -133,7 +133,7 @@
       <Grid Height="72" VerticalAlignment="Top" MouseLeftButtonDown="OnTitleBarMouseDown">
         <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="48,0,0,0">
           <Image Source="pack://application:,,,/Assets/logo.png" Width="42" Height="42" Stretch="Uniform" Margin="0,0,14,0" />
-          <TextBlock Text="ITS Maps Windows Setup"
+          <TextBlock Text="ITS Maps Setup"
                      Foreground="White"
                      FontFamily="Segoe UI"
                      FontSize="27"
@@ -228,7 +228,7 @@
                        FontSize="18"
                        FontWeight="SemiBold"
                        Foreground="#06123d" />
-            <TextBlock Text="ITS Maps Windows"
+            <TextBlock Text="ITS Maps"
                        Margin="0,16,0,0"
                        FontFamily="Segoe UI"
                        FontSize="22"
@@ -369,7 +369,7 @@
           <Border Width="104" Height="104" CornerRadius="52" Background="#2ccb6f" HorizontalAlignment="Center" Margin="0,0,0,28">
             <TextBlock Text="&#xE73E;" FontFamily="Segoe MDL2 Assets" FontSize="54" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
           </Border>
-          <TextBlock Text="ITS Maps Windows telah berhasil dihapus dari komputer Anda."
+          <TextBlock Text="ITS Maps telah berhasil dihapus dari komputer Anda."
                      FontFamily="Segoe UI"
                      FontSize="24"
                      FontWeight="SemiBold"
@@ -387,7 +387,7 @@
         </StackPanel>
       </Grid>
 
-      <TextBlock Text="ITS Maps Windows 1.0.14"
+      <TextBlock Text="ITS Maps"
                  HorizontalAlignment="Left"
                  VerticalAlignment="Bottom"
                  Margin="72,0,0,42"

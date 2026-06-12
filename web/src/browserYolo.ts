@@ -39,7 +39,8 @@ type OrtSession = Awaited<ReturnType<typeof import("onnxruntime-web").InferenceS
 type ImageSource = HTMLVideoElement | HTMLImageElement | HTMLCanvasElement | ImageBitmap;
 
 const YOLO_INPUT_SIZE = 640;
-const YOLO_CONFIDENCE = 0.12;
+const YOLO_CAPTURE_MAX_EDGE = 960;
+const YOLO_CONFIDENCE = 0.25;
 const YOLO_NMS = 0.45;
 const YOLO_MAX_DETECTIONS = 80;
 const ORT_WASM_VERSION = "1.26.0-dev.20260416-b7804b056c";
@@ -107,31 +108,51 @@ export function drawYoloDetections(
     canvas.height = targetHeight;
   }
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  const scaleX = canvas.width / frameWidth;
-  const scaleY = canvas.height / frameHeight;
+  const fit = canvas.dataset.yoloFit === "contain" ? "contain" : "cover";
+  const scale = fit === "contain"
+    ? Math.min(canvas.width / frameWidth, canvas.height / frameHeight)
+    : Math.max(canvas.width / frameWidth, canvas.height / frameHeight);
+  const drawnWidth = frameWidth * scale;
+  const drawnHeight = frameHeight * scale;
+  const offsetX = (canvas.width - drawnWidth) / 2;
+  const offsetY = (canvas.height - drawnHeight) / 2;
   ctx.lineWidth = Math.max(2, 2 * ratio);
   ctx.font = `${Math.max(11, 11 * ratio)}px Segoe UI, Arial, sans-serif`;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, canvas.width, canvas.height);
+  ctx.clip();
   detections.slice(0, 18).forEach((det) => {
-    const x = det.x * scaleX;
-    const y = det.y * scaleY;
-    const w = det.width * scaleX;
-    const h = det.height * scaleY;
+    if (!isRenderableDetection(det, frameWidth, frameHeight)) return;
+    const x = det.x * scale + offsetX;
+    const y = det.y * scale + offsetY;
+    const w = det.width * scale;
+    const h = det.height * scale;
+    const left = clamp(x, 0, canvas.width);
+    const top = clamp(y, 0, canvas.height);
+    const right = clamp(x + w, 0, canvas.width);
+    const bottom = clamp(y + h, 0, canvas.height);
+    const boxWidth = right - left;
+    const boxHeight = bottom - top;
+    if (boxWidth < 5 * ratio || boxHeight < 5 * ratio) return;
     const vehicle = Boolean(det.vehicle || VEHICLE_LABELS.has(det.label.toLowerCase()));
     const stroke = vehicle ? "#37dd86" : "#36d7ff";
     const fill = vehicle ? "rgba(16, 185, 129, 0.92)" : "rgba(14, 116, 144, 0.92)";
-    const text = `${det.label} ${Math.round(det.confidence * 100)}%`;
-    const labelWidth = Math.min(ctx.measureText(text).width + 12 * ratio, canvas.width - x);
+    const confidence = clamp(det.confidence, 0, 1);
+    const text = `${det.label} ${Math.round(confidence * 100)}%`;
+    const labelWidth = Math.min(ctx.measureText(text).width + 12 * ratio, Math.max(58 * ratio, canvas.width - left));
     const labelHeight = 20 * ratio;
     ctx.strokeStyle = stroke;
     ctx.shadowColor = "rgba(0,0,0,0.52)";
     ctx.shadowBlur = 7 * ratio;
-    ctx.strokeRect(x, y, w, h);
+    ctx.strokeRect(left, top, boxWidth, boxHeight);
     ctx.shadowBlur = 0;
     ctx.fillStyle = fill;
-    ctx.fillRect(x, Math.max(0, y - labelHeight), Math.max(58 * ratio, labelWidth), labelHeight);
+    ctx.fillRect(left, Math.max(0, top - labelHeight), Math.max(58 * ratio, labelWidth), labelHeight);
     ctx.fillStyle = "#fff";
-    ctx.fillText(text, x + 6 * ratio, Math.max(14 * ratio, y - 6 * ratio));
+    ctx.fillText(text, left + 6 * ratio, Math.max(14 * ratio, top - 6 * ratio));
   });
+  ctx.restore();
 }
 
 export async function runBrowserYolo(source: ImageSource): Promise<BrowserYoloResult> {
@@ -154,7 +175,7 @@ export async function runBrowserYolo(source: ImageSource): Promise<BrowserYoloRe
       YOLO_NMS,
     ).slice(0, YOLO_MAX_DETECTIONS);
     const breakdown = vehicleBreakdownFromYoloDetections(detections);
-    const rawThumbnailUrl = frame.canvas.toDataURL("image/jpeg", 0.68);
+    const rawThumbnailUrl = frame.canvas.toDataURL("image/jpeg", 0.56);
     const annotatedThumbnailUrl = annotatedSnapshot(frame.canvas, detections, frame.width, frame.height);
     const elapsed = Math.max(1, performance.now() - startedAt);
     return {
@@ -321,17 +342,20 @@ async function loadOrtModule(): Promise<OrtModule> {
 }
 
 function captureImageSource(source: ImageSource): { canvas: HTMLCanvasElement; imageData: ImageData; width: number; height: number } | null {
-  const width = source instanceof HTMLVideoElement
+  const sourceWidth = source instanceof HTMLVideoElement
     ? source.videoWidth
     : source instanceof HTMLImageElement
       ? source.naturalWidth || source.width
       : source.width;
-  const height = source instanceof HTMLVideoElement
+  const sourceHeight = source instanceof HTMLVideoElement
     ? source.videoHeight
     : source instanceof HTMLImageElement
       ? source.naturalHeight || source.height
       : source.height;
-  if (!width || !height) return null;
+  if (!sourceWidth || !sourceHeight) return null;
+  const scale = Math.min(1, YOLO_CAPTURE_MAX_EDGE / Math.max(sourceWidth, sourceHeight));
+  const width = Math.max(1, Math.round(sourceWidth * scale));
+  const height = Math.max(1, Math.round(sourceHeight * scale));
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
@@ -396,18 +420,21 @@ function parseRowsOutput(
     const cy = read(data, index(row, 1));
     const width = read(data, index(row, 2));
     const height = read(data, index(row, 3));
-    const objectness = hasObjectness ? read(data, index(row, 4)) : 1;
+    const objectness = hasObjectness ? normalizeScore(read(data, index(row, 4))) : 1;
     let bestClass = -1;
     let bestScore = 0;
     for (let attr = classStart; attr < attrs; attr += 1) {
-      const score = read(data, index(row, attr)) * objectness;
+      const score = normalizeScore(read(data, index(row, attr))) * objectness;
       if (score > bestScore) {
         bestScore = score;
         bestClass = attr - classStart;
       }
     }
     const label = COCO_LABELS[bestClass] || `class-${bestClass}`;
-    if (bestScore >= YOLO_CONFIDENCE) detections.push(toCenterDetection(label, bestScore, cx, cy, width, height, frameWidth, frameHeight));
+    if (bestScore >= YOLO_CONFIDENCE) {
+      const detection = toCenterDetection(label, bestScore, cx, cy, width, height, frameWidth, frameHeight);
+      if (detection) detections.push(detection);
+    }
   }
   return detections;
 }
@@ -431,41 +458,51 @@ function parseSixAttributeOutput(
       : isClassId(a4) && isScore(a5) ? [Math.round(a4), a5]
         : null;
     if (!pair) continue;
-    const [classId, score] = pair;
+    const [classId, rawScore] = pair;
+    const score = normalizeScore(rawScore);
     if (score < YOLO_CONFIDENCE) continue;
     const label = COCO_LABELS[classId] || `class-${classId}`;
-    detections.push(a2 > a0 && a3 > a1
+    const detection = a2 > a0 && a3 > a1
       ? toCornerDetection(label, score, a0, a1, a2, a3, frameWidth, frameHeight)
-      : toCenterDetection(label, score, a0, a1, a2, a3, frameWidth, frameHeight));
+      : toCenterDetection(label, score, a0, a1, a2, a3, frameWidth, frameHeight);
+    if (detection) detections.push(detection);
   }
   return detections;
 }
 
-function toCenterDetection(label: string, confidence: number, cx: number, cy: number, width: number, height: number, frameWidth: number, frameHeight: number): BrowserYoloDetection {
+function toCenterDetection(label: string, confidence: number, cx: number, cy: number, width: number, height: number, frameWidth: number, frameHeight: number): BrowserYoloDetection | null {
+  if (!rawBoxIsReasonable([cx, cy, width, height])) return null;
   const normalized = [cx, cy, width, height].every((value) => value >= 0 && value <= 1.5);
+  if (!normalized && (width > YOLO_INPUT_SIZE * 1.12 || height > YOLO_INPUT_SIZE * 1.12)) return null;
   const scaleX = normalized ? frameWidth : frameWidth / YOLO_INPUT_SIZE;
   const scaleY = normalized ? frameHeight : frameHeight / YOLO_INPUT_SIZE;
   const boxWidth = clamp(width * scaleX, 0, frameWidth);
   const boxHeight = clamp(height * scaleY, 0, frameHeight);
   const x = clamp((cx * scaleX) - boxWidth / 2, 0, frameWidth);
   const y = clamp((cy * scaleY) - boxHeight / 2, 0, frameHeight);
+  if (!boxIsReasonable(x, y, boxWidth, boxHeight, frameWidth, frameHeight)) return null;
   return normalizeDetection({ label, confidence, x, y, width: boxWidth, height: boxHeight });
 }
 
-function toCornerDetection(label: string, confidence: number, x1: number, y1: number, x2: number, y2: number, frameWidth: number, frameHeight: number): BrowserYoloDetection {
+function toCornerDetection(label: string, confidence: number, x1: number, y1: number, x2: number, y2: number, frameWidth: number, frameHeight: number): BrowserYoloDetection | null {
+  if (!rawBoxIsReasonable([x1, y1, x2, y2])) return null;
   const normalized = [x1, y1, x2, y2].every((value) => value >= 0 && value <= 1.5);
+  if (!normalized && [x1, y1, x2, y2].some((value) => value < -YOLO_INPUT_SIZE * 0.08 || value > YOLO_INPUT_SIZE * 1.08)) return null;
   const scaleX = normalized ? frameWidth : frameWidth / YOLO_INPUT_SIZE;
   const scaleY = normalized ? frameHeight : frameHeight / YOLO_INPUT_SIZE;
   const left = clamp(x1 * scaleX, 0, frameWidth);
   const top = clamp(y1 * scaleY, 0, frameHeight);
   const right = clamp(x2 * scaleX, 0, frameWidth);
   const bottom = clamp(y2 * scaleY, 0, frameHeight);
-  return normalizeDetection({ label, confidence, x: left, y: top, width: Math.max(0, right - left), height: Math.max(0, bottom - top) });
+  const width = Math.max(0, right - left);
+  const height = Math.max(0, bottom - top);
+  if (!boxIsReasonable(left, top, width, height, frameWidth, frameHeight)) return null;
+  return normalizeDetection({ label, confidence, x: left, y: top, width, height });
 }
 
 function normalizeDetection(det: BrowserYoloDetection): BrowserYoloDetection {
   const key = det.label.trim().toLowerCase();
-  return { ...det, vehicle: VEHICLE_LABELS.has(key) };
+  return { ...det, confidence: clamp(det.confidence, 0, 1), vehicle: VEHICLE_LABELS.has(key) };
 }
 
 function nonMaxSuppression(detections: BrowserYoloDetection[], threshold: number): BrowserYoloDetection[] {
@@ -485,7 +522,7 @@ function annotatedSnapshot(source: HTMLCanvasElement, detections: BrowserYoloDet
   if (!ctx) return source.toDataURL("image/jpeg", 0.68);
   ctx.drawImage(source, 0, 0, frameWidth, frameHeight);
   drawYoloDetections(canvas, detections, frameWidth, frameHeight);
-  return canvas.toDataURL("image/jpeg", 0.72);
+  return canvas.toDataURL("image/jpeg", 0.62);
 }
 
 function firebasePatch(rootUrl: string, path: string, payload: unknown): Promise<void> {
@@ -509,7 +546,33 @@ function isClassId(value: number): boolean {
 }
 
 function isScore(value: number): boolean {
-  return value >= 0 && value <= 1.5;
+  return Number.isFinite(value);
+}
+
+function normalizeScore(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  if (value >= 0 && value <= 1) return value;
+  if (value > -50 && value < 50) return 1 / (1 + Math.exp(-value));
+  return value > 0 ? 1 : 0;
+}
+
+function rawBoxIsReasonable(values: number[]): boolean {
+  return values.every(Number.isFinite) && values[2] > 0 && values[3] > 0;
+}
+
+function boxIsReasonable(x: number, y: number, width: number, height: number, frameWidth: number, frameHeight: number): boolean {
+  if (![x, y, width, height, frameWidth, frameHeight].every(Number.isFinite)) return false;
+  if (width < 2 || height < 2 || frameWidth <= 0 || frameHeight <= 0) return false;
+  if (x + width <= 0 || y + height <= 0 || x >= frameWidth || y >= frameHeight) return false;
+  const areaRatio = (width * height) / Math.max(1, frameWidth * frameHeight);
+  if (areaRatio > 0.86) return false;
+  if (width > frameWidth * 0.99 && height > frameHeight * 0.62) return false;
+  if (height > frameHeight * 0.99 && width > frameWidth * 0.62) return false;
+  return true;
+}
+
+function isRenderableDetection(det: BrowserYoloDetection, frameWidth: number, frameHeight: number): boolean {
+  return boxIsReasonable(det.x, det.y, det.width, det.height, frameWidth, frameHeight);
 }
 
 function iou(a: BrowserYoloDetection, b: BrowserYoloDetection): number {

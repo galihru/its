@@ -1,7 +1,7 @@
 <Window x:Class="ItsMapsInstaller.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="ITS Maps Windows Setup"
+        Title="ITS Maps Setup"
         Width="1100"
         Height="825"
         MinWidth="980"
@@ -142,7 +142,7 @@
       <Grid Height="72" VerticalAlignment="Top" MouseLeftButtonDown="OnTitleBarMouseDown">
         <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="48,0,0,0">
           <Image Source="pack://application:,,,/Assets/logo.png" Width="42" Height="42" Stretch="Uniform" Margin="0,0,14,0" />
-          <TextBlock Text="ITS Maps Windows Setup"
+          <TextBlock Text="ITS Maps Setup"
                      Foreground="White"
                      FontFamily="Segoe UI"
                      FontSize="27"
@@ -522,7 +522,7 @@
             <TextBlock Text="&#x2713;" Foreground="White" FontSize="50" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
           </Border>
           <StackPanel Margin="0,104,0,0">
-            <TextBlock Text="ITS Maps Windows telah berhasil diinstal dan siap digunakan."
+            <TextBlock Text="ITS Maps telah berhasil diinstal dan siap digunakan."
                        Width="500"
                        HorizontalAlignment="Center"
                        TextAlignment="Center"
@@ -536,7 +536,7 @@
             <Border Width="70" Height="70" CornerRadius="35" Background="#2bc86b">
               <TextBlock Text="&#x2713;" Foreground="White" FontSize="44" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
             </Border>
-            <TextBlock Text="ITS Maps Windows telah berhasil diinstal dan siap digunakan."
+            <TextBlock Text="ITS Maps telah berhasil diinstal dan siap digunakan."
                        Width="420"
                        Margin="28,2,0,0"
                        FontFamily="Segoe UI"
@@ -545,7 +545,7 @@
                        Foreground="#06123d"
                        TextWrapping="Wrap" />
           </StackPanel>
-          <TextBlock Text="Terima kasih telah mempercayai ITS Maps Windows untuk mendukung pemantauan lalu lintas secara real-time dan efektif."
+          <TextBlock Text="Terima kasih telah mempercayai ITS Maps untuk mendukung pemantauan lalu lintas secara real-time dan efektif."
                      Width="560"
                      Margin="0,248,0,0"
                      FontFamily="Segoe UI"
@@ -555,14 +555,14 @@
                      TextWrapping="Wrap" />
           <Border Margin="0,392,0,0" Width="560" Height="126" HorizontalAlignment="Left" Background="#ffffff" BorderBrush="#d9e3f5" BorderThickness="1" CornerRadius="12">
             <StackPanel Margin="28,20">
-              <CheckBox Content="Jalankan ITS Maps Windows" IsChecked="{Binding RunAfterInstall, Mode=TwoWay}" FontFamily="Segoe UI" FontSize="18" Foreground="#06123d" />
+              <CheckBox Content="Jalankan ITS Maps" IsChecked="{Binding RunAfterInstall, Mode=TwoWay}" FontFamily="Segoe UI" FontSize="18" Foreground="#06123d" />
               <CheckBox Content="Buka folder instalasi" Margin="0,20,0,0" IsChecked="{Binding OpenInstallFolder, Mode=TwoWay}" FontFamily="Segoe UI" FontSize="18" Foreground="#06123d" />
             </StackPanel>
           </Border>
         </Grid>
       </Grid>
 
-      <TextBlock Text="ITS Maps Windows 1.0.14"
+      <TextBlock Text="ITS Maps"
                  HorizontalAlignment="Left"
                  VerticalAlignment="Bottom"
                  Margin="70,0,0,44"
