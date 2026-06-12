@@ -3,6 +3,14 @@ import "leaflet/dist/leaflet.css";
 import FALLBACK_IMAGE_URL from "../public/bwits.png?url";
 import MAP_ICON_URL from "../public/petaits.png?url";
 import APP_ICON_URL from "./icon/its.png";
+import {
+  drawYoloDetections,
+  loadImageSource,
+  publishBrowserYoloResult,
+  runBrowserYolo,
+  type BrowserYoloDetection,
+  type BrowserYoloResult,
+} from "./browserYolo";
 import "./windows.css";
 
 type DeviceStatus = "online" | "offline" | "degraded";
@@ -180,6 +188,7 @@ const FIREBASE_ROOT_URL = FIREBASE_DEVICES_URL.replace(/\/devices\.json$/, "");
 const FIREBASE_TRAFFIC_DATASET_ROOT = `${FIREBASE_ROOT_URL}/trafficObjectDetectionDataset/devices`;
 const FIREBASE_BROWSER_YOLO_ROOT = `${FIREBASE_ROOT_URL}/browserYolo/devices`;
 const OFFLINE_AFTER_MS = 60_000;
+const BROWSER_YOLO_FRESH_MS = 90_000;
 const HLS_JS_URL = "https://cdn.jsdelivr.net/npm/hls.js@1.5.20/dist/hls.min.js";
 const TILE_URL = "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
 const DEFAULT_CENTER: [number, number] = [-6.180487, 106.90368];
@@ -236,6 +245,15 @@ const state = {
   cameraKey: "",
   ambientTimer: 0,
   cameraReadyTimer: 0,
+  cameraRetryTimer: 0,
+  browserYoloTimer: 0,
+  browserYoloBusy: false,
+  browserYoloStatus: "idle" as "idle" | "loading" | "online" | "no-frame" | "error",
+  browserYoloNote: "",
+  browserYoloSourceKey: "",
+  browserYoloLastPublishAt: 0,
+  snapshotYoloBusy: false,
+  snapshotYoloKey: "",
   appDataReady: false,
   snapshotCache: new Map<string, TrafficCameraDataset>(),
   maps: {
@@ -305,7 +323,7 @@ function shellHtml(): string {
       <header class="win-windowbar">
         <div class="win-window-drag">
           <img src="${APP_ICON_URL}" alt="" aria-hidden="true">
-          <span>ITS Maps Windows</span>
+          <span>ITS Maps</span>
         </div>
         <div class="win-window-actions">
           <button class="win-window-tool has-tooltip" type="button" data-open-panel="document" data-tip="Buka dokumentasi">${bookIcon()}</button>
@@ -319,7 +337,7 @@ function shellHtml(): string {
       <div class="win-app-splash" data-app-splash>
         <div class="win-app-splash-card">
           <img src="${APP_ICON_URL}" alt="ITS Maps">
-          <strong>ITS Maps Windows</strong>
+          <strong>ITS Maps</strong>
           <span data-app-splash-text>Mengambil data Raspberry dan peta...</span>
           <i></i>
         </div>
@@ -343,7 +361,7 @@ function shellHtml(): string {
       <main class="win-main">
         <header class="win-titlebar">
           <div class="win-title-main">
-            <strong data-title-device>ITS Maps Windows</strong>
+            <strong data-title-device>ITS Maps</strong>
             <span data-title-meta>Raspberry Pi live traffic</span>
           </div>
           <div class="win-title-actions">
@@ -438,7 +456,7 @@ function shellHtml(): string {
             <div class="win-location-icon">${targetIcon()}</div>
             <div>
               <strong>Izinkan akses lokasi terkini</strong>
-              <p>ITS Maps Windows membutuhkan latitude dan longitude realtime untuk marker user, peta 3D, dan sinkronisasi ke Firebase RTDB.</p>
+              <p>ITS Maps membutuhkan latitude dan longitude realtime untuk marker user, peta 3D, dan sinkronisasi ke Firebase RTDB.</p>
             </div>
         <div class="win-location-actions">
               <button type="button" class="win-location-secondary" data-location-settings>Settings lokasi</button>
@@ -604,7 +622,7 @@ function sidePanelHtml(panel: AppPanel): string {
     <section class="win-side-panel" data-side-panel>
       <header class="win-side-head">
         <div>
-          <span>ITS Maps Windows</span>
+          <span>ITS Maps</span>
           <strong>${escapeHtml(title)}</strong>
         </div>
         <button class="win-icon-button" type="button" data-close-side-panel aria-label="Tutup">${closeIcon()}</button>
@@ -988,6 +1006,7 @@ async function fetchDeviceTelemetry(id: string): Promise<{ traffic: unknown; yol
   const yoloFields = [
     "updatedAt", "thumbnailUpdatedAt", "source", "vehicleCount", "cameraUrl", "fps",
     "status", "note", "frameWidth", "frameHeight", "objectCount", "vehicleBreakdown",
+    "thumbnailUrl", "cameraDataset", "detections", "outputShape", "trafficLevel", "trafficColor",
   ];
   const [trafficEntries, yoloEntries] = await Promise.all([
     readFirebaseFields(`${FIREBASE_TRAFFIC_DATASET_ROOT}/${id}`, trafficFields),
@@ -1026,15 +1045,17 @@ function mergeDeviceTelemetry(device: DeviceRecord, trafficRaw: unknown, yoloRaw
   const yoloDataset = normalizeCameraDataset(objectRecord(yolo.cameraDataset));
   const yoloUpdatedAt = normalizeEpoch(finiteNumber(yolo.updatedAt) ?? finiteNumber(yolo.thumbnailUpdatedAt) ?? 0);
   const trafficUpdatedAt = normalizeEpoch(finiteNumber(traffic.updatedAt) ?? 0);
-  const mergedDataset = mergeCameraDataset(device.cameraDataset, trafficDataset, yoloDataset);
-  const yoloBreakdown = normalizeVehicleBreakdown(yolo.vehicleBreakdown);
+  const yoloFresh = yoloUpdatedAt > 0 && Date.now() - yoloUpdatedAt <= BROWSER_YOLO_FRESH_MS;
+  const mergedDataset = mergeCameraDataset(device.cameraDataset, yoloFresh ? yoloDataset : undefined, trafficDataset);
+  const yoloBreakdown = yoloFresh ? normalizeVehicleBreakdown(yolo.vehicleBreakdown) : undefined;
   const trafficBreakdown = normalizeVehicleBreakdown(traffic.vehicleBreakdown);
-  const yoloCameraUrl = usablePublicMediaUrl(stringValue(yolo.cameraUrl));
+  const yoloCameraUrl = yoloFresh ? usablePublicMediaUrl(stringValue(yolo.cameraUrl)) : "";
   const trafficCameraUrl = usablePublicMediaUrl(stringValue(traffic.cameraUrl));
-  const yoloThumbnail = stringValue(yolo.thumbnailUrl);
+  const yoloThumbnail = yoloFresh ? stringValue(yolo.thumbnailUrl) : "";
   const trafficThumbnail = stringValue(traffic.thumbnailUrl);
-  const yoloStatus = stringValue(yolo.status);
+  const yoloStatus = yoloFresh ? stringValue(yolo.status) : "";
   const trafficDetectorStatus = stringValue(traffic.detectorStatus);
+  const yoloDetections = yoloFresh ? normalizeDetections(yolo.detections) : [];
 
   return {
     ...device,
@@ -1043,23 +1064,25 @@ function mergeDeviceTelemetry(device: DeviceRecord, trafficRaw: unknown, yoloRaw
     cameraDataset: mergedDataset,
     cameraUpdatedAt: Math.max(device.cameraUpdatedAt || 0, yoloUpdatedAt, trafficUpdatedAt) || device.cameraUpdatedAt,
     detectorStatus: yoloStatus || trafficDetectorStatus || device.detectorStatus,
-    detectorNote: stringValue(yolo.note) || stringValue(traffic.detectorNote) || device.detectorNote,
-    detectorUpdatedAt: Math.max(device.detectorUpdatedAt || 0, yoloUpdatedAt, trafficUpdatedAt) || device.detectorUpdatedAt,
-    detectorFps: finiteNumber(yolo.fps) ?? device.detectorFps,
-    detectorFrameWidth: finiteNumber(yolo.frameWidth) ?? finiteNumber(traffic.detectorFrameWidth) ?? device.detectorFrameWidth,
-    detectorFrameHeight: finiteNumber(yolo.frameHeight) ?? finiteNumber(traffic.detectorFrameHeight) ?? device.detectorFrameHeight,
+    detectorNote: (yoloFresh ? stringValue(yolo.note) : "") || stringValue(traffic.detectorNote) || device.detectorNote,
+    detectorUpdatedAt: Math.max(device.detectorUpdatedAt || 0, yoloFresh ? yoloUpdatedAt : 0, trafficUpdatedAt) || device.detectorUpdatedAt,
+    detectorFps: (yoloFresh ? finiteNumber(yolo.fps) : undefined) ?? device.detectorFps,
+    detectorFrameWidth: (yoloFresh ? finiteNumber(yolo.frameWidth) : undefined) ?? finiteNumber(traffic.detectorFrameWidth) ?? device.detectorFrameWidth,
+    detectorFrameHeight: (yoloFresh ? finiteNumber(yolo.frameHeight) : undefined) ?? finiteNumber(traffic.detectorFrameHeight) ?? device.detectorFrameHeight,
     vehicleBreakdown: yoloBreakdown || trafficBreakdown || device.vehicleBreakdown,
-    vehicleCount: finiteNumber(yolo.vehicleCount)
+    vehicleCount: (yoloFresh ? finiteNumber(yolo.vehicleCount) : undefined)
       ?? finiteNumber(traffic.vehicleCount)
       ?? device.vehicleCount,
     objectCount: Math.max(
       device.objectCount || 0,
-      Math.round(finiteNumber(yolo.objectCount) ?? 0),
+      Math.round(yoloFresh ? finiteNumber(yolo.objectCount) ?? 0 : 0),
       Math.round(finiteNumber(traffic.objectCount) ?? 0),
     ),
+    detections: yoloDetections.length ? yoloDetections : device.detections,
     trafficColor: isTrafficColor(traffic.trafficColor) ? traffic.trafficColor : device.trafficColor,
+    trafficLevel: yoloFresh && isTrafficLevel(yolo.trafficLevel) ? yolo.trafficLevel : device.trafficLevel,
     trafficDuration: finiteNumber(traffic.trafficDurationSec) ?? finiteNumber(traffic.trafficDuration) ?? device.trafficDuration,
-    trafficSource: stringValue(traffic.source) || device.trafficSource,
+    trafficSource: (yoloFresh ? stringValue(yolo.source) : "") || stringValue(traffic.source) || device.trafficSource,
   };
 }
 
@@ -1200,7 +1223,7 @@ function renderAll(): void {
 
 function renderTitle(): void {
   const device = state.device;
-  setText("[data-title-device]", device?.label || "ITS Maps Windows");
+  setText("[data-title-device]", device?.label || "ITS Maps");
   const raspiOnline = deviceIsOnline(device);
   setText("[data-title-meta]", device
     ? `${raspiOnline ? "online" : "offline"} - ${locationLabel(device)} - update ${formatAge(device.lastSeen)}`
@@ -1241,6 +1264,30 @@ function renderGallery(): void {
     </div>
   `;
   syncImageAmbient(gallery, gallery.querySelector<HTMLImageElement>(".win-gallery-slide.active img"), "gallery");
+  processGallerySnapshotYolo(active);
+}
+
+function processGallerySnapshotYolo(src: string): void {
+  const device = state.device;
+  if (!device || !src || src === FALLBACK_IMAGE_URL || src.startsWith("data:image/")) return;
+  const key = `${device.id}:${src}`;
+  if (state.snapshotYoloBusy || state.snapshotYoloKey === key) return;
+  state.snapshotYoloBusy = true;
+  state.snapshotYoloKey = key;
+  void (async () => {
+    const image = await loadImageSource(src);
+    if (!image) return;
+    const result = await runBrowserYolo(image);
+    if (result.status !== "online") return;
+    applyBrowserYoloResult(result);
+    publishBrowserYoloIfNeeded(result);
+    renderGallery();
+    updateCameraSummary();
+  })().catch((err) => {
+    console.warn("[ITS Windows] gallery snapshot YOLO failed:", err);
+  }).finally(() => {
+    state.snapshotYoloBusy = false;
+  });
 }
 
 function carouselImages(): string[] {
@@ -1805,7 +1852,10 @@ function cameraSurfaceHtml(device: DeviceRecord | null): string {
   return `
     <section class="win-camera-surface" data-camera-surface data-live-state="${live ? "online" : "offline"}">
       <div class="win-camera-frame" data-camera-frame data-ai-open="false">
-        <div class="win-camera-media" data-camera-media>${media}</div>
+        <div class="win-camera-media" data-camera-media>
+          ${media}
+          <canvas class="win-camera-yolo-canvas" data-camera-yolo-canvas aria-hidden="true"></canvas>
+        </div>
         <div class="win-camera-live"><span></span>${live ? "LIVE" : "OFFLINE"}</div>
         <div class="win-camera-status" data-camera-status>${escapeHtml(cameraStatusText(device))}</div>
         <div class="win-camera-controls">
@@ -1878,12 +1928,17 @@ function setupCameraSurface(): void {
     video.addEventListener("pause", syncPlayButton);
     video.addEventListener("loadeddata", () => hideCameraFrameFallback(video));
     video.addEventListener("canplay", () => hideCameraFrameFallback(video));
-    video.addEventListener("error", () => showCameraFrameFallback(video, "Video HLS belum dapat diputar, membuka halaman kamera Raspberry..."));
+    video.addEventListener("error", () => {
+      const hls = isLikelyHlsUrl(video.dataset.src || "");
+      showCameraFrameFallback(video, hls ? "HLS live belum tersedia, mencoba ulang..." : "Video belum dapat diputar.");
+      if (hls) scheduleHlsRetry(video, hlsPlaylistUrl(video.dataset.src || ""));
+    });
     startCameraAmbient(video, surface);
   } else {
     const image = frame.querySelector<HTMLImageElement>("[data-camera-image]");
     syncImageAmbient(surface, image, "camera");
   }
+  startBrowserYolo(frame);
   syncFullscreenButtons();
 }
 
@@ -1920,8 +1975,13 @@ function setupVideo(video: HTMLVideoElement): void {
         });
         state.hlsInstance.loadSource(playlist);
         state.hlsInstance.attachMedia(video);
-        state.hlsInstance.on?.(Hls.Events.ERROR, (_event: unknown, data: { fatal?: boolean }) => {
-          if (data?.fatal) showCameraFrameFallback(video, "HLS live gagal, membuka halaman kamera Raspberry...");
+        state.hlsInstance.on?.(Hls.Events.ERROR, (_event: unknown, data: { fatal?: boolean; type?: string }) => {
+          if (!data?.fatal) return;
+          showCameraFrameFallback(video, "HLS live belum tersedia, mencoba ulang...");
+          if (data.type === Hls.ErrorTypes?.NETWORK_ERROR) {
+            try { state.hlsInstance?.startLoad?.(); } catch { /* retry below */ }
+          }
+          scheduleHlsRetry(video, playlist);
         });
       } else {
         video.src = playlist;
@@ -1930,7 +1990,7 @@ function setupVideo(video: HTMLVideoElement): void {
     }).catch((err) => {
       console.warn("[ITS Windows] HLS failed:", err);
       video.src = playlist;
-      window.setTimeout(() => showCameraFrameFallback(video, "hls.js tidak tersedia, membuka halaman kamera Raspberry..."), 1200);
+      window.setTimeout(() => showCameraFrameFallback(video, "hls.js tidak tersedia, mencoba native HLS..."), 1200);
     });
     return;
   }
@@ -1942,9 +2002,29 @@ function scheduleCameraFallback(video: HTMLVideoElement): void {
   window.clearTimeout(state.cameraReadyTimer);
   state.cameraReadyTimer = window.setTimeout(() => {
     if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || !video.videoWidth) {
-      showCameraFrameFallback(video, "Stream belum mengirim frame, membuka halaman kamera Raspberry...");
+      const hls = isLikelyHlsUrl(video.dataset.src || "");
+      showCameraFrameFallback(video, hls ? "Stream HLS belum mengirim frame, memakai snapshot YOLO sementara..." : "Stream belum mengirim frame.");
+      if (hls) scheduleHlsRetry(video, hlsPlaylistUrl(video.dataset.src || ""));
     }
   }, 8000);
+}
+
+function scheduleHlsRetry(video: HTMLVideoElement, playlist: string): void {
+  if (!playlist) return;
+  window.clearTimeout(state.cameraRetryTimer);
+  state.cameraRetryTimer = window.setTimeout(() => {
+    try {
+      if (state.hlsInstance?.startLoad) state.hlsInstance.startLoad();
+      else {
+        video.src = playlist;
+        video.load();
+      }
+      void video.play().catch(() => undefined);
+      scheduleCameraFallback(video);
+    } catch (err) {
+      console.warn("[ITS Windows] HLS retry failed:", err);
+    }
+  }, 4500);
 }
 
 function showCameraFrameFallback(video: HTMLVideoElement, message: string): void {
@@ -1952,7 +2032,8 @@ function showCameraFrameFallback(video: HTMLVideoElement, message: string): void
   const iframe = frame?.querySelector<HTMLIFrameElement>("[data-camera-iframe]");
   const messageEl = frame?.querySelector<HTMLElement>("[data-camera-media-message]");
   const pageUrl = usablePublicMediaUrl(video.dataset.pageSrc);
-  if (!frame || !iframe || !pageUrl) {
+  const hls = isLikelyHlsUrl(video.dataset.src || "");
+  if (!frame || !iframe || !pageUrl || hls) {
     if (messageEl) {
       messageEl.hidden = false;
       messageEl.textContent = message;
@@ -2006,12 +2087,157 @@ function loadHlsScript(): Promise<void> {
 function resetCameraRuntime(): void {
   window.clearInterval(state.ambientTimer);
   window.clearTimeout(state.cameraReadyTimer);
+  window.clearTimeout(state.cameraRetryTimer);
+  window.clearInterval(state.browserYoloTimer);
   state.ambientTimer = 0;
   state.cameraReadyTimer = 0;
+  state.cameraRetryTimer = 0;
+  state.browserYoloTimer = 0;
+  state.browserYoloBusy = false;
+  state.browserYoloStatus = "idle";
+  state.browserYoloNote = "";
+  state.browserYoloSourceKey = "";
   if (state.hlsInstance?.destroy) {
     try { state.hlsInstance.destroy(); } catch { /* ignore */ }
   }
   state.hlsInstance = null;
+}
+
+function startBrowserYolo(frame: HTMLElement): void {
+  window.clearInterval(state.browserYoloTimer);
+  const sourceKey = cameraSurfaceKey(state.device);
+  state.browserYoloSourceKey = sourceKey;
+  state.browserYoloStatus = "loading";
+  state.browserYoloNote = "Menunggu frame video live...";
+  const tick = () => {
+    if (state.browserYoloSourceKey !== sourceKey || !document.body.contains(frame)) return;
+    void processBrowserYoloFrame(frame);
+  };
+  tick();
+  state.browserYoloTimer = window.setInterval(tick, 1800);
+}
+
+async function processBrowserYoloFrame(frame: HTMLElement): Promise<void> {
+  if (state.browserYoloBusy) return;
+  state.browserYoloBusy = true;
+  try {
+    const source = await browserYoloSource(frame);
+    if (!source) {
+      state.browserYoloStatus = "no-frame";
+      state.browserYoloNote = "Menunggu frame video live...";
+      clearYoloCanvas(frame);
+      updateCameraAiPanel();
+      return;
+    }
+    state.browserYoloStatus = state.browserYoloStatus === "online" ? "online" : "loading";
+    state.browserYoloNote = "YOLO ONNX memproses frame...";
+    updateCameraAiPanel();
+    const result = await runBrowserYolo(source);
+    state.browserYoloStatus = result.status;
+    state.browserYoloNote = result.note;
+    if (result.status === "online") {
+      const canvas = frame.querySelector<HTMLCanvasElement>("[data-camera-yolo-canvas]");
+      if (canvas) drawYoloDetections(canvas, result.detections, result.frameWidth, result.frameHeight);
+      applyBrowserYoloResult(result);
+      updateCameraSummary();
+      updateCameraAiPanel();
+      publishBrowserYoloIfNeeded(result);
+    } else {
+      clearYoloCanvas(frame);
+      updateCameraAiPanel();
+    }
+  } finally {
+    state.browserYoloBusy = false;
+  }
+}
+
+async function browserYoloSource(frame: HTMLElement): Promise<HTMLVideoElement | HTMLImageElement | null> {
+  const video = frame.querySelector<HTMLVideoElement>("[data-camera-video]");
+  if (video && !video.classList.contains("fallback-hidden") && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && video.videoWidth && video.videoHeight) {
+    return video;
+  }
+  const image = frame.querySelector<HTMLImageElement>("[data-camera-image]");
+  if (image?.complete && image.naturalWidth && image.naturalHeight) return image;
+  const snapshot = latestCameraSnapshot(state.device);
+  return snapshot ? loadImageSource(snapshot) : null;
+}
+
+function clearYoloCanvas(frame: HTMLElement): void {
+  const canvas = frame.querySelector<HTMLCanvasElement>("[data-camera-yolo-canvas]");
+  const ctx = canvas?.getContext("2d");
+  if (canvas && ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+}
+
+function applyBrowserYoloResult(result: BrowserYoloResult): void {
+  const device = state.device;
+  if (!device) return;
+  const detections = result.detections.map(toYoloDetection);
+  const breakdown = {
+    car: result.vehicleBreakdown.car,
+    motorcycle: result.vehicleBreakdown.motorcycle,
+    bus: result.vehicleBreakdown.bus,
+    truck: result.vehicleBreakdown.truck,
+    bicycle: result.vehicleBreakdown.bicycle,
+    total: result.vehicleBreakdown.total,
+  };
+  const trafficLevel = result.vehicleCount >= 11 ? "padat" : result.vehicleCount >= 6 ? "sedang" : "lancar";
+  const trafficColor = trafficLevel === "padat" ? "red" : trafficLevel === "sedang" ? "yellow" : "green";
+  const snapshotDataset: TrafficCameraDataset | undefined = result.annotatedThumbnailUrl || result.rawThumbnailUrl
+    ? {
+        snapshot1Url: result.annotatedThumbnailUrl || result.rawThumbnailUrl,
+        snapshot2Url: result.rawThumbnailUrl || result.annotatedThumbnailUrl,
+        updatedAt: result.updatedAt,
+        source: "browser-yolo",
+      }
+    : undefined;
+  const updated: DeviceRecord = {
+    ...device,
+    detectorStatus: result.status,
+    detectorNote: result.note,
+    detectorUpdatedAt: result.updatedAt,
+    detectorFps: result.fps,
+    detectorFrameWidth: result.frameWidth,
+    detectorFrameHeight: result.frameHeight,
+    detectorCameraSource: publicCameraHlsUrl(device) || publicCameraUrl(device) || "browser-frame",
+    cameraThumbnailUrl: result.annotatedThumbnailUrl || result.rawThumbnailUrl || device.cameraThumbnailUrl,
+    cameraDataset: mergeCameraDataset(snapshotDataset, device.cameraDataset),
+    cameraUpdatedAt: Math.max(device.cameraUpdatedAt || 0, result.updatedAt),
+    vehicleBreakdown: breakdown,
+    vehicleCount: result.vehicleCount,
+    objectCount: result.objectCount,
+    detections,
+    trafficLevel,
+    trafficColor,
+    trafficSource: `adaptive-browser-yolo-${trafficLevel}`,
+  };
+  state.device = updated;
+  state.devices = state.devices.map((item) => item.id === updated.id ? updated : item);
+}
+
+function toYoloDetection(det: BrowserYoloDetection): YoloDetection {
+  return {
+    label: det.label,
+    confidence: det.confidence,
+    vehicle: det.vehicle,
+    x: det.x,
+    y: det.y,
+    width: det.width,
+    height: det.height,
+  };
+}
+
+function publishBrowserYoloIfNeeded(result: BrowserYoloResult): void {
+  const device = state.device;
+  if (!device || Date.now() - state.browserYoloLastPublishAt < 5000) return;
+  state.browserYoloLastPublishAt = Date.now();
+  const cameraUrl = publicCameraHlsUrl(device) || publicCameraUrl(device) || latestCameraSnapshot(device);
+  void publishBrowserYoloResult(firebaseRootUrl(), device.id, state.clientId, cameraUrl, result)
+    .catch((err) => {
+      console.warn("[ITS Windows] browser YOLO publish failed:", err);
+      state.browserYoloStatus = "error";
+      state.browserYoloNote = err instanceof Error ? err.message : "Publish YOLO gagal";
+      updateCameraAiPanel();
+    });
 }
 
 function startCameraAmbient(video: HTMLVideoElement, surface: HTMLElement): void {
@@ -2358,7 +2584,7 @@ function publishUserLocation(): void {
   state.userPublishAt = Date.now();
   const payload = {
     id: state.clientId,
-    label: "ITS Maps Windows",
+    label: "ITS Maps",
     platform: "windows",
     status: "online",
     updatedAt: Date.now(),
@@ -2544,9 +2770,16 @@ function cameraStatusText(device: DeviceRecord | null): string {
 
 function aiStatusText(device: DeviceRecord | null): string {
   if (!device) return "menunggu data AI";
+  if (state.browserYoloStatus === "loading") return state.browserYoloNote || "YOLO ONNX app memuat model...";
+  if (state.browserYoloStatus === "no-frame") return state.browserYoloNote || "Menunggu frame video live";
+  if (state.browserYoloStatus === "error") return state.browserYoloNote || "YOLO ONNX app gagal";
+  if (state.browserYoloStatus === "online") {
+    const fps = device.detectorFps && device.detectorFps > 0 ? ` - ${device.detectorFps.toFixed(1)} FPS` : "";
+    return `YOLO ONNX app aktif${fps}`;
+  }
   const status = device.detectorStatus || "menunggu";
   const fps = device.detectorFps && device.detectorFps > 0 ? ` - ${device.detectorFps.toFixed(1)} FPS` : "";
-  if (status === "disabled") return "YOLO offline siap by device";
+  if (status === "disabled") return "YOLO Raspberry disabled, fallback app siap";
   return `${status}${fps}`;
 }
 

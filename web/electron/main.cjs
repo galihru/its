@@ -7,7 +7,7 @@ const { pathToFileURL } = require("node:url");
 
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
 const APP_UPDATE_URL = "https://itstelkom.web.app/app-update.json";
-const WINDOWS_EXE_NAME = "ITS-Maps-Windows-Custom-Setup-1.0.14-x64.exe";
+const WINDOWS_EXE_NAME = "ITS-Maps-Windows-Custom-Setup-1.0.15-x64.exe";
 const UPDATE_HISTORY_FILE = "update-history.json";
 let mainWindow = null;
 let splashWindow = null;
@@ -24,6 +24,15 @@ function iconPath() {
     path.join(process.resourcesPath || "", "app.asar", "src", "icon", "its.png"),
   ];
   return candidates.find((candidate) => candidate && fs.existsSync(candidate)) || path.join(__dirname, "..", "public", "its.png");
+}
+
+function logoDataUrl() {
+  const icon = iconPath();
+  try {
+    return `data:image/png;base64,${fs.readFileSync(icon).toString("base64")}`;
+  } catch {
+    return pathToFileURL(icon).toString();
+  }
 }
 
 function readWindowsLocation() {
@@ -114,7 +123,7 @@ function compareVersion(left, right) {
 
 function fetchJson(url) {
   return new Promise((resolve, reject) => {
-    https.get(url, { headers: { "user-agent": "ITS Maps Windows" } }, (res) => {
+    https.get(url, { headers: { "user-agent": "ITS Maps" } }, (res) => {
       if (res.statusCode < 200 || res.statusCode >= 300) {
         reject(new Error(`HTTP ${res.statusCode}`));
         res.resume();
@@ -200,7 +209,7 @@ function createSplashWindow() {
     },
   });
 
-  const logo = pathToFileURL(iconPath()).toString();
+  const logo = logoDataUrl();
   const html = `
 <!doctype html>
 <html>
@@ -230,7 +239,7 @@ function createSplashWindow() {
 <body>
   <div class="card">
     <img src="${logo}" alt="ITS Maps">
-    <strong>ITS Maps Windows</strong>
+    <strong>ITS Maps</strong>
     <span>Menyiapkan peta, kamera, dan sinkronisasi realtime...</span>
     <div class="bar"></div>
   </div>
@@ -331,7 +340,7 @@ function createWindow() {
     height: 920,
     minWidth: 1040,
     minHeight: 680,
-    title: "ITS Maps Windows",
+    title: "ITS Maps",
     backgroundColor: "#202020",
     icon: iconPath(),
     frame: false,
@@ -361,7 +370,7 @@ function createWindow() {
   });
 
   mainWindow.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedUrl) => {
-    console.error(`[ITS Maps Windows] Renderer load failed (${errorCode}): ${errorDescription} - ${validatedUrl}`);
+    console.error(`[ITS Maps] Renderer load failed (${errorCode}): ${errorDescription} - ${validatedUrl}`);
     rendererDataReady = true;
     closeSplashWindow();
     mainWindow?.show();
@@ -380,7 +389,7 @@ function createWindow() {
     const asarRendererPath = path.join(__dirname, "..", "dist", "desktop", "renderer.html");
     const rendererPath = fs.existsSync(resourceRendererPath) ? resourceRendererPath : asarRendererPath;
     mainWindow.loadFile(rendererPath).catch((error) => {
-      console.error("[ITS Maps Windows] Renderer loadFile failed:", error);
+      console.error("[ITS Maps] Renderer loadFile failed:", error);
       mainWindow?.show();
     });
   }

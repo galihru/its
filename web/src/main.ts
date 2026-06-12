@@ -7,6 +7,14 @@ import WIN_PREVIEW_WELCOME from "./windows/welcome.png";
 import WIN_PREVIEW_OPTIONS from "./windows/pilihopsiinstaller.png";
 import WIN_PREVIEW_DONE from "./windows/selesaiinstaller.png";
 import ITS_APP_ICON from "./icon/its.png";
+import {
+  drawYoloDetections,
+  loadImageSource,
+  publishBrowserYoloResult,
+  runBrowserYolo,
+  type BrowserYoloDetection,
+  type BrowserYoloResult,
+} from "./browserYolo";
 
 const APP_SCREENSHOT_MODULES = import.meta.glob("./ss/**/*.{png,jpg,jpeg,webp,avif,svg}", {
   eager: true,
@@ -153,6 +161,7 @@ type Snapshot = {
 };
 type AppConfig = { snapshotUrl?: string; refreshMs?: number };
 type WebRtcStatus = "idle" | "connecting" | "live" | "failed";
+type BrowserYoloStatus = "idle" | "loading" | "online" | "no-frame" | "error";
 type WebRtcRuntime = {
   pc: RTCPeerConnection | null;
   deviceId: string;
@@ -327,6 +336,7 @@ const FIREBASE_DEVICES_URL =
   "https://itstelkom-default-rtdb.asia-southeast1.firebasedatabase.app/devices.json";
 const FIREBASE_ROOT_URL = FIREBASE_DEVICES_URL.replace(/\/devices\.json$/, "");
 const WEBRTC_SIGNAL_ROOT = "webrtc/devices";
+const HLS_JS_URL = "https://cdn.jsdelivr.net/npm/hls.js@1.5.20/dist/hls.min.js";
 const WEBRTC_POLL_MS = 700;
 const WEBRTC_HEARTBEAT_MS = 5_000;
 const WEBRTC_ANSWER_TIMEOUT_MS = 18_000;
@@ -516,7 +526,7 @@ function docsPageHtml(): string {
   return `
     <header class="static-hero" id="mulai">
       <span>Documentation</span>
-      <h1>ITS Maps Windows</h1>
+      <h1>ITS Maps</h1>
       <p>Dokumentasi teknis untuk website, PWA/native browser install, aplikasi Windows, peta Carto + data OSM, kamera realtime, notifikasi publik, dan installer update.</p>
     </header>
     <section class="static-section" id="arsitektur">
@@ -732,6 +742,16 @@ const state = {
   splashReady: false,
   refreshTimer: 0,
   refreshBusy: false,
+  hlsScriptPromise: null as Promise<void> | null,
+  hlsInstances: new WeakMap<HTMLVideoElement, any>(),
+  videoYoloTimer: 0,
+  videoYoloBusy: false,
+  videoYoloStatus: "idle" as BrowserYoloStatus,
+  videoYoloNote: "",
+  videoYoloDeviceId: "",
+  videoYoloLastPublishAt: 0,
+  widgetYoloBusy: false,
+  widgetYoloKey: "",
   hasCentered: false,
   baseMode: "street" as BaseMapMode,
   compassNeedle: null as SVGGElement | null,
@@ -3167,6 +3187,19 @@ function normalizeCameraDataset(raw: unknown): TrafficCameraDataset | undefined 
   return dataset.snapshot1Url || dataset.snapshot2Url || dataset.updatedAt ? dataset : undefined;
 }
 
+function mergeCameraDataset(...datasets: Array<TrafficCameraDataset | undefined>): TrafficCameraDataset | undefined {
+  const merged: TrafficCameraDataset = {};
+  datasets.forEach((dataset) => {
+    if (!dataset) return;
+    if (!merged.snapshot1Url && dataset.snapshot1Url) merged.snapshot1Url = dataset.snapshot1Url;
+    if (!merged.snapshot2Url && dataset.snapshot2Url && dataset.snapshot2Url !== merged.snapshot1Url) merged.snapshot2Url = dataset.snapshot2Url;
+    if (!merged.updatedAt || (dataset.updatedAt || 0) > merged.updatedAt) merged.updatedAt = dataset.updatedAt;
+    if (!merged.source && dataset.source) merged.source = dataset.source;
+    if (!merged.path && dataset.path) merged.path = dataset.path;
+  });
+  return merged.snapshot1Url || merged.snapshot2Url || merged.updatedAt ? merged : undefined;
+}
+
 function normalizeUpdateInfo(rawRecord: Record<string, unknown>): ControllerUpdateInfo | undefined {
   const nested = rawRecord.update && typeof rawRecord.update === "object"
     ? rawRecord.update as Record<string, unknown>
@@ -4291,11 +4324,21 @@ function publicCameraUrl(device: DeviceRecord | null): string {
 }
 
 function publicCameraHlsUrl(device: DeviceRecord | null): string {
-  return usablePublicMediaUrl(device?.cameraHlsUrl) || "";
+  const explicit = usablePublicMediaUrl(device?.cameraHlsUrl);
+  if (explicit) return hlsPlaylistUrl(explicit);
+  const url = publicCameraUrl(device);
+  return url && isLikelyHlsUrl(url) ? hlsPlaylistUrl(url) : "";
 }
 
 function publicCameraPageUrl(device: DeviceRecord | null): string {
   return publicCameraUrl(device) || hlsPageUrl(publicCameraHlsUrl(device));
+}
+
+function latestCameraSnapshot(device: DeviceRecord | null): string {
+  return device?.cameraThumbnailUrl?.trim()
+    || device?.cameraDataset?.snapshot1Url?.trim()
+    || device?.cameraDataset?.snapshot2Url?.trim()
+    || "";
 }
 
 function usablePublicMediaUrl(value: unknown): string {
@@ -4318,6 +4361,19 @@ function hlsPageUrl(value: string): string {
     // Keep the caller fallback empty when URL parsing fails.
   }
   return "";
+}
+
+function hlsPlaylistUrl(value: string): string {
+  const clean = value.trim();
+  if (!clean) return "";
+  if (/\.m3u8(\?|$)/i.test(clean)) return clean;
+  const [base, query = ""] = clean.split("?");
+  const playlist = `${base.replace(/\/?$/, "/")}index.m3u8`;
+  return query ? `${playlist}?${query}` : playlist;
+}
+
+function isLikelyHlsUrl(url: string): boolean {
+  return /\.m3u8(\?|$)/i.test(url) || /\/cam\/?(\?|$)/i.test(url);
 }
 
 function isLikelyImageUrl(url: string): boolean {
@@ -4415,6 +4471,11 @@ function attachWebRtcStream(): void {
   const stream = state.webrtc.stream;
   document.querySelectorAll<HTMLVideoElement>("video[data-webrtc-camera]").forEach((video) => {
     if (video.dataset.webrtcCamera !== state.webrtc.deviceId) return;
+    if (video.dataset.customVideoEvents !== "true") {
+      video.dataset.customVideoEvents = "true";
+      video.addEventListener("play", () => syncCustomVideoButtons(document));
+      video.addEventListener("pause", () => syncCustomVideoButtons(document));
+    }
     if (stream && video.srcObject !== stream) video.srcObject = stream;
     if (stream) void video.play().catch(() => { /* autoplay may wait for user interaction */ });
   });
@@ -4635,29 +4696,194 @@ function renderWebRtcSurface(device: DeviceRecord, videoClass: string): string {
 }
 
 function renderCameraSurface(device: DeviceRecord | null, imageClass: string, frameClass: string): string {
-  const url = publicCameraPageUrl(device);
   const hlsUrl = publicCameraHlsUrl(device);
+  if (hlsUrl) {
+    const poster = latestCameraSnapshot(device);
+    const posterAttr = poster ? ` poster="${escapeHtml(poster)}"` : "";
+    return `<div class="hls-video-wrap">
+      <video class="${imageClass} hls-video" data-hls-video data-device-id="${escapeHtml(device?.id || "")}" data-src="${escapeHtml(hlsUrl)}" autoplay playsinline muted preload="auto" crossorigin="anonymous" disablepictureinpicture${posterAttr}></video>
+      <div class="hls-video-message" data-hls-message hidden></div>
+    </div>`;
+  }
+  const url = publicCameraPageUrl(device);
   if (url) {
     return isLikelyImageUrl(url)
-      ? `<img class="${imageClass}" src="${escapeHtml(url)}" alt="Camera preview">`
+      ? `<img class="${imageClass}" src="${escapeHtml(url)}" alt="Camera preview" crossorigin="anonymous">`
       : `<iframe class="${frameClass}" src="${escapeHtml(url)}" allow="autoplay; camera; microphone; fullscreen" referrerpolicy="no-referrer" loading="lazy"></iframe>`;
-  }
-  if (hlsUrl) {
-    return `<video class="${imageClass}" src="${escapeHtml(hlsUrl)}" autoplay playsinline muted controls></video>`;
   }
   if (device && isWebRtcSignalingCamera(device)) return renderWebRtcSurface(device, imageClass);
   return "";
+}
+
+function setupHlsVideos(root: ParentNode = document): void {
+  root.querySelectorAll<HTMLVideoElement>("video[data-hls-video]").forEach((video) => setupHlsVideo(video));
+}
+
+function setupHlsVideo(video: HTMLVideoElement): void {
+  const src = video.dataset.src || "";
+  if (!src) return;
+  const playlist = hlsPlaylistUrl(src);
+  if (!playlist) return;
+  if (video.dataset.hlsReady === "true") {
+    void video.play().catch(() => undefined);
+    return;
+  }
+  video.dataset.hlsReady = "true";
+  const hide = () => hideHlsMessage(video);
+  video.addEventListener("loadeddata", hide);
+  video.addEventListener("canplay", hide);
+  video.addEventListener("playing", hide);
+  video.addEventListener("play", () => syncCustomVideoButtons(document));
+  video.addEventListener("pause", () => syncCustomVideoButtons(document));
+  video.addEventListener("error", () => {
+    showHlsMessage(video, "HLS live belum tersedia, mencoba ulang...");
+    scheduleHlsRetry(video, playlist);
+  });
+
+  if (video.canPlayType("application/vnd.apple.mpegurl")) {
+    video.src = playlist;
+    void video.play().catch(() => undefined);
+    return;
+  }
+
+  void loadHlsScript().then(() => {
+    const Hls = (window as any).Hls;
+    if (!Hls?.isSupported?.()) {
+      video.src = playlist;
+      void video.play().catch(() => undefined);
+      return;
+    }
+    const hls = new Hls({
+      lowLatencyMode: true,
+      liveSyncDurationCount: 2,
+      liveMaxLatencyDurationCount: 5,
+    });
+    state.hlsInstances.set(video, hls);
+    hls.loadSource(playlist);
+    hls.attachMedia(video);
+    hls.on?.(Hls.Events.ERROR, (_event: unknown, data: { fatal?: boolean; type?: string }) => {
+      if (!data?.fatal) return;
+      showHlsMessage(video, "HLS live belum tersedia, mencoba ulang...");
+      if (data.type === Hls.ErrorTypes?.NETWORK_ERROR) {
+        try { hls.startLoad?.(); } catch { /* retry below */ }
+      }
+      scheduleHlsRetry(video, playlist);
+    });
+    void video.play().catch(() => undefined);
+  }).catch((err) => {
+    console.warn("[ITS] HLS script failed:", err);
+    video.src = playlist;
+    showHlsMessage(video, "hls.js tidak tersedia, mencoba native HLS...");
+    void video.play().catch(() => undefined);
+  });
+}
+
+function scheduleHlsRetry(video: HTMLVideoElement, playlist: string): void {
+  const existing = Number(video.dataset.hlsRetryTimer || 0);
+  if (existing) window.clearTimeout(existing);
+  const timer = window.setTimeout(() => {
+    const hls = state.hlsInstances.get(video);
+    try {
+      if (hls?.startLoad) hls.startLoad();
+      else {
+        video.src = playlist;
+        video.load();
+      }
+      void video.play().catch(() => undefined);
+    } catch (err) {
+      console.warn("[ITS] HLS retry failed:", err);
+    }
+  }, 4500);
+  video.dataset.hlsRetryTimer = String(timer);
+}
+
+function showHlsMessage(video: HTMLVideoElement, message: string): void {
+  const wrap = video.closest<HTMLElement>(".hls-video-wrap");
+  const messageEl = wrap?.querySelector<HTMLElement>("[data-hls-message]");
+  if (!messageEl) return;
+  messageEl.hidden = false;
+  messageEl.textContent = message;
+}
+
+function hideHlsMessage(video: HTMLVideoElement): void {
+  const wrap = video.closest<HTMLElement>(".hls-video-wrap");
+  const messageEl = wrap?.querySelector<HTMLElement>("[data-hls-message]");
+  if (messageEl) messageEl.hidden = true;
+}
+
+function loadHlsScript(): Promise<void> {
+  if ((window as any).Hls) return Promise.resolve();
+  if (state.hlsScriptPromise) return state.hlsScriptPromise;
+  state.hlsScriptPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = HLS_JS_URL;
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("hls.js load failed"));
+    document.head.appendChild(script);
+  });
+  return state.hlsScriptPromise;
+}
+
+function stopHlsVideos(root: ParentNode): void {
+  root.querySelectorAll<HTMLVideoElement>("video[data-hls-video]").forEach((video) => {
+    const timer = Number(video.dataset.hlsRetryTimer || 0);
+    if (timer) window.clearTimeout(timer);
+    const hls = state.hlsInstances.get(video);
+    if (hls?.destroy) {
+      try { hls.destroy(); } catch { /* ignore */ }
+    }
+    state.hlsInstances.delete(video);
+    video.pause();
+    video.removeAttribute("src");
+    video.load();
+  });
+}
+
+function playSvg(): string {
+  return `<svg viewBox="0 0 20 20" fill="none" width="16" height="16" aria-hidden="true"><path d="M7 5.5v9l7-4.5-7-4.5Z" fill="currentColor"/></svg>`;
+}
+
+function pauseSvg(): string {
+  return `<svg viewBox="0 0 20 20" fill="none" width="16" height="16" aria-hidden="true"><path d="M6 5h3v10H6V5Zm5 0h3v10h-3V5Z" fill="currentColor"/></svg>`;
+}
+
+function customVideoRoot(button: HTMLElement): ParentNode {
+  return button.closest(".video-fullscreen-stage, .m-its-camera-box, .camera-card") || document;
+}
+
+function toggleCustomVideoPlayback(root: ParentNode): void {
+  const videos = Array.from(root.querySelectorAll<HTMLVideoElement>("video"));
+  if (!videos.length) return;
+  const shouldPlay = videos.some((video) => video.paused);
+  videos.forEach((video) => {
+    if (shouldPlay) void video.play().catch(() => undefined);
+    else video.pause();
+  });
+  window.setTimeout(() => syncCustomVideoButtons(root), 0);
+}
+
+function syncCustomVideoButtons(root: ParentNode = document): void {
+  root.querySelectorAll<HTMLButtonElement>("[data-custom-video-play]").forEach((button) => {
+    const scopedRoot = customVideoRoot(button);
+    const videos = Array.from(scopedRoot.querySelectorAll<HTMLVideoElement>("video"));
+    const playing = videos.some((video) => !video.paused && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA);
+    button.innerHTML = playing ? pauseSvg() : playSvg();
+    button.setAttribute("aria-label", playing ? "Jeda video" : "Putar video");
+  });
 }
 
 function renderCameraTile(): void {
   if (!state.cameraPreview) return;
   const device = state.device;
   const url = publicCameraPageUrl(device);
-  state.cameraPreview.innerHTML = url && isLikelyImageUrl(url)
+  const hlsUrl = publicCameraHlsUrl(device);
+  state.cameraPreview.innerHTML = url && !hlsUrl && isLikelyImageUrl(url)
     ? `<img class="camera-thumb-img" src="${escapeHtml(url)}" alt="Camera preview">`
-    : device && (url || isWebRtcSignalingCamera(device))
+    : device && (url || hlsUrl || isWebRtcSignalingCamera(device))
       ? `<div class="camera-live-badge"><span data-webrtc-dot data-status="${state.webrtc.status}"></span>LIVE</div>`
       : "";
+  processWidgetSnapshotYolo(device);
   syncCameraViews(device);
 }
 
@@ -4782,6 +5008,14 @@ function openCameraPreview(): void {
   const content = cameraSurface
     ? `<div class="camera-card">
       ${cameraSurface}
+      <div class="camera-popup-controls">
+        <button type="button" data-custom-video-play aria-label="Putar video">${playSvg()}</button>
+        <button type="button" data-popup-fullscreen aria-label="Fullscreen">
+          <svg viewBox="0 0 16 16" fill="none" width="14" height="14" aria-hidden="true">
+            <path d="M1 6V1h5M10 1h5v5M15 10v5h-5M6 15H1v-5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
       <div class="camera-caption">${escapeHtml(device?.label || "Raspberry camera")} live</div>
     </div>`
     : `<div class="camera-card">
@@ -4790,8 +5024,14 @@ function openCameraPreview(): void {
     </div>`;
   L.popup({ className: "camera-popup", closeButton: true, autoPan: true, maxWidth: 320 })
     .setLatLng(anchor).setContent(content).openOn(map);
+  setupHlsVideos(document);
   syncCameraViews(device);
   attachWebRtcStream();
+  document.querySelector<HTMLElement>(".camera-popup")?.querySelector<HTMLButtonElement>("[data-custom-video-play]")
+    ?.addEventListener("click", (event) => toggleCustomVideoPlayback(customVideoRoot(event.currentTarget as HTMLElement)));
+  document.querySelector<HTMLElement>(".camera-popup")?.querySelector<HTMLButtonElement>("[data-popup-fullscreen]")
+    ?.addEventListener("click", () => openVideoFullscreen(device));
+  syncCustomVideoButtons(document);
 }
 
 function openVideoFullscreen(device: DeviceRecord | null): void {
@@ -4810,18 +5050,17 @@ function openVideoFullscreen(device: DeviceRecord | null): void {
       <div class="video-fullscreen-ambient" aria-hidden="true"></div>
       <div class="video-fullscreen-surface" data-video-surface>
         ${surface || `<div class="video-fullscreen-empty">Kamera realtime belum tersedia</div>`}
-        ${activeDevice ? renderDetectionOverlay(activeDevice) : ""}
+        <canvas class="video-yolo-canvas" data-video-yolo-canvas aria-hidden="true"></canvas>
       </div>
       <div class="video-fullscreen-status">
         <span class="webrtc-dot" data-status="${state.webrtc.status}"></span>
         <strong>${escapeHtml(activeDevice?.label || "Video Realtime")}</strong>
       </div>
       <div class="video-fullscreen-caption">${escapeHtml(webRtcStatusText())}</div>
-      <button type="button" class="video-fullscreen-play" data-video-play aria-label="Putar video">▶</button>
+      <button type="button" class="video-fullscreen-play" data-custom-video-play aria-label="Putar video">${playSvg()}</button>
       <div class="video-fullscreen-controls">
         <button type="button" class="video-fullscreen-ai" data-video-ai>AI</button>
-        <button type="button" class="video-fullscreen-fit" data-video-fit aria-label="Fit to screen">⌖</button>
-        <button type="button" class="video-fullscreen-close" data-video-close aria-label="Tutup">x</button>
+        <button type="button" class="video-fullscreen-close" data-video-close aria-label="Keluar fullscreen">x</button>
       </div>
     </section>
     <aside class="video-ai-panel" aria-label="AI kendaraan">
@@ -4829,11 +5068,11 @@ function openVideoFullscreen(device: DeviceRecord | null): void {
       <header>
         <div>
           <span>AI YOLO</span>
-          <strong>${escapeHtml(webRtcStatusText())}</strong>
+          <strong data-video-ai-status>${escapeHtml(videoAiStatusText(activeDevice))}</strong>
         </div>
         <button type="button" data-video-ai-close aria-label="Tutup AI">x</button>
       </header>
-      ${renderVehicleStatsGrid(activeDevice, traffic, "video-ai-stats")}
+      <div data-video-ai-stats>${renderVehicleStatsGrid(activeDevice, traffic, "video-ai-stats")}</div>
     </aside>
   </div>
 `;
@@ -4857,6 +5096,8 @@ function openVideoFullscreen(device: DeviceRecord | null): void {
   };
   const closeVideo = () => {
     overlay.classList.remove("open", "ai-open");
+    stopVideoBrowserYolo();
+    stopHlsVideos(overlay);
     mapRoot.classList.remove("hidden");
     document.getElementById("m-bottom-nav")?.classList.remove("hidden");
     window.setTimeout(() => overlay.remove(), 220);
@@ -4899,12 +5140,9 @@ function openVideoFullscreen(device: DeviceRecord | null): void {
   surfaceEl?.addEventListener("pointerup", clearPointer);
   surfaceEl?.addEventListener("pointercancel", clearPointer);
 
-  overlay.querySelector<HTMLButtonElement>("[data-video-play]")?.addEventListener("click", () => {
-    overlay.querySelectorAll<HTMLVideoElement>("video").forEach((video) => {
-      void video.play().catch(() => undefined);
-    });
+  overlay.querySelector<HTMLButtonElement>("[data-custom-video-play]")?.addEventListener("click", (event) => {
+    toggleCustomVideoPlayback(customVideoRoot(event.currentTarget as HTMLElement));
   });
-  overlay.querySelector<HTMLButtonElement>("[data-video-fit]")?.addEventListener("click", () => setScale(1));
   overlay.querySelector<HTMLButtonElement>("[data-video-ai]")?.addEventListener("click", openAi);
   overlay.querySelector<HTMLButtonElement>("[data-video-ai-close]")?.addEventListener("click", closeAi);
   overlay.querySelector<HTMLButtonElement>("[data-video-close]")?.addEventListener("click", closeVideo);
@@ -4914,7 +5152,204 @@ function openVideoFullscreen(device: DeviceRecord | null): void {
   }
   syncCameraViews(activeDevice);
   attachWebRtcStream();
+  setupHlsVideos(overlay);
+  startVideoBrowserYolo(overlay, activeDevice);
+  syncCustomVideoButtons(overlay);
   window.setTimeout(() => overlay.classList.add("open"), 20);
+}
+
+function startVideoBrowserYolo(overlay: HTMLElement, device: DeviceRecord | null): void {
+  stopVideoBrowserYolo();
+  state.videoYoloDeviceId = device?.id || state.device?.id || "";
+  state.videoYoloStatus = "loading";
+  state.videoYoloNote = "Menunggu frame video live...";
+  const tick = () => {
+    if (!overlay.isConnected) {
+      stopVideoBrowserYolo();
+      return;
+    }
+    void processVideoYoloFrame(overlay);
+  };
+  tick();
+  state.videoYoloTimer = window.setInterval(tick, 1800);
+}
+
+function stopVideoBrowserYolo(): void {
+  window.clearInterval(state.videoYoloTimer);
+  state.videoYoloTimer = 0;
+  state.videoYoloBusy = false;
+  state.videoYoloStatus = "idle";
+  state.videoYoloNote = "";
+  state.videoYoloDeviceId = "";
+}
+
+async function processVideoYoloFrame(overlay: HTMLElement): Promise<void> {
+  if (state.videoYoloBusy) return;
+  state.videoYoloBusy = true;
+  try {
+    const source = await videoYoloSource(overlay);
+    if (!source) {
+      state.videoYoloStatus = "no-frame";
+      state.videoYoloNote = "Menunggu frame video live...";
+      clearVideoYoloCanvas(overlay);
+      updateVideoAiPanel(overlay);
+      return;
+    }
+    state.videoYoloStatus = state.videoYoloStatus === "online" ? "online" : "loading";
+    state.videoYoloNote = "YOLO ONNX memproses frame...";
+    updateVideoAiPanel(overlay);
+    const result = await runBrowserYolo(source);
+    state.videoYoloStatus = result.status;
+    state.videoYoloNote = result.note;
+    if (result.status === "online") {
+      const canvas = overlay.querySelector<HTMLCanvasElement>("[data-video-yolo-canvas]");
+      if (canvas) drawYoloDetections(canvas, result.detections, result.frameWidth, result.frameHeight);
+      const device = deviceForVideoYolo();
+      if (device) {
+        applyVideoYoloResult(device, result);
+        publishVideoYoloIfNeeded(device, result);
+      }
+      updateVideoAiPanel(overlay);
+      return;
+    }
+    clearVideoYoloCanvas(overlay);
+    updateVideoAiPanel(overlay);
+  } finally {
+    state.videoYoloBusy = false;
+  }
+}
+
+async function videoYoloSource(overlay: HTMLElement): Promise<HTMLVideoElement | HTMLImageElement | null> {
+  const video = Array.from(overlay.querySelectorAll<HTMLVideoElement>("video"))
+    .find((candidate) => candidate.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && candidate.videoWidth > 0 && candidate.videoHeight > 0);
+  if (video) return video;
+  const image = overlay.querySelector<HTMLImageElement>("img");
+  if (image?.complete && image.naturalWidth && image.naturalHeight) return image;
+  const snapshot = latestCameraSnapshot(deviceForVideoYolo());
+  return snapshot ? loadImageSource(snapshot) : null;
+}
+
+function clearVideoYoloCanvas(overlay: HTMLElement): void {
+  const canvas = overlay.querySelector<HTMLCanvasElement>("[data-video-yolo-canvas]");
+  const ctx = canvas?.getContext("2d");
+  if (canvas && ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+}
+
+function deviceForVideoYolo(): DeviceRecord | null {
+  return state.devices.find((device) => device.id === state.videoYoloDeviceId)
+    || (state.device?.id === state.videoYoloDeviceId ? state.device : null)
+    || state.device;
+}
+
+function applyVideoYoloResult(device: DeviceRecord, result: BrowserYoloResult): void {
+  const detections = result.detections.map(toWebYoloDetection);
+  const trafficLevel = result.vehicleCount >= 11 ? "padat" : result.vehicleCount >= 6 ? "sedang" : "lancar";
+  const trafficColor: TrafficColor = trafficLevel === "padat" ? "red" : trafficLevel === "sedang" ? "yellow" : "green";
+  const snapshotDataset: TrafficCameraDataset | undefined = result.annotatedThumbnailUrl || result.rawThumbnailUrl
+    ? {
+        snapshot1Url: result.annotatedThumbnailUrl || result.rawThumbnailUrl,
+        snapshot2Url: result.rawThumbnailUrl || result.annotatedThumbnailUrl,
+        updatedAt: result.updatedAt,
+        source: "browser-yolo",
+      }
+    : undefined;
+  const updated: DeviceRecord = {
+    ...device,
+    detectorStatus: result.status,
+    detectorNote: result.note,
+    detectorUpdatedAt: result.updatedAt,
+    detectorFps: result.fps,
+    detectorFrameWidth: result.frameWidth,
+    detectorFrameHeight: result.frameHeight,
+    detectorCameraSource: publicCameraHlsUrl(device) || publicCameraUrl(device) || "browser-frame",
+    detectorConfidence: 0.12,
+    detectorOutputShape: result.outputShape,
+    cameraThumbnailUrl: result.annotatedThumbnailUrl || result.rawThumbnailUrl || device.cameraThumbnailUrl,
+    cameraDataset: mergeCameraDataset(snapshotDataset, device.cameraDataset),
+    vehicleBreakdown: result.vehicleBreakdown,
+    vehicleCount: result.vehicleCount,
+    objectCount: result.objectCount,
+    detections,
+    trafficColor,
+    trafficSource: `adaptive-browser-yolo-${trafficLevel}`,
+  };
+  state.devices = state.devices.map((item) => item.id === updated.id ? updated : item);
+  if (!state.devices.some((item) => item.id === updated.id)) state.devices.push(updated);
+  if (!state.device || state.device.id === updated.id) state.device = updated;
+  state.trafficById.delete(updated.id);
+}
+
+function toWebYoloDetection(det: BrowserYoloDetection): YoloDetection {
+  return {
+    label: det.label,
+    confidence: det.confidence,
+    vehicle: det.vehicle,
+    x: det.x,
+    y: det.y,
+    width: det.width,
+    height: det.height,
+  };
+}
+
+function publishVideoYoloIfNeeded(device: DeviceRecord, result: BrowserYoloResult): void {
+  if (Date.now() - state.videoYoloLastPublishAt < 5000) return;
+  state.videoYoloLastPublishAt = Date.now();
+  const cameraUrl = publicCameraHlsUrl(device) || publicCameraUrl(device) || latestCameraSnapshot(device);
+  void publishBrowserYoloResult(FIREBASE_ROOT_URL, device.id, browserViewerId(), cameraUrl, result)
+    .catch((err) => {
+      console.warn("[ITS] browser YOLO publish failed:", err);
+      state.videoYoloStatus = "error";
+      state.videoYoloNote = err instanceof Error ? err.message : "Publish YOLO gagal";
+      const overlay = document.getElementById("video-fullscreen-modal");
+      if (overlay) updateVideoAiPanel(overlay);
+    });
+}
+
+function processWidgetSnapshotYolo(device: DeviceRecord | null): void {
+  const src = latestCameraSnapshot(device);
+  if (!device || !src || src.startsWith("data:image/")) return;
+  const key = `${device.id}:${src}`;
+  if (state.widgetYoloBusy || state.widgetYoloKey === key) return;
+  state.widgetYoloBusy = true;
+  state.widgetYoloKey = key;
+  void (async () => {
+    const image = await loadImageSource(src);
+    if (!image) return;
+    const result = await runBrowserYolo(image);
+    if (result.status !== "online") return;
+    applyVideoYoloResult(device, result);
+    publishVideoYoloIfNeeded(device, result);
+    renderCameraTile();
+    if (document.getElementById("m-its-scroll")) renderITSSheetContent();
+  })().catch((err) => {
+    console.warn("[ITS] widget snapshot YOLO failed:", err);
+  }).finally(() => {
+    state.widgetYoloBusy = false;
+  });
+}
+
+function updateVideoAiPanel(root: ParentNode): void {
+  const device = deviceForVideoYolo();
+  const statusEl = root.querySelector<HTMLElement>("[data-video-ai-status]");
+  if (statusEl) statusEl.textContent = videoAiStatusText(device);
+  const statsHost = root.querySelector<HTMLElement>("[data-video-ai-stats]");
+  if (statsHost) statsHost.innerHTML = renderVehicleStatsGrid(device, device ? trafficStateForDevice(device) : null, "video-ai-stats");
+  const caption = root.querySelector<HTMLElement>(".video-fullscreen-caption");
+  if (caption) caption.textContent = state.videoYoloNote || webRtcStatusText();
+}
+
+function videoAiStatusText(device: DeviceRecord | null): string {
+  if (state.videoYoloStatus === "loading") return state.videoYoloNote || "YOLO ONNX memuat model...";
+  if (state.videoYoloStatus === "no-frame") return state.videoYoloNote || "Menunggu frame video live";
+  if (state.videoYoloStatus === "error") return state.videoYoloNote || "YOLO ONNX gagal";
+  if (state.videoYoloStatus === "online") {
+    const fps = device?.detectorFps && device.detectorFps > 0 ? ` - ${device.detectorFps.toFixed(1)} FPS` : "";
+    return `YOLO ONNX browser aktif${fps}`;
+  }
+  if (!device) return "Menunggu data AI";
+  const fps = device.detectorFps && device.detectorFps > 0 ? ` - ${device.detectorFps.toFixed(1)} FPS` : "";
+  if (device.detectorStatus === "disabled") return "YOLO Raspberry disabled, fallback browser siap";
+  return `${device.detectorStatus || "menunggu"}${fps}`;
 }
 
 function setupVideoAiSwipe(sheetEl: HTMLElement, onClose: () => void, onWidthChange: (widthPx: number) => void): void {
@@ -6124,6 +6559,7 @@ function renderITSSheetContent(): void {
              <span>Belum ada kamera</span>
            </div>`}
       ${cameraSurface ? renderDetectionOverlay(device) : ""}
+      ${cameraSurface ? `<button class="m-camera-play" data-custom-video-play aria-label="Putar video">${playSvg()}</button>` : ""}
       <button class="m-camera-fullscreen" aria-label="Fullscreen">
         <svg viewBox="0 0 16 16" fill="none" width="14" height="14">
           <path d="M1 6V1h5M10 1h5v5M15 10v5h-5M6 15H1v-5"
@@ -6173,10 +6609,16 @@ function renderITSSheetContent(): void {
   <div style="height:24px"></div>
 `;
 
+  setupHlsVideos(scroll);
   syncCameraViews(device);
   attachWebRtcStream();
+  processWidgetSnapshotYolo(device);
   requestAnimationFrame(() => drawTrafficChart());
+  scroll.querySelector<HTMLButtonElement>(".m-camera-play")?.addEventListener("click", (event) => {
+    toggleCustomVideoPlayback(customVideoRoot(event.currentTarget as HTMLElement));
+  });
   scroll.querySelector<HTMLButtonElement>(".m-camera-fullscreen")?.addEventListener("click", () => openVideoFullscreen(device));
+  syncCustomVideoButtons(scroll);
 
   scroll.querySelectorAll<HTMLDivElement>(".m-device-row").forEach(row => {
     row.addEventListener("click", () => {
@@ -6661,7 +7103,7 @@ function getAppDownloadInfo(): AppDownloadInfo {
     url: ITS_WINDOWS_INSTALL_URL,
     previewFolder: "windows",
     shortDescription: "Installer Windows ITS Maps dengan peta Carto, data OSM, kamera realtime, notifikasi desktop, dan pembaruan aplikasi.",
-    longDescription: "ITS Maps Windows adalah aplikasi desktop Electron untuk memantau Raspberry Pi, peta realtime, kamera, grafik lalu lintas, history, update otomatis, dokumentasi, dan panel What's New. Installer custom menyiapkan aplikasi native dan artifact .download dipakai untuk pembaruan.",
+    longDescription: "ITS Maps adalah aplikasi desktop Electron untuk memantau Raspberry Pi, peta realtime, kamera, grafik lalu lintas, history, update otomatis, dokumentasi, dan panel What's New. Installer custom menyiapkan aplikasi native dan artifact .download dipakai untuk pembaruan.",
   };
 }
 
