@@ -212,10 +212,48 @@ type RoadGuideRecord = {
   hasSidewalk: boolean;
   hasMedian: boolean;
   treeLined: boolean;
+  waterMedian: boolean;
+  isRoundabout: boolean;
   lanes: number;
   surface: string;
   roadType: "expressway" | "avenue" | "street" | "service" | "foot";
   points: L.LatLng[];
+};
+
+type RailGuideRecord = {
+  id: string;
+  name: string;
+  railway: string;
+  points: L.LatLng[];
+};
+
+type CrossingGuideRecord = {
+  id: string;
+  name: string;
+  latlng: L.LatLng;
+  type: "rail" | "road";
+};
+
+type WaterGuideRecord = {
+  id: string;
+  name: string;
+  waterway: string;
+  points: L.LatLng[];
+};
+
+type GreenGuideRecord = {
+  id: string;
+  name: string;
+  kind: string;
+  points: L.LatLng[];
+};
+
+type RoadGuideBundle = {
+  roads: RoadGuideRecord[];
+  rails: RailGuideRecord[];
+  crossings: CrossingGuideRecord[];
+  waterways: WaterGuideRecord[];
+  greens: GreenGuideRecord[];
 };
 
 // ─── Constants ──────────────────────────────────────────────────
@@ -706,6 +744,26 @@ if (map.attributionControl) {
 state.overpassLayer = L.layerGroup().addTo(map);
 state.roadGuideLayer = L.layerGroup().addTo(map);
 
+function applySharedLocationFromUrl(): void {
+  const params = new URLSearchParams(window.location.search);
+  const lat = Number(params.get("lat"));
+  const lng = Number(params.get("lng"));
+  if (!isValidCoordinate(lat, lng)) return;
+  const zoom = clamp(Number(params.get("z")) || DEFAULT_ZOOM, 12, 20);
+  const title = params.get("place") || "Lokasi dibagikan";
+  const latlng = L.latLng(lat, lng);
+  map.setView(latlng, zoom, { animate: false });
+  L.circleMarker(latlng, {
+    radius: 7,
+    color: "#2563eb",
+    weight: 2,
+    fillColor: "#ffffff",
+    fillOpacity: 0.9,
+  }).addTo(map).bindPopup(escapeHtml(title)).openPopup();
+}
+
+map.whenReady(applySharedLocationFromUrl);
+
 // ─── Scale Control ──────────────────────────────────────────────
 // Custom scale ruler yang dinamis sesuai zoom level
 const ScaleControl = L.Control.extend({
@@ -1000,7 +1058,7 @@ function openPoiModal(poi: PoiRecord): void {
   const startBtn = sheet.querySelector<HTMLButtonElement>(".btn-start");
   const cameraBtn = sheet.querySelector<HTMLButtonElement>(".btn-camera");
   shareBtn?.addEventListener("click", async () => {
-    const url = `https://www.openstreetmap.org/?mlat=${poi.lat}&mlon=${poi.lng}#map=${DEFAULT_ZOOM}/${poi.lat}/${poi.lng}`;
+    const url = appPlaceUrl(poi.lat, poi.lng, poi.title);
     try {
       if ((navigator as any).share) {
         await (navigator as any).share({ title: poi.title, text: poi.description || poi.title, url });
@@ -1816,6 +1874,43 @@ function numberTag(tags: Record<string, string>, key: string): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function elementGeometryPoints(el: any): L.LatLng[] {
+  const geometry = Array.isArray(el.geometry) ? el.geometry : [];
+  return geometry
+    .map((p: any) => L.latLng(Number(p.lat), Number(p.lon)))
+    .filter((p: L.LatLng) => isValidCoordinate(p.lat, p.lng));
+}
+
+function isClosedGuideRing(points: L.LatLng[]): boolean {
+  if (points.length < 4) return false;
+  const first = points[0];
+  const last = points[points.length - 1];
+  return Math.abs(first.lat - last.lat) < 0.00002 && Math.abs(first.lng - last.lng) < 0.00002;
+}
+
+function guideCentroid(points: L.LatLng[]): L.LatLng | null {
+  if (!points.length) return null;
+  const sum = points.reduce((acc, point) => {
+    acc.lat += point.lat;
+    acc.lng += point.lng;
+    return acc;
+  }, { lat: 0, lng: 0 });
+  return L.latLng(sum.lat / points.length, sum.lng / points.length);
+}
+
+function appPlaceUrl(lat: number, lng: number, title?: string): string {
+  const origin = window.location.protocol.startsWith("http")
+    ? window.location.origin
+    : "https://itstelkom.web.app";
+  const url = new URL(origin);
+  url.pathname = "/";
+  url.searchParams.set("lat", lat.toFixed(6));
+  url.searchParams.set("lng", lng.toFixed(6));
+  url.searchParams.set("z", String(Math.max(16, Math.round(map.getZoom() || DEFAULT_ZOOM))));
+  if (title) url.searchParams.set("place", title);
+  return url.toString();
+}
+
 function roadNameLooksAvenue(name: string): boolean {
   return /\b(raya|boulevard|avenue|arteri|ring road|lingkar|protokol|jenderal|perintis|kemerdekaan|sudirman|thamrin|gatot|tol)\b/i.test(name);
 }
@@ -1896,6 +1991,96 @@ function roadLaneDividerStyle(road: RoadGuideRecord): L.PolylineOptions {
   };
 }
 
+function roadSidewalkStyle(road: RoadGuideRecord): L.PolylineOptions {
+  const cls = roadRenderClass(road);
+  return {
+    color: cls === "major" ? "#d7e6f7" : "#c7d6e6",
+    weight: cls === "major" ? 14.5 : cls === "service" ? 6.5 : 9,
+    opacity: cls === "foot" ? 0 : 0.62,
+    dashArray: road.hasSidewalk ? "10 9" : "2 14",
+    lineCap: "round",
+    interactive: false,
+  };
+}
+
+function roadAvenueTreeStyle(road: RoadGuideRecord): L.PolylineOptions {
+  return {
+    color: road.treeLined ? "#20b36b" : "#7bd389",
+    weight: road.treeLined ? 5 : 3.2,
+    opacity: road.treeLined ? 0.9 : 0.55,
+    dashArray: road.treeLined ? "1 13" : "2 18",
+    lineCap: "round",
+    interactive: false,
+  };
+}
+
+function roadWaterMedianStyle(): L.PolylineOptions {
+  return {
+    color: "#77cbe8",
+    weight: 3.2,
+    opacity: 0.72,
+    dashArray: "18 14",
+    lineCap: "round",
+    interactive: false,
+  };
+}
+
+function roadRoundaboutGreenStyle(): L.PolylineOptions {
+  return {
+    color: "#9adea9",
+    fillColor: "#d8f6d8",
+    fillOpacity: 0.78,
+    weight: 1.2,
+    opacity: 0.92,
+    interactive: false,
+  };
+}
+
+function railGuideStyle(casing = false): L.PolylineOptions {
+  return {
+    color: casing ? "#ffffff" : "#596273",
+    weight: casing ? 6 : 3,
+    opacity: casing ? 0.92 : 0.86,
+    dashArray: casing ? undefined : "10 8",
+    lineCap: "butt",
+    interactive: false,
+  };
+}
+
+function railSleeperStyle(): L.PolylineOptions {
+  return {
+    color: "#111827",
+    weight: 1.4,
+    opacity: 0.58,
+    dashArray: "2 12",
+    lineCap: "butt",
+    interactive: false,
+  };
+}
+
+function waterGuideStyle(water: WaterGuideRecord): L.PolylineOptions {
+  const isRiver = /river|canal/.test(water.waterway);
+  return {
+    color: isRiver ? "#77cbe8" : "#8bd8ef",
+    weight: isRiver ? 5.5 : 3.4,
+    opacity: 0.82,
+    lineCap: "round",
+    interactive: false,
+  };
+}
+
+function greenGuideStyle(green: GreenGuideRecord): L.PolylineOptions {
+  const darker = /park|forest|wood/.test(green.kind);
+  return {
+    color: darker ? "#7edc91" : "#b9efb7",
+    fillColor: darker ? "#ccf2ce" : "#e3f8d6",
+    fillOpacity: 0.54,
+    weight: 1,
+    opacity: 0.8,
+    interactive: false,
+  };
+}
+
 function roadGuideMidpoint(points: L.LatLng[]): { latlng: L.LatLng; bearing: number } | null {
   if (points.length < 2) return null;
   const index = Math.max(0, Math.min(points.length - 2, Math.floor(points.length / 2) - 1));
@@ -1935,6 +2120,26 @@ function makeRoadTypeIcon(road: RoadGuideRecord): L.DivIcon {
   });
 }
 
+function makeRoundaboutIcon(road: RoadGuideRecord): L.DivIcon {
+  const label = road.name || road.ref || "Bundaran";
+  return L.divIcon({
+    className: "road-guide-roundabout-icon",
+    html: `<span title="${escapeHtml(label)}"></span>`,
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+  });
+}
+
+function makeRailCrossingIcon(crossing: CrossingGuideRecord): L.DivIcon {
+  const size = clamp(20 + (map.getZoom() - 15) * 3, 20, 34);
+  return L.divIcon({
+    className: "rail-crossing-icon",
+    html: `<span class="rail-crossing-mark" style="--crossing-size:${size}px" title="${escapeHtml(crossing.name || "Perlintasan kereta")}"></span>`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+  });
+}
+
 function makeRoadNameIcon(name: string): L.DivIcon {
   return L.divIcon({
     className: "road-guide-name-icon",
@@ -1959,14 +2164,22 @@ function roadGuideSamplePoints(points: L.LatLng[], maxCount: number): { latlng: 
   return samples;
 }
 
-async function fetchRoadGuidesForBounds(bounds: L.LatLngBounds): Promise<RoadGuideRecord[]> {
+async function fetchRoadGuidesForBounds(bounds: L.LatLngBounds): Promise<RoadGuideBundle> {
   const bbox = buildOverpassBBoxString(bounds);
   const q = `
-    [out:json][timeout:15];
+    [out:json][timeout:18];
     (
       way["highway"~"motorway|trunk|primary|secondary|tertiary|residential|unclassified|service|living_street|pedestrian|footway|path|cycleway|steps"](${bbox});
+      way["railway"~"rail|light_rail|tram|subway|narrow_gauge"](${bbox});
+      node["railway"~"level_crossing|crossing|tram_crossing"](${bbox});
+      way["waterway"~"river|stream|canal|drain|ditch"](${bbox});
+      way["natural"="water"](${bbox});
+      way["water"~"river|stream|canal|drain|ditch|pond|lake"](${bbox});
+      way["leisure"~"park|garden|recreation_ground"](${bbox});
+      way["landuse"~"grass|forest|meadow|village_green|recreation_ground"](${bbox});
+      way["natural"~"wood|grassland|scrub|tree_row"](${bbox});
     );
-    out tags geom 140;
+    out tags geom 150;
   `;
 
   try {
@@ -1978,23 +2191,45 @@ async function fetchRoadGuidesForBounds(bounds: L.LatLngBounds): Promise<RoadGui
     if (!res.ok) throw new Error(`Overpass road HTTP ${res.status}`);
     const data = await res.json();
     const elements = Array.isArray(data.elements) ? data.elements : [];
-    return elements
-      .map((el: any): RoadGuideRecord | null => {
-        const tags = el.tags || {};
-        const geometry = Array.isArray(el.geometry) ? el.geometry : [];
-        const points = geometry
-          .map((p: any) => L.latLng(Number(p.lat), Number(p.lon)))
-          .filter((p: L.LatLng) => isValidCoordinate(p.lat, p.lng));
-        if (points.length < 2 || !tags.highway) return null;
+    const bundle: RoadGuideBundle = {
+      roads: [],
+      rails: [],
+      crossings: [],
+      waterways: [],
+      greens: [],
+    };
+
+    elements.forEach((el: any) => {
+      const tags = el.tags || {};
+
+      if (el.type === "node") {
+        const lat = Number(el.lat);
+        const lng = Number(el.lon);
+        if (isValidCoordinate(lat, lng) && /level_crossing|crossing|tram_crossing/.test(tags.railway || "")) {
+          bundle.crossings.push({
+            id: `crossing-${el.id}`,
+            name: tags.name || tags.ref || "Perlintasan kereta",
+            latlng: L.latLng(lat, lng),
+            type: "rail",
+          });
+        }
+        return;
+      }
+
+      const points = elementGeometryPoints(el);
+      if (points.length < 2) return;
+
+      if (tags.highway) {
         const name = tags["name:id"] || tags.name || tags.ref || tags["addr:street"] || "";
         const lanes = numberTag(tags, "lanes") || (numberTag(tags, "lanes:forward") + numberTag(tags, "lanes:backward"));
         const roadType = detectRoadType(tags, name);
-        return {
+        const isRoundabout = tags.junction === "roundabout" || tags.junction === "circular";
+        bundle.roads.push({
           id: `road-${el.id}`,
           name,
           ref: tags.ref || "",
           highway: tags.highway,
-          oneway: tags.oneway === "yes" || tags.oneway === "1" || tags.junction === "roundabout",
+          oneway: tags.oneway === "yes" || tags.oneway === "1" || isRoundabout,
           hasSidewalk: Boolean(tags.sidewalk && tags.sidewalk !== "no") || /footway|pedestrian|path/.test(tags.highway),
           hasMedian: tags.dual_carriageway === "yes"
             || Boolean(tags.divider && tags.divider !== "no")
@@ -2003,16 +2238,50 @@ async function fetchRoadGuidesForBounds(bounds: L.LatLngBounds): Promise<RoadGui
           treeLined: tags.tree_lined === "yes"
             || tags["tree_lined:both"] === "yes"
             || (roadType === "avenue" && !/flyover|bridge/.test(tags.layer || "")),
+          waterMedian: tags.waterway === "stream" || tags.water === "canal" || /\b(kali|sungai|kanal|sunter)\b/i.test(name),
+          isRoundabout,
           lanes,
           surface: tags.surface || "",
           roadType,
           points,
-        };
-      })
-      .filter(Boolean) as RoadGuideRecord[];
+        });
+        return;
+      }
+
+      if (tags.railway && /rail|light_rail|tram|subway|narrow_gauge/.test(tags.railway)) {
+        bundle.rails.push({
+          id: `rail-${el.id}`,
+          name: tags.name || tags.ref || "",
+          railway: tags.railway,
+          points,
+        });
+        return;
+      }
+
+      if (tags.waterway || tags.natural === "water" || tags.water) {
+        bundle.waterways.push({
+          id: `water-${el.id}`,
+          name: tags.name || "",
+          waterway: tags.waterway || tags.water || tags.natural || "water",
+          points,
+        });
+        return;
+      }
+
+      if (tags.leisure || tags.landuse || /wood|grassland|scrub|tree_row/.test(tags.natural || "")) {
+        bundle.greens.push({
+          id: `green-${el.id}`,
+          name: tags.name || "",
+          kind: tags.leisure || tags.landuse || tags.natural || "green",
+          points,
+        });
+      }
+    });
+
+    return bundle;
   } catch (err) {
     console.warn("Overpass road guide failed:", err);
-    return [];
+    return { roads: [], rails: [], crossings: [], waterways: [], greens: [] };
   }
 }
 
@@ -2033,10 +2302,40 @@ async function refreshRoadGuideLayer(force = false): Promise<void> {
   if (!force && lastRoadGuideFetchBounds && lastRoadGuideFetchBounds.contains(bounds.getSouthWest()) && lastRoadGuideFetchBounds.contains(bounds.getNorthEast())) return;
   lastRoadGuideFetchBounds = bounds.pad(0.2);
 
-  const roads = await fetchRoadGuidesForBounds(bounds);
+  const guide = await fetchRoadGuidesForBounds(bounds);
   state.roadGuideLayer.clearLayers();
   const limit = zoom >= 18 ? 120 : zoom >= 16 ? 84 : 52;
-  roads
+
+  guide.greens.slice(0, zoom >= 17 ? 80 : 44).forEach((green) => {
+    if (green.points.length >= 4 && isClosedGuideRing(green.points)) {
+      L.polygon(green.points, greenGuideStyle(green)).addTo(state.roadGuideLayer as L.LayerGroup);
+    } else {
+      L.polyline(green.points, { ...greenGuideStyle(green), fillOpacity: 0, weight: 3.5, opacity: 0.5 }).addTo(state.roadGuideLayer as L.LayerGroup);
+    }
+  });
+
+  guide.waterways.slice(0, zoom >= 17 ? 70 : 36).forEach((water) => {
+    if (water.points.length >= 4 && isClosedGuideRing(water.points)) {
+      L.polygon(water.points, {
+        color: "#8bd8ef",
+        fillColor: "#c9f0fb",
+        fillOpacity: 0.64,
+        weight: 1,
+        opacity: 0.78,
+        interactive: false,
+      }).addTo(state.roadGuideLayer as L.LayerGroup);
+    } else {
+      L.polyline(water.points, waterGuideStyle(water)).addTo(state.roadGuideLayer as L.LayerGroup);
+    }
+  });
+
+  guide.rails.slice(0, zoom >= 17 ? 55 : 30).forEach((rail) => {
+    L.polyline(rail.points, railGuideStyle(true)).addTo(state.roadGuideLayer as L.LayerGroup);
+    L.polyline(rail.points, railGuideStyle(false)).addTo(state.roadGuideLayer as L.LayerGroup);
+    L.polyline(rail.points, railSleeperStyle()).addTo(state.roadGuideLayer as L.LayerGroup);
+  });
+
+  guide.roads
     .sort((a, b) => {
       const ca = roadRenderClass(a);
       const cb = roadRenderClass(b);
@@ -2046,12 +2345,32 @@ async function refreshRoadGuideLayer(force = false): Promise<void> {
     .slice(0, limit)
     .forEach((road, index) => {
       const cls = roadRenderClass(road);
+      if (road.isRoundabout && isClosedGuideRing(road.points)) {
+        L.polygon(road.points, roadRoundaboutGreenStyle()).addTo(state.roadGuideLayer as L.LayerGroup);
+        const center = guideCentroid(road.points);
+        if (center && zoom >= 16) {
+          L.marker(center, {
+            icon: makeRoundaboutIcon(road),
+            interactive: false,
+            zIndexOffset: 107,
+          }).addTo(state.roadGuideLayer as L.LayerGroup);
+        }
+      }
+      if (road.hasSidewalk && cls !== "foot") {
+        L.polyline(road.points, roadSidewalkStyle(road)).addTo(state.roadGuideLayer as L.LayerGroup);
+      }
       if (cls !== "foot") {
         L.polyline(road.points, roadGuideStyle(road, true)).addTo(state.roadGuideLayer as L.LayerGroup);
       }
       L.polyline(road.points, roadGuideStyle(road, false)).addTo(state.roadGuideLayer as L.LayerGroup);
       if (road.hasMedian) {
         L.polyline(road.points, roadMedianStyle(road)).addTo(state.roadGuideLayer as L.LayerGroup);
+      }
+      if (road.treeLined && road.roadType !== "foot") {
+        L.polyline(road.points, roadAvenueTreeStyle(road)).addTo(state.roadGuideLayer as L.LayerGroup);
+      }
+      if (road.waterMedian && road.roadType !== "foot") {
+        L.polyline(road.points, roadWaterMedianStyle()).addTo(state.roadGuideLayer as L.LayerGroup);
       }
       if (road.roadType === "avenue" || road.roadType === "expressway") {
         L.polyline(road.points, roadLaneDividerStyle(road)).addTo(state.roadGuideLayer as L.LayerGroup);
@@ -2084,6 +2403,14 @@ async function refreshRoadGuideLayer(force = false): Promise<void> {
         }).addTo(state.roadGuideLayer as L.LayerGroup);
       }
     });
+
+  guide.crossings.slice(0, zoom >= 17 ? 80 : 38).forEach((crossing) => {
+    L.marker(crossing.latlng, {
+      icon: makeRailCrossingIcon(crossing),
+      interactive: false,
+      zIndexOffset: 118,
+    }).addTo(state.roadGuideLayer as L.LayerGroup);
+  });
 }
 
 let lastOverpassFetchBounds: L.LatLngBounds | null = null;
@@ -4979,20 +5306,40 @@ function getMapEl(): HTMLElement | null {
 }
 
 function setMobileToolbarSheetOffset(heightPx: number): void {
-  const offset = isMobile()
-    ? Math.max(0, Math.round(heightPx > 0 ? heightPx + 64 : 0))
-    : 0;
-  document.documentElement.style.setProperty("--m-sheet-offset", `${offset}px`);
+  if (!isMobile()) {
+    document.documentElement.style.setProperty("--m-sheet-offset", "0px");
+    document.documentElement.style.setProperty("--m-sheet-progress", "0");
+    return;
+  }
+  const offset = Math.max(0, Math.round(heightPx > 0 ? heightPx + 64 : 0));
+  const progress = clamp(heightPx / Math.max(1, ITS_SNAP.peek()), 0, 1);
+  const root = document.documentElement;
+  root.style.setProperty("--m-sheet-offset", `${offset}px`);
+  root.style.setProperty("--m-sheet-progress", progress.toFixed(3));
+  root.style.setProperty("--m-locate-left", `${Math.round(lerp(12, 82, progress))}px`);
+  root.style.setProperty("--m-home-left", `${Math.round(lerp(12, 28, progress))}px`);
+  root.style.setProperty("--m-zoom-in-right", `${Math.round(lerp(12, 82, progress))}px`);
+  root.style.setProperty("--m-zoom-out-right", `${Math.round(lerp(12, 28, progress))}px`);
+  root.style.setProperty("--m-locate-bottom", `${Math.round(lerp(120, 28, progress) + offset)}px`);
+  root.style.setProperty("--m-home-bottom", `${Math.round(lerp(168, 28, progress) + offset)}px`);
+  root.style.setProperty("--m-zoom-in-bottom", `${Math.round(lerp(216, 28, progress) + offset)}px`);
+  root.style.setProperty("--m-zoom-out-bottom", `${Math.round(168 + (28 - 168) * progress + offset)}px`);
+  root.style.setProperty("--m-camera-opacity", `${(1 - progress).toFixed(3)}`);
+  root.style.setProperty("--m-camera-y", `${Math.round(12 * progress)}px`);
+  root.style.setProperty("--m-camera-scale", `${(1 - progress * 0.04).toFixed(3)}`);
 }
 
-function setMapHeight(heightPx: number): void {
+function setMapHeight(heightPx: number, immediate = false): void {
   const mapEl = getMapEl();
   if (!mapEl) return;
   const total = window.innerHeight - 64;
   const mapH = Math.max(60, total - heightPx);
+  const progress = isMobile() ? clamp(heightPx / Math.max(1, ITS_SNAP.peek()), 0, 1) : 0;
   document.documentElement.style.setProperty("--its-sheet-height", `${Math.max(0, heightPx)}px`);
+  document.documentElement.style.setProperty("--m-map-inset", `${Math.round(8 * progress)}px`);
+  document.documentElement.style.setProperty("--m-map-radius", `${Math.round(18 * progress)}px`);
   mapEl.style.height = `${mapH}px`;
-  mapEl.style.transition = "height 0.32s cubic-bezier(0.32,0.72,0,1)";
+  mapEl.style.transition = immediate ? "none" : "height 0.32s cubic-bezier(0.32,0.72,0,1)";
   mapEl.classList.toggle("its-open", heightPx > 0);
   setMobileToolbarSheetOffset(heightPx);
   map.invalidateSize();
@@ -5050,6 +5397,7 @@ function createITSSheet(): HTMLElement {
     const matrix = new DOMMatrix(getComputedStyle(sheet).transform);
     touchStartTranslate = matrix.m42;
     sheet.style.transition = "none";
+    document.body.classList.add("its-sheet-dragging");
   }, { passive: true });
 
   sheet.addEventListener("touchmove", (e: TouchEvent) => {
@@ -5063,10 +5411,11 @@ function createITSSheet(): HTMLElement {
     const clampedY = Math.max(minY, Math.min(maxY, rawY));
     sheet.style.transform = `translateY(${clampedY}px)`;
     const sheetH = window.innerHeight - 64 - clampedY;
-    setMapHeight(Math.max(0, sheetH));
+    setMapHeight(Math.max(0, sheetH), true);
   }, { passive: false });
 
   sheet.addEventListener("touchend", () => {
+    document.body.classList.remove("its-sheet-dragging");
     const matrix = new DOMMatrix(getComputedStyle(sheet).transform);
     const currentY = matrix.m42;
     const sheetH = window.innerHeight - 64 - currentY;
@@ -5089,6 +5438,11 @@ function createITSSheet(): HTMLElement {
     }
 
     snapITSSheet(snap);
+  });
+
+  sheet.addEventListener("touchcancel", () => {
+    document.body.classList.remove("its-sheet-dragging");
+    snapITSSheet(itsCurrentSnap);
   });
 
   sheet.innerHTML = `

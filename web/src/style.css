@@ -2467,6 +2467,70 @@ body {
   color: #475569;
 }
 
+.road-guide-roundabout-icon {
+  background: transparent !important;
+  border: 0 !important;
+  pointer-events: none !important;
+}
+
+.road-guide-roundabout-icon span {
+  position: relative;
+  display: block;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: radial-gradient(circle at 50% 42%, #f8fafc 0 18%, #86efac 20% 58%, #22c55e 60% 100%);
+  border: 2px solid rgba(255, 255, 255, 0.96);
+}
+
+.road-guide-roundabout-icon span::after {
+  content: "";
+  position: absolute;
+  left: 9px;
+  top: 5px;
+  width: 4px;
+  height: 10px;
+  border-radius: 2px 2px 1px 1px;
+  background: #64748b;
+}
+
+.rail-crossing-icon {
+  background: transparent !important;
+  border: 0 !important;
+  pointer-events: none !important;
+}
+
+.rail-crossing-mark {
+  position: relative;
+  display: block;
+  width: var(--crossing-size, 24px);
+  height: var(--crossing-size, 24px);
+  border-radius: 7px;
+  background: #fff;
+  border: 1px solid rgba(15, 23, 42, 0.14);
+}
+
+.rail-crossing-mark::before,
+.rail-crossing-mark::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(var(--crossing-size, 24px) * 0.82);
+  height: 4px;
+  border-radius: 999px;
+  background: repeating-linear-gradient(90deg, #ef4444 0 5px, #ffffff 5px 10px);
+  transform-origin: center;
+}
+
+.rail-crossing-mark::before {
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.rail-crossing-mark::after {
+  transform: translate(-50%, -50%) rotate(-45deg);
+}
+
 /* ─── POI Markers ───────────────────────────────── */
 .poi-marker-icon {
   background: transparent !important;
@@ -2819,21 +2883,19 @@ body {
 #map.m-map {
   position: absolute !important;
   top: 0;
-  left: 0;
-  right: 0;
+  left: var(--m-map-inset, 0px);
+  right: var(--m-map-inset, 0px);
   /* height diset oleh JS */
   transition: height 0.32s cubic-bezier(0.32, 0.72, 0, 1), border-radius 0.32s cubic-bezier(0.32, 0.72, 0, 1),
     left 0.32s cubic-bezier(0.32, 0.72, 0, 1), right 0.32s cubic-bezier(0.32, 0.72, 0, 1),
     width 0.32s cubic-bezier(0.32, 0.72, 0, 1);
+  border-radius: 0 0 var(--m-map-radius, 0px) var(--m-map-radius, 0px);
+  overflow: hidden;
   z-index: 1;
 }
 
 #map.m-map.its-open {
-  left: 8px;
-  right: 8px;
   width: auto;
-  border-radius: 0 0 18px 18px;
-  overflow: hidden;
 }
 
 /* ── Bottom Nav ───────────────────────────────────────────────────────────── */
@@ -3155,12 +3217,14 @@ body.its-sheet-open #m-bottom-nav {
 }
 
 .m-its-scroll-content {
-  flex: 1;
+  flex: 0 0 auto;
+  height: max(160px, calc(var(--its-sheet-height, 70dvh) + 16px));
+  max-height: calc(100dvh - 82px);
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
-  padding: 0 0 max(180px, calc(env(safe-area-inset-bottom) + 140px)) 0;
-  scroll-padding-bottom: max(180px, calc(env(safe-area-inset-bottom) + 140px));
+  padding: 0 0 max(260px, calc(env(safe-area-inset-bottom) + 220px)) 0;
+  scroll-padding-bottom: max(260px, calc(env(safe-area-inset-bottom) + 220px));
 }
 
 .m-its-section {
@@ -4357,6 +4421,58 @@ body.its-sheet-open .map-toolbar-mobile .toolbar-btn[data-action="zoom-out"] {
 /* Sembunyikan scale control yang kurang berguna di mobile */
 .map-scale-control {
   display: none;
+}
+
+.map-toolbar-mobile .toolbar-btn[data-action="locate"],
+.map-toolbar-mobile .toolbar-btn[data-action="home"],
+.map-toolbar-mobile .toolbar-btn[data-action="zoom-in"],
+.map-toolbar-mobile .toolbar-btn[data-action="zoom-out"],
+.map-toolbar-mobile .toolbar-camera {
+  transition: left 0.24s cubic-bezier(0.32, 0.72, 0, 1),
+    right 0.24s cubic-bezier(0.32, 0.72, 0, 1),
+    bottom 0.24s cubic-bezier(0.32, 0.72, 0, 1),
+    opacity 0.2s ease,
+    transform 0.24s cubic-bezier(0.32, 0.72, 0, 1) !important;
+}
+
+.map-toolbar-mobile .toolbar-btn[data-action="locate"],
+body.its-sheet-open .map-toolbar-mobile .toolbar-btn[data-action="locate"] {
+  left: var(--m-locate-left, 12px) !important;
+  bottom: var(--m-locate-bottom, 120px) !important;
+}
+
+.map-toolbar-mobile .toolbar-btn[data-action="home"],
+body.its-sheet-open .map-toolbar-mobile .toolbar-btn[data-action="home"] {
+  left: var(--m-home-left, 12px) !important;
+  bottom: var(--m-home-bottom, 168px) !important;
+}
+
+.map-toolbar-mobile .toolbar-btn[data-action="zoom-in"],
+body.its-sheet-open .map-toolbar-mobile .toolbar-btn[data-action="zoom-in"] {
+  right: var(--m-zoom-in-right, 12px) !important;
+  bottom: var(--m-zoom-in-bottom, 216px) !important;
+}
+
+.map-toolbar-mobile .toolbar-btn[data-action="zoom-out"],
+body.its-sheet-open .map-toolbar-mobile .toolbar-btn[data-action="zoom-out"] {
+  right: var(--m-zoom-out-right, 12px) !important;
+  bottom: var(--m-zoom-out-bottom, 168px) !important;
+}
+
+.map-toolbar-mobile .toolbar-camera,
+body.its-sheet-open .map-toolbar-mobile .toolbar-camera {
+  opacity: var(--m-camera-opacity, 1) !important;
+  transform: translateY(var(--m-camera-y, 0px)) scale(var(--m-camera-scale, 1)) !important;
+}
+
+body.its-sheet-open .map-toolbar-mobile .toolbar-camera {
+  pointer-events: none;
+}
+
+body.its-sheet-dragging #map.m-map,
+body.its-sheet-dragging .map-toolbar-mobile .toolbar-btn,
+body.its-sheet-dragging .map-toolbar-mobile .toolbar-camera {
+  transition: none !important;
 }
 
 /* ── Status badge colors ─────────────────────────────────────────────────── */
