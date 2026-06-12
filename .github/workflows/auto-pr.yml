@@ -18,11 +18,12 @@ jobs:
   open-pr:
     runs-on: ubuntu-latest
     env:
-      TARGET_REPO: ${{ vars.AUTO_PR_TARGET_REPO || 'hanifasepthi/its' }}
+      REQUESTED_TARGET_REPO: ${{ vars.AUTO_PR_TARGET_REPO || 'hanifasepthi/its' }}
       TARGET_BASE: ${{ vars.AUTO_PR_BASE_BRANCH || 'main' }}
       HEAD_OWNER: ${{ github.repository_owner }}
       HEAD_BRANCH: ${{ inputs.head_branch || github.ref_name }}
       AUTO_MERGE: ${{ vars.AUTO_PR_ENABLE_AUTOMERGE || 'false' }}
+      HAS_AUTO_PR_TOKEN: ${{ secrets.AUTO_PR_TOKEN != '' }}
       GH_TOKEN: ${{ secrets.AUTO_PR_TOKEN || github.token }}
     steps:
       - name: Checkout
@@ -35,12 +36,20 @@ jobs:
         run: |
           set -euo pipefail
 
+          target_repo="$REQUESTED_TARGET_REPO"
+          head_ref="${HEAD_OWNER}:${HEAD_BRANCH}"
+          if [[ "$target_repo" != "$GITHUB_REPOSITORY" && "$HAS_AUTO_PR_TOKEN" != "true" ]]; then
+            echo "::warning::AUTO_PR_TARGET_REPO points to ${target_repo}, but AUTO_PR_TOKEN is not configured. Falling back to ${GITHUB_REPOSITORY}. Add an AUTO_PR_TOKEN secret to open upstream PRs automatically."
+            target_repo="$GITHUB_REPOSITORY"
+            head_ref="$HEAD_BRANCH"
+          fi
+
           title="[codex] ${HEAD_BRANCH#codex/}"
           body_file="$(mktemp)"
           cat > "$body_file" <<EOF
           ## Ringkasan
-          - Membuka pull request otomatis dari branch \`${HEAD_OWNER}:${HEAD_BRANCH}\`.
-          - Target: \`${TARGET_REPO}:${TARGET_BASE}\`.
+          - Membuka pull request otomatis dari branch \`${head_ref}\`.
+          - Target: \`${target_repo}:${TARGET_BASE}\`.
           - Title dan deskripsi dibuat oleh workflow agar tidak perlu lewat halaman compare GitHub.
 
           ## Validasi
@@ -52,8 +61,8 @@ jobs:
           EOF
 
           existing="$(gh pr list \
-            --repo "$TARGET_REPO" \
-            --head "${HEAD_OWNER}:${HEAD_BRANCH}" \
+            --repo "$target_repo" \
+            --head "$head_ref" \
             --base "$TARGET_BASE" \
             --state open \
             --json number \
@@ -61,22 +70,22 @@ jobs:
 
           if [[ -n "$existing" ]]; then
             gh pr edit "$existing" \
-              --repo "$TARGET_REPO" \
+              --repo "$target_repo" \
               --title "$title" \
               --body-file "$body_file"
-            pr_url="$(gh pr view "$existing" --repo "$TARGET_REPO" --json url --jq '.url')"
+            pr_url="$(gh pr view "$existing" --repo "$target_repo" --json url --jq '.url')"
             echo "Updated PR: $pr_url"
           else
             pr_url="$(gh pr create \
-              --repo "$TARGET_REPO" \
+              --repo "$target_repo" \
               --base "$TARGET_BASE" \
-              --head "${HEAD_OWNER}:${HEAD_BRANCH}" \
+              --head "$head_ref" \
               --title "$title" \
               --body-file "$body_file")"
             echo "Created PR: $pr_url"
           fi
 
           if [[ "$AUTO_MERGE" == "true" ]]; then
-            gh pr merge "$pr_url" --repo "$TARGET_REPO" --squash --auto --delete-branch=false
+            gh pr merge "$pr_url" --repo "$target_repo" --squash --auto --delete-branch=false
             echo "Auto-merge requested for: $pr_url"
           fi
