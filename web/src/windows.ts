@@ -1216,9 +1216,16 @@ function normalizeOneDevice(raw: SnapshotDevice): DeviceRecord | null {
     saveKnownDevicePosition(id, lat, lng);
   }
 
+  const cameraUrl = stringValue(record.cameraUrl);
+  const cameraHlsUrl = stringValue(record.cameraHlsUrl) || stringValue(record.hlsUrl);
+  const webrtcUrl = stringValue(record.webrtcUrl);
+  const cameraStatus = stringValue(record.cameraStatus);
+  const cameraReady = typeof record.cameraReady === "boolean" ? record.cameraReady : undefined;
   const lastSeen = normalizeEpoch(finiteNumber(raw.lastSeen) ?? 0);
   const rawStatus = isDeviceStatus(record.status) ? record.status : "offline";
-  const status = lastSeen > 0 && Date.now() - lastSeen > OFFLINE_AFTER_MS ? "offline" : rawStatus;
+  const controllerHeartbeatStale = lastSeen > 0 && Date.now() - lastSeen > OFFLINE_AFTER_MS;
+  const cameraLooksLive = (cameraStatus || "").toLowerCase() === "online" || Boolean(cameraReady || cameraUrl || cameraHlsUrl || webrtcUrl);
+  const status = controllerHeartbeatStale ? (cameraLooksLive ? "degraded" : "offline") : rawStatus;
   const detectorFrameWidth = finiteNumber(record.detectorFrameWidth);
   const detectorFrameHeight = finiteNumber(record.detectorFrameHeight);
   const rawDetections = normalizeDetections(record.detections);
@@ -1237,7 +1244,7 @@ function normalizeOneDevice(raw: SnapshotDevice): DeviceRecord | null {
       ?? vehicleBreakdown?.total;
   const cameraMode = isCameraMode(record.cameraMode)
     ? record.cameraMode
-    : stringValue(record.cameraUrl) ? "mjpeg" : undefined;
+    : cameraUrl || webrtcUrl ? "mjpeg" : undefined;
 
   return {
     id,
@@ -1246,17 +1253,17 @@ function normalizeOneDevice(raw: SnapshotDevice): DeviceRecord | null {
     lastSeen,
     lastSeenText: stringValue(record.lastSeenText),
     note: stringValue(record.note),
-    cameraUrl: stringValue(record.cameraUrl),
-    cameraHlsUrl: stringValue(record.cameraHlsUrl) || stringValue(record.hlsUrl),
+    cameraUrl,
+    cameraHlsUrl,
     cameraThumbnailUrl: stringValue(record.cameraThumbnailUrl),
-    cameraStatus: stringValue(record.cameraStatus),
+    cameraStatus,
     cameraUpdatedAt: finiteNumber(record.cameraUpdatedAt),
     cameraDataset: normalizeCameraDataset(record.cameraDataset),
     cameraMode,
     webrtcEnabled: typeof record.webrtcEnabled === "boolean" ? record.webrtcEnabled : undefined,
     webrtcPath: stringValue(record.webrtcPath),
-    webrtcUrl: stringValue(record.webrtcUrl),
-    cameraReady: typeof record.cameraReady === "boolean" ? record.cameraReady : undefined,
+    webrtcUrl,
+    cameraReady,
     roadName: stringValue(record.roadName),
     roadHint: stringValue(record.roadHint),
     trafficColor: isTrafficColor(record.trafficColor) ? record.trafficColor : undefined,
@@ -1988,6 +1995,7 @@ function setupCameraSurface(): void {
   const surface = document.querySelector<HTMLElement>("[data-camera-surface]");
   const frame = document.querySelector<HTMLElement>("[data-camera-frame]");
   const video = document.querySelector<HTMLVideoElement>("[data-camera-video]");
+  const iframe = frame?.querySelector<HTMLIFrameElement>("[data-camera-iframe]") || null;
   if (!surface || !frame) return;
 
   updateCameraAiPanel();
@@ -1995,9 +2003,13 @@ function setupCameraSurface(): void {
     setAiOpen(frame.dataset.aiOpen !== "true");
   });
   frame.querySelector<HTMLButtonElement>("[data-camera-play]")?.addEventListener("click", () => {
-    if (!video) return;
-    if (video.paused) void video.play().catch(() => undefined);
-    else video.pause();
+    if (video) {
+      if (video.paused) void video.play().catch(() => undefined);
+      else video.pause();
+    } else if (iframe) {
+      const paused = frame.dataset.videoPaused === "true";
+      setCameraIframePlayback(frame, iframe, paused);
+    }
     window.setTimeout(syncPlayButton, 0);
   });
   frame.querySelector<HTMLButtonElement>("[data-camera-fullscreen]")?.addEventListener("click", () => {
@@ -2025,7 +2037,6 @@ function setupCameraSurface(): void {
     startCameraAmbient(video, surface);
   } else {
     const image = frame.querySelector<HTMLImageElement>("[data-camera-image]");
-    const iframe = frame.querySelector<HTMLIFrameElement>("[data-camera-iframe]");
     if (image) syncImageAmbient(surface, image, "camera");
     else if (iframe) {
       const poster = latestCameraSnapshot(state.device);
@@ -2039,6 +2050,37 @@ function setupCameraSurface(): void {
     }
   }
   syncFullscreenButtons();
+}
+
+function ensureCameraPausePoster(frame: HTMLElement): HTMLElement {
+  let poster = frame.querySelector<HTMLElement>(".win-camera-pause-poster");
+  if (poster) return poster;
+  poster = document.createElement("div");
+  poster.className = "win-camera-pause-poster";
+  poster.textContent = "Video dijeda";
+  frame.querySelector<HTMLElement>("[data-camera-media]")?.appendChild(poster);
+  return poster;
+}
+
+function setCameraIframePlayback(frame: HTMLElement, iframe: HTMLIFrameElement, playing: boolean): void {
+  if (playing) {
+    const resumeSrc = iframe.dataset.pauseSrc || iframe.dataset.activeSrc || iframe.getAttribute("src") || "";
+    if (resumeSrc && iframe.getAttribute("src") !== resumeSrc) iframe.setAttribute("src", resumeSrc);
+    frame.dataset.videoPaused = "false";
+    frame.querySelector<HTMLElement>(".win-camera-pause-poster")?.setAttribute("hidden", "");
+    return;
+  }
+  const activeSrc = iframe.getAttribute("src") || iframe.src || iframe.dataset.activeSrc || "";
+  if (activeSrc && activeSrc !== "about:blank") {
+    iframe.dataset.activeSrc = activeSrc;
+    iframe.dataset.pauseSrc = activeSrc;
+  }
+  const poster = ensureCameraPausePoster(frame);
+  const snapshot = latestCameraSnapshot(state.device);
+  if (snapshot) poster.style.backgroundImage = `linear-gradient(rgba(3, 7, 18, 0.24), rgba(3, 7, 18, 0.4)), url("${snapshot.replaceAll('"', "%22")}")`;
+  poster.removeAttribute("hidden");
+  frame.dataset.videoPaused = "true";
+  iframe.setAttribute("src", "about:blank");
 }
 
 function toggleCameraFullscreen(surface: HTMLElement, frame: HTMLElement): void {
@@ -2209,7 +2251,7 @@ function startBrowserYolo(frame: HTMLElement): void {
   const sourceKey = cameraSurfaceKey(state.device);
   state.browserYoloSourceKey = sourceKey;
   state.browserYoloStatus = "loading";
-  state.browserYoloNote = "Menunggu frame video live...";
+  state.browserYoloNote = "YOLO menyiapkan frame kamera...";
   const tick = () => {
     if (state.browserYoloSourceKey !== sourceKey || !document.body.contains(frame)) return;
     if (frame.dataset.aiOpen !== "true") return;
@@ -2226,8 +2268,14 @@ async function processBrowserYoloFrame(frame: HTMLElement): Promise<void> {
     const frameSource = await browserYoloSource(frame);
     if (!frameSource) {
       const hasCachedDetections = Boolean(state.device?.detections?.length && state.device.detectorFrameWidth && state.device.detectorFrameHeight);
-      state.browserYoloStatus = hasCachedDetections ? "online" : "no-frame";
-      state.browserYoloNote = hasCachedDetections ? "AI memakai hasil snapshot terakhir..." : "Menunggu frame video live...";
+      const snapshot = latestCameraAnalysisSnapshot(state.device);
+      const waitingNextSnapshot = Boolean(snapshot && state.browserYoloLastSnapshotKey && Date.now() - state.browserYoloLastSnapshotAt < 15000);
+      state.browserYoloStatus = hasCachedDetections || waitingNextSnapshot ? "online" : "no-frame";
+      state.browserYoloNote = hasCachedDetections
+        ? "AI memakai hasil snapshot terakhir..."
+        : waitingNextSnapshot
+          ? "YOLO menunggu snapshot kamera berikutnya..."
+          : "Menunggu frame video live...";
       clearYoloCanvas(frame);
       drawExistingCameraDetections(frame, state.device);
       updateCameraAiPanel();
@@ -2517,9 +2565,12 @@ function aiStat(label: string, value: number): string {
 
 function syncPlayButton(): void {
   const video = document.querySelector<HTMLVideoElement>("[data-camera-video]");
+  const frame = document.querySelector<HTMLElement>("[data-camera-frame]");
+  const iframe = frame?.querySelector<HTMLIFrameElement>("[data-camera-iframe]");
   const button = document.querySelector<HTMLButtonElement>("[data-camera-play]");
   if (!button) return;
-  button.innerHTML = video && !video.paused ? pauseIcon() : playIcon();
+  const iframePlaying = Boolean(iframe && iframe.src && iframe.src !== "about:blank" && frame?.dataset.videoPaused !== "true");
+  button.innerHTML = (video ? !video.paused : iframePlaying) ? pauseIcon() : playIcon();
 }
 
 function syncFullscreenButtons(): void {
@@ -2915,12 +2966,10 @@ function objectSummary(detections: YoloDetection[], fallbackOthers: number): str
 
 function cameraStatusText(device: DeviceRecord | null): string {
   if (!device) return "menunggu sinkronisasi kamera";
+  const yolo = cameraYoloHeadline(device);
+  if (yolo) return yolo;
+  if (deviceCameraIsLive(device)) return cameraTitleText(device);
   if (isWebRtcSignalingCamera(device)) return state.webrtc.status === "live" ? "WebRTC live" : "WebRTC Firebase signaling";
-  const url = publicCameraUrl(device) || publicCameraHlsUrl(device);
-  if (url) {
-    const host = cameraHostLabel(url);
-    return host ? `stream ${host}` : "stream kamera aktif";
-  }
   if (!deviceIsOnline(device)) {
     return `Raspberry offline - terakhir ${formatAge(device.lastSeen)}${device.lastSeenText ? ` (${device.lastSeenText})` : ""}`;
   }
@@ -2972,9 +3021,36 @@ function latestCameraAnalysisSnapshot(device: DeviceRecord | null): string {
   if (dataset?.source === "browser-yolo" && dataset.snapshot2Url?.trim()) {
     return dataset.snapshot2Url.trim();
   }
+  const hasBrowserYoloDetections = /browser-yolo/i.test(device?.trafficSource || "")
+    && Boolean(device?.detections?.length);
   return dataset?.snapshot2Url?.trim()
     || dataset?.snapshot1Url?.trim()
-    || (/browser-yolo/i.test(device?.trafficSource || "") ? "" : device?.cameraThumbnailUrl?.trim() || "");
+    || (hasBrowserYoloDetections ? "" : device?.cameraThumbnailUrl?.trim() || "");
+}
+
+function cameraTitleText(device: DeviceRecord | null): string {
+  const label = device?.label?.trim() || "Raspberry Pi Camera";
+  return /live$/i.test(label) ? label : `${label} live`;
+}
+
+function cameraYoloHeadline(device: DeviceRecord | null): string {
+  if (!device) return "";
+  const fps = device.detectorFps && device.detectorFps > 0 ? `${device.detectorFps.toFixed(1)} FPS` : "";
+  const objectCount = Math.max(0, Math.round(device.objectCount || 0));
+  const vehicleCount = Math.max(0, Math.round(device.vehicleCount || device.vehicleBreakdown?.total || 0));
+  if (!fps && !device.detectorStatus && !device.detectorUpdatedAt) return "";
+  return `YOLO app${fps ? ` ${fps}` : ""} - ${objectCount} object - ${vehicleCount} kendaraan`;
+}
+
+function deviceCameraIsLive(device: DeviceRecord | null): boolean {
+  if (!device) return false;
+  return Boolean(
+    device.cameraStatus?.toLowerCase() === "online"
+    || device.cameraReady
+    || publicCameraPageUrl(device)
+    || publicCameraHlsUrl(device)
+    || publicCameraUrl(device),
+  );
 }
 
 function hlsPlaylistUrl(url: string): string {
@@ -3025,7 +3101,7 @@ function isLikelyImageUrl(url: string): boolean {
 }
 
 function isWebRtcSignalingCamera(device: DeviceRecord | null): boolean {
-  return Boolean(device && deviceIsOnline(device) && !publicCameraPageUrl(device) && !publicCameraHlsUrl(device) && (device.cameraMode === "webrtc" || device.webrtcEnabled || device.cameraReady));
+  return Boolean(device && !publicCameraPageUrl(device) && !publicCameraHlsUrl(device) && (device.cameraMode === "webrtc" || device.webrtcEnabled || device.cameraReady));
 }
 
 function webRtcSignalPath(device: DeviceRecord): string {
@@ -3331,12 +3407,14 @@ function cameraSourceForYolo(device: DeviceRecord): string {
 
 function cameraSurfaceKey(device: DeviceRecord | null): string {
   const url = isWebRtcSignalingCamera(device) ? webRtcSignalPath(device as DeviceRecord) : publicCameraHlsUrl(device) || publicCameraUrl(device) || device?.cameraThumbnailUrl || "";
-  return `${device?.id || "none"}:${device?.status || "none"}:${device?.lastSeen || 0}:${device?.cameraMode || "auto"}:${device?.cameraDataset?.updatedAt || 0}:${url}`;
+  const snapshotKey = latestCameraSnapshot(device);
+  return `${device?.id || "none"}:${device?.status || "none"}:${device?.lastSeen || 0}:${device?.cameraStatus || ""}:${device?.cameraUpdatedAt || 0}:${device?.cameraMode || "auto"}:${device?.cameraDataset?.updatedAt || 0}:${snapshotKey.length}:${url}`;
 }
 
 function deviceIsOnline(device: DeviceRecord | null): boolean {
   if (!device) return false;
-  return device.status === "online" && device.lastSeen > 0 && Date.now() - device.lastSeen <= OFFLINE_AFTER_MS;
+  const heartbeatLive = device.status === "online" && device.lastSeen > 0 && Date.now() - device.lastSeen <= OFFLINE_AFTER_MS;
+  return heartbeatLive || deviceCameraIsLive(device);
 }
 
 function cameraHostLabel(url: string): string {

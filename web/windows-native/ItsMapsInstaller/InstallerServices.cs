@@ -15,6 +15,8 @@ internal sealed class InstallerServices
     private const string Publisher = "Hanifa Septhi Larasati - Telkom University";
     private const string RegistryKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\ITS Maps";
     private const string OldRegistryKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\ITS Maps Windows";
+    private const string BackgroundUpdaterName = "ITS Maps Update";
+    private const string BackgroundUpdaterArg = "--background-update-check";
     internal const string AppExeName = "ITS Maps.exe";
     private static string Version =>
         Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion?.Split('+')[0]
@@ -71,6 +73,9 @@ internal sealed class InstallerServices
 
         progress.Report(new InstallerProgress(94, "Membuat shortcut..."));
         CreateShortcuts(installPath, createDesktopShortcut);
+
+        progress.Report(new InstallerProgress(97, "Mendaftarkan background updater Windows..."));
+        RegisterBackgroundUpdater(installPath);
 
         progress.Report(new InstallerProgress(100, runAfterInstall ? "Siap menjalankan aplikasi..." : "Instalasi selesai."));
     }
@@ -293,5 +298,55 @@ internal sealed class InstallerServices
         shortcut.Description = description;
         shortcut.IconLocation = $"{targetPath},0";
         shortcut.Save();
+    }
+
+    private static void RegisterBackgroundUpdater(string installPath)
+    {
+        var appExe = Path.Combine(installPath, AppExeName);
+        if (!File.Exists(appExe)) return;
+        var command = $"\"{appExe}\" {BackgroundUpdaterArg}";
+
+        try
+        {
+            using var runKey = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
+            runKey?.SetValue(BackgroundUpdaterName, command, RegistryValueKind.String);
+        }
+        catch
+        {
+            // Scheduled task below is the stronger updater path; Run entry is best effort.
+        }
+
+        TryRunSchtasks(new[]
+        {
+            "/Create",
+            "/F",
+            "/TN", BackgroundUpdaterName,
+            "/TR", command,
+            "/SC", "HOURLY",
+            "/MO", "6",
+            "/RL", "LIMITED"
+        });
+    }
+
+    private static void TryRunSchtasks(IEnumerable<string> arguments)
+    {
+        try
+        {
+            using var process = new Process();
+            process.StartInfo.FileName = "schtasks.exe";
+            process.StartInfo.UseShellExecute = false;
+            process.StartInfo.CreateNoWindow = true;
+            process.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
+            foreach (var argument in arguments)
+            {
+                process.StartInfo.ArgumentList.Add(argument);
+            }
+            process.Start();
+            process.WaitForExit(6000);
+        }
+        catch
+        {
+            // Some locked-down Windows profiles deny scheduled tasks; startup Run entry still covers next login.
+        }
     }
 }

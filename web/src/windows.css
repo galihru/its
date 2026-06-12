@@ -1812,6 +1812,29 @@ button {
   box-shadow: 0 12px 34px rgba(0, 0, 0, 0.28);
 }
 
+.win-camera-pause-poster {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  background:
+    linear-gradient(rgba(3, 7, 18, 0.34), rgba(3, 7, 18, 0.58)),
+    radial-gradient(circle at 50% 50%, var(--camera-ambient-soft), transparent 44%),
+    #05070a;
+  background-size: cover;
+  background-position: center;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 900;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.82);
+  pointer-events: none;
+}
+
+.win-camera-pause-poster[hidden] {
+  display: none;
+}
+
 .win-webrtc-status[data-status="live"] {
   opacity: 0;
 }

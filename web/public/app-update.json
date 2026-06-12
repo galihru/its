@@ -3,18 +3,18 @@
   "appName": "ITS Maps",
   "ownerName": "Hanifa Septhi Larasati",
   "institution": "Telkom University",
-  "versionCode": 19,
-  "versionName": "1.0.19",
-  "windowsUrl": "https://github.com/galihru/its/releases/download/its-maps-v1.0.19/ITS-Maps-Windows-Custom-Setup-1.0.19-x64.exe",
-  "desktopUrl": "https://github.com/galihru/its/releases/download/its-maps-v1.0.19/ITS-Maps-Windows-Custom-Setup-1.0.19-x64.exe",
+  "versionCode": 20,
+  "versionName": "1.0.20",
+  "windowsUrl": "https://github.com/galihru/its/releases/download/its-maps-v1.0.20/ITS-Maps-Windows-Custom-Setup-1.0.20-x64.exe",
+  "desktopUrl": "https://github.com/galihru/its/releases/download/its-maps-v1.0.20/ITS-Maps-Windows-Custom-Setup-1.0.20-x64.exe",
   "pwaUrl": "https://itstelkom.web.app/",
   "logoUrl": "https://itstelkom.web.app/favicon.svg",
-  "updatedAt": "2026-06-12T22:38:01+07:00",
+  "updatedAt": "2026-06-12T23:42:19+07:00",
   "force": false,
   "autoDownload": true,
   "releaseNotes": [
-    "Membuat popup kamera hanya memakai tombol custom play dan fullscreen dengan iframe tunnel Cloudflare tanpa kontrol bawaan.",
-    "Menyamakan fullscreen website dan ITS Maps Windows: video cover, ambient cinematic light, panel AI fleksibel, dan canvas YOLO di atas video.",
-    "Menahan YOLO browser agar hanya berjalan saat AI dibuka, memfilter kotak palsu, dan membersihkan deteksi RTDB yang tidak valid."
+    "Memisahkan status kamera online dari heartbeat controller agar tunnel Cloudflare tidak diblokir saat kamera ready.",
+    "Merapikan player website dan ITS Maps Windows: judul tanpa URL stream, pause/resume iframe, fullscreen landscape, ambient cinematic, dan panel AI blur fleksibel.",
+    "Mendaftarkan background updater Windows dari installer serta memberi notifikasi update dengan ikon ITS Maps."
   ]
 }

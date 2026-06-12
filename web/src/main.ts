@@ -118,6 +118,8 @@ type DeviceRecord = {
   cameraUrl?: string;
   cameraHlsUrl?: string;
   cameraThumbnailUrl?: string;
+  cameraStatus?: string;
+  cameraUpdatedAt?: number;
   cameraDataset?: TrafficCameraDataset;
   cameraMode?: CameraMode;
   webrtcEnabled?: boolean;
@@ -3530,13 +3532,17 @@ if (staticRoute) {
     }
     const safeLat = lat ?? (DEFAULT_CENTER as [number, number])[0];
     const safeLng = lng ?? (DEFAULT_CENTER as [number, number])[1];
-    const lastSeen = normalizeEpoch(typeof raw.lastSeen === "number" ? raw.lastSeen : 0);
-    const rawStatus = isDeviceStatus(raw.status) ? raw.status : "offline";
-    const status = lastSeen > 0 && Date.now() - lastSeen > OFFLINE_AFTER_MS ? "offline" : rawStatus;
     const rawCameraMode = rawRecord.cameraMode;
     const cameraUrl = raw.cameraUrl?.trim() || undefined;
     const cameraHlsUrl = typeof rawRecord.cameraHlsUrl === "string" ? rawRecord.cameraHlsUrl.trim() || undefined : undefined;
     const webrtcUrl = typeof rawRecord.webrtcUrl === "string" ? rawRecord.webrtcUrl.trim() || undefined : undefined;
+    const cameraStatus = typeof rawRecord.cameraStatus === "string" ? rawRecord.cameraStatus.trim() || undefined : undefined;
+    const cameraReady = typeof rawRecord.cameraReady === "boolean" ? rawRecord.cameraReady : undefined;
+    const lastSeen = normalizeEpoch(typeof raw.lastSeen === "number" ? raw.lastSeen : 0);
+    const rawStatus = isDeviceStatus(raw.status) ? raw.status : "offline";
+    const controllerHeartbeatStale = lastSeen > 0 && Date.now() - lastSeen > OFFLINE_AFTER_MS;
+    const cameraLooksLive = cameraStatus?.toLowerCase() === "online" || Boolean(cameraReady || cameraUrl || cameraHlsUrl || webrtcUrl);
+    const status = controllerHeartbeatStale ? (cameraLooksLive ? "degraded" : "offline") : rawStatus;
     const cameraMode = isCameraMode(rawCameraMode)
       ? rawCameraMode
       : cameraUrl || webrtcUrl
@@ -3572,12 +3578,14 @@ if (staticRoute) {
       cameraUrl,
       cameraHlsUrl,
       cameraThumbnailUrl: typeof rawRecord.cameraThumbnailUrl === "string" ? rawRecord.cameraThumbnailUrl.trim() || undefined : undefined,
+      cameraStatus,
+      cameraUpdatedAt: finiteNumber(rawRecord.cameraUpdatedAt),
       cameraDataset: normalizeCameraDataset(rawRecord.cameraDataset),
       cameraMode,
       webrtcEnabled: typeof rawRecord.webrtcEnabled === "boolean" ? rawRecord.webrtcEnabled : undefined,
       webrtcPath: typeof rawRecord.webrtcPath === "string" ? rawRecord.webrtcPath.trim() || undefined : undefined,
       webrtcUrl,
-      cameraReady: typeof rawRecord.cameraReady === "boolean" ? rawRecord.cameraReady : undefined,
+      cameraReady,
       roadName: raw.roadName?.trim() || undefined,
       roadHint: raw.roadHint?.trim() || undefined,
       trafficColor: isTrafficColor(rawRecord.trafficColor) ? rawRecord.trafficColor : undefined,
@@ -3733,7 +3741,7 @@ if (staticRoute) {
   }
 
   function usesDesktopSidePanel(): boolean {
-    return window.matchMedia("(min-width: 721px)").matches;
+    return window.matchMedia("(min-width: 721px), (orientation: landscape)").matches;
   }
 
   function setSidePanelWidth(widthPx: number): void {
@@ -4393,9 +4401,44 @@ if (staticRoute) {
     if (dataset?.source === "browser-yolo" && dataset.snapshot2Url?.trim()) {
       return dataset.snapshot2Url.trim();
     }
+    const hasBrowserYoloDetections = /browser-yolo/i.test(device?.trafficSource || "")
+      && Boolean(device?.detections?.length);
     return dataset?.snapshot2Url?.trim()
       || dataset?.snapshot1Url?.trim()
-      || (/browser-yolo/i.test(device?.trafficSource || "") ? "" : device?.cameraThumbnailUrl?.trim() || "");
+      || (hasBrowserYoloDetections ? "" : device?.cameraThumbnailUrl?.trim() || "");
+  }
+
+  function cameraTitleText(device: DeviceRecord | null): string {
+    const label = device?.label?.trim() || "Raspberry Pi Camera";
+    return /live$/i.test(label) ? label : `${label} live`;
+  }
+
+  function cameraDescriptionText(device: DeviceRecord | null): string {
+    if (!device) return "Kamera Raspberry menunggu sinkronisasi.";
+    const updatedAt = device.cameraUpdatedAt || device.detectorUpdatedAt || device.lastSeen;
+    const updated = updatedAt ? `Diperbarui ${formatAge(updatedAt)}` : "Menunggu pembaruan kamera";
+    const ai = cameraYoloHeadline(device);
+    return `${cameraTitleText(device)} - ${ai || "AI YOLO siap memproses snapshot/video"} - ${updated}.`;
+  }
+
+  function cameraYoloHeadline(device: DeviceRecord | null): string {
+    if (!device) return "";
+    const fps = device.detectorFps && device.detectorFps > 0 ? `${device.detectorFps.toFixed(1)} FPS` : "";
+    const objectCount = Math.max(0, Math.round(device.objectCount || 0));
+    const vehicleCount = Math.max(0, Math.round(device.vehicleCount || device.vehicleBreakdown?.total || 0));
+    if (!fps && !device.detectorStatus && !device.detectorUpdatedAt) return "";
+    return `YOLO web${fps ? ` ${fps}` : ""} - ${objectCount} object - ${vehicleCount} kendaraan`;
+  }
+
+  function deviceCameraIsLive(device: DeviceRecord | null): boolean {
+    if (!device) return false;
+    return Boolean(
+      device.cameraStatus?.toLowerCase() === "online"
+      || device.cameraReady
+      || publicCameraPageUrl(device)
+      || publicCameraHlsUrl(device)
+      || publicCameraUrl(device),
+    );
   }
 
   function usablePublicMediaUrl(value: unknown): string {
@@ -4444,15 +4487,6 @@ if (staticRoute) {
     }
   }
 
-  function cameraHostLabel(url: string): string {
-    if (!url) return "";
-    try {
-      return new URL(url, window.location.href).hostname;
-    } catch {
-      return url.replace(/^https?:\/\//i, "").split("/")[0] || url;
-    }
-  }
-
   function isLikelyHlsUrl(url: string): boolean {
     return /\.m3u8(\?|$)/i.test(url);
   }
@@ -4466,7 +4500,7 @@ if (staticRoute) {
   }
 
   function cameraModeFor(device: DeviceRecord | null): CameraMode | null {
-    if (!device || device.status === "offline") return null;
+    if (!device) return null;
     if (publicCameraPageUrl(device) || publicCameraHlsUrl(device)) return device.cameraMode === "webrtc" ? "mjpeg" : device.cameraMode || "mjpeg";
     if (prefersWebRtcCamera(device)) return "webrtc";
     return null;
@@ -4957,11 +4991,86 @@ if (staticRoute) {
     return button.closest(".video-fullscreen-stage, .m-its-camera-box, .camera-card, .custom-video-card") || document;
   }
 
+  function ensureVideoPausePoster(root: HTMLElement): HTMLElement {
+    let poster = root.querySelector<HTMLElement>(".video-pause-poster");
+    if (poster) return poster;
+    poster = document.createElement("div");
+    poster.className = "video-pause-poster";
+    poster.textContent = "Video dijeda";
+    root.appendChild(poster);
+    return poster;
+  }
+
+  function applyVideoAmbientFromSnapshot(host: HTMLElement, device: DeviceRecord | null): void {
+    const src = latestCameraSnapshot(device);
+    if (!src) return;
+    const image = new Image();
+    image.crossOrigin = "anonymous";
+    image.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = 36;
+        canvas.height = 20;
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        if (!ctx) return;
+        ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+        const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+        let r = 0, g = 0, b = 0, count = 0;
+        let br = 0, bg = 0, bb = 0, bright = 0;
+        for (let i = 0; i < data.length; i += 16) {
+          const alpha = data[i + 3] / 255;
+          if (alpha < 0.12) continue;
+          const cr = data[i];
+          const cg = data[i + 1];
+          const cb = data[i + 2];
+          const luminance = cr * 0.2126 + cg * 0.7152 + cb * 0.0722;
+          if (luminance < 14) continue;
+          r += cr; g += cg; b += cb; count += 1;
+          if (luminance > bright) {
+            bright = luminance; br = cr; bg = cg; bb = cb;
+          }
+        }
+        if (!count) return;
+        host.style.setProperty("--video-ambient-a", `rgb(${Math.round(r / count)}, ${Math.round(g / count)}, ${Math.round(b / count)})`);
+        host.style.setProperty("--video-ambient-b", `rgb(${br}, ${bg}, ${bb})`);
+      } catch {
+        // Cross-origin images can reject canvas sampling; keep the fallback ambient color.
+      }
+    };
+    image.src = src;
+  }
+
+  function setIframePlayback(root: ParentNode, iframe: HTMLIFrameElement, playing: boolean): void {
+    if (!(root instanceof HTMLElement)) return;
+    if (playing) {
+      const resumeSrc = iframe.dataset.pauseSrc || iframe.dataset.activeSrc || iframe.getAttribute("src") || "";
+      if (resumeSrc && iframe.getAttribute("src") !== resumeSrc) iframe.setAttribute("src", resumeSrc);
+      root.dataset.videoPaused = "false";
+      root.querySelector<HTMLElement>(".video-pause-poster")?.setAttribute("hidden", "");
+      return;
+    }
+    const activeSrc = iframe.getAttribute("src") || iframe.src || iframe.dataset.activeSrc || "";
+    if (activeSrc && activeSrc !== "about:blank") {
+      iframe.dataset.activeSrc = activeSrc;
+      iframe.dataset.pauseSrc = activeSrc;
+    }
+    const poster = ensureVideoPausePoster(root);
+    const snapshot = latestCameraSnapshot(deviceForVideoYolo() || state.device);
+    if (snapshot) poster.style.backgroundImage = `linear-gradient(rgba(3, 7, 18, 0.24), rgba(3, 7, 18, 0.4)), url("${snapshot.replaceAll('"', "%22")}")`;
+    poster.removeAttribute("hidden");
+    root.dataset.videoPaused = "true";
+    iframe.setAttribute("src", "about:blank");
+  }
+
   function toggleCustomVideoPlayback(root: ParentNode): void {
     const videos = Array.from(root.querySelectorAll<HTMLVideoElement>("video"));
     if (!videos.length) {
       const iframe = root.querySelector<HTMLIFrameElement>("iframe");
-      if (iframe?.src && iframe.src !== "about:blank") iframe.src = iframe.src;
+      if (iframe) {
+        const paused = root instanceof HTMLElement && root.dataset.videoPaused === "true";
+        setIframePlayback(root, iframe, paused);
+      }
+      window.setTimeout(() => syncCustomVideoButtons(root), 0);
       return;
     }
     const shouldPlay = videos.some((video) => video.paused);
@@ -4979,18 +5088,16 @@ if (staticRoute) {
       const iframe = scopedRoot.querySelector<HTMLIFrameElement>("iframe");
       const playing = videos.length
         ? videos.some((video) => !video.paused && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA)
-        : Boolean(iframe && iframe.src && iframe.src !== "about:blank");
+        : Boolean(iframe && iframe.src && iframe.src !== "about:blank" && !(scopedRoot instanceof HTMLElement && scopedRoot.dataset.videoPaused === "true"));
       button.innerHTML = playing ? pauseSvg() : playSvg();
       button.setAttribute("aria-label", playing ? "Jeda video" : "Putar video");
     });
   }
 
   function videoSurfaceStatusText(device: DeviceRecord | null): string {
-    const hlsUrl = publicCameraHlsUrl(device);
-    const pageUrl = publicCameraPageUrl(device);
-    const host = cameraHostLabel(pageUrl || hlsUrl || publicCameraUrl(device));
-    if (pageUrl && !hlsUrl) return host ? `stream ${host}` : "stream tunnel aktif";
-    if (hlsUrl) return host ? `stream ${host}` : "stream HLS aktif";
+    const yolo = cameraYoloHeadline(device);
+    if (yolo) return yolo;
+    if (deviceCameraIsLive(device)) return cameraTitleText(device);
     if (isWebRtcSignalingCamera(device)) return webRtcStatusText();
     return latestCameraSnapshot(device) ? "snapshot kamera tersedia" : "Menunggu frame video live...";
   }
@@ -5161,6 +5268,8 @@ if (staticRoute) {
     const surface = renderCameraSurface(activeDevice, "video-fullscreen-media", "video-fullscreen-frame");
     const ambient = traffic?.color === "red" ? "#7f1d1d" : traffic?.color === "yellow" ? "#854d0e" : "#064e3b";
     const statusText = videoSurfaceStatusText(activeDevice);
+    const titleText = cameraTitleText(activeDevice);
+    const descriptionText = cameraDescriptionText(activeDevice);
     const overlay = document.createElement("div");
     overlay.id = "video-fullscreen-modal";
     overlay.className = "video-fullscreen";
@@ -5173,12 +5282,13 @@ if (staticRoute) {
         ${surface || `<div class="video-fullscreen-empty">Kamera realtime belum tersedia</div>`}
         <canvas class="video-yolo-canvas" data-video-yolo-canvas aria-hidden="true"></canvas>
       </div>
-      <div class="video-fullscreen-status">
+      <button type="button" class="video-fullscreen-status video-fullscreen-title" data-video-title-toggle aria-expanded="false">
         <span class="webrtc-dot" data-status="${state.webrtc.status}"></span>
-        <strong>${escapeHtml(statusText || activeDevice?.label || "Video Realtime")}</strong>
-      </div>
+        <strong>${escapeHtml(titleText || "Video Realtime")}</strong>
+      </button>
+      <div class="video-fullscreen-description" data-video-description hidden>${escapeHtml(descriptionText)}</div>
       <div class="video-fullscreen-live"><span></span>LIVE</div>
-      <div class="video-fullscreen-caption">${escapeHtml(statusText || "Menunggu frame video live...")}</div>
+      <div class="video-fullscreen-caption" data-video-yolo-note>${escapeHtml(statusText || "AI YOLO siap memproses video")}</div>
       <button type="button" class="video-fullscreen-play" data-custom-video-play aria-label="Putar video">${playSvg()}</button>
       <div class="video-fullscreen-controls">
         <button type="button" class="video-fullscreen-ai" data-video-ai>AI</button>
@@ -5221,6 +5331,7 @@ if (staticRoute) {
       overlay.classList.remove("open", "ai-open");
       stopVideoBrowserYolo();
       stopHlsVideos(overlay);
+      try { (screen.orientation as any)?.unlock?.(); } catch { /* orientation lock is optional */ }
       mapRoot.classList.remove("hidden");
       document.getElementById("m-bottom-nav")?.classList.remove("hidden");
       window.setTimeout(() => overlay.remove(), 220);
@@ -5270,6 +5381,14 @@ if (staticRoute) {
     overlay.querySelector<HTMLButtonElement>("[data-custom-video-play]")?.addEventListener("click", (event) => {
       toggleCustomVideoPlayback(customVideoRoot(event.currentTarget as HTMLElement));
     });
+    overlay.querySelector<HTMLButtonElement>("[data-video-title-toggle]")?.addEventListener("click", (event) => {
+      const button = event.currentTarget as HTMLButtonElement;
+      const description = overlay.querySelector<HTMLElement>("[data-video-description]");
+      const nextOpen = Boolean(description?.hidden);
+      if (description) description.hidden = !nextOpen;
+      overlay.classList.toggle("title-open", nextOpen);
+      button.setAttribute("aria-expanded", String(nextOpen));
+    });
     overlay.querySelector<HTMLButtonElement>("[data-video-ai]")?.addEventListener("click", openAi);
     overlay.querySelector<HTMLButtonElement>("[data-video-ai-close]")?.addEventListener("click", closeAi);
     overlay.querySelector<HTMLButtonElement>("[data-video-close]")?.addEventListener("click", closeVideo);
@@ -5280,7 +5399,10 @@ if (staticRoute) {
     syncCameraViews(activeDevice);
     attachWebRtcStream();
     setupHlsVideos(overlay);
+    applyVideoAmbientFromSnapshot(overlay, activeDevice);
     syncCustomVideoButtons(overlay);
+    const orientationLock = (screen.orientation as any)?.lock?.("landscape");
+    if (orientationLock?.catch) void orientationLock.catch(() => undefined);
     window.setTimeout(() => overlay.classList.add("open"), 20);
   }
 
@@ -5288,7 +5410,7 @@ if (staticRoute) {
     stopVideoBrowserYolo();
     state.videoYoloDeviceId = device?.id || state.device?.id || "";
     state.videoYoloStatus = "loading";
-    state.videoYoloNote = "Menunggu frame video live...";
+    state.videoYoloNote = "YOLO menyiapkan frame kamera...";
     state.videoYoloLastSourceKey = "";
     state.videoYoloLastSnapshotAt = 0;
     const tick = () => {
@@ -5322,8 +5444,14 @@ if (staticRoute) {
       if (!frameSource) {
         const cached = deviceForVideoYolo();
         const hasCachedDetections = Boolean(cached?.detections?.length && cached.detectorFrameWidth && cached.detectorFrameHeight);
-        state.videoYoloStatus = hasCachedDetections ? "online" : "no-frame";
-        state.videoYoloNote = hasCachedDetections ? "AI memakai hasil snapshot terakhir..." : "Menunggu frame video live...";
+        const snapshot = latestCameraAnalysisSnapshot(cached);
+        const waitingNextSnapshot = Boolean(snapshot && state.videoYoloLastSourceKey.startsWith("snapshot:") && Date.now() - state.videoYoloLastSnapshotAt < 15000);
+        state.videoYoloStatus = hasCachedDetections || waitingNextSnapshot ? "online" : "no-frame";
+        state.videoYoloNote = hasCachedDetections
+          ? "AI memakai hasil snapshot terakhir..."
+          : waitingNextSnapshot
+            ? "YOLO menunggu snapshot kamera berikutnya..."
+            : "Menunggu frame video live...";
         clearVideoYoloCanvas(overlay);
         drawExistingVideoDetections(overlay, cached);
         updateVideoAiPanel(overlay);
@@ -6148,6 +6276,7 @@ if (staticRoute) {
       device.status === "offline"
       && device.lastSeen > 0
       && Date.now() - device.lastSeen > OFFLINE_AFTER_MS
+      && !deviceCameraIsLive(device)
       && !state.offlineReported.has(device.id),
     );
 

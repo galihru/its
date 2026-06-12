@@ -13,6 +13,7 @@ public sealed class UninstallerServices
     private const string OldProductName = "ITS Maps Windows";
     private const string RegistryKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\ITS Maps";
     private const string OldRegistryKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\ITS Maps Windows";
+    private const string BackgroundUpdaterName = "ITS Maps Update";
 
     public UninstallerServices()
     {
@@ -29,7 +30,8 @@ public sealed class UninstallerServices
         DeleteShortcuts();
         await Task.Delay(260);
 
-        progress.Report(new UninstallProgress(24, "Menghapus entry ITS Maps dari Installed apps Windows..."));
+        progress.Report(new UninstallProgress(24, "Menghapus updater background dan entry ITS Maps dari Windows..."));
+        DeleteBackgroundUpdater();
         DeleteRegistry();
         await Task.Delay(260);
 
@@ -139,6 +141,21 @@ public sealed class UninstallerServices
         {
             // Keep uninstall resilient; file cleanup is more important than registry failure.
         }
+    }
+
+    private static void DeleteBackgroundUpdater()
+    {
+        try
+        {
+            using var runKey = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", writable: true);
+            runKey?.DeleteValue(BackgroundUpdaterName, throwOnMissingValue: false);
+        }
+        catch
+        {
+            // Best effort cleanup.
+        }
+
+        TryRunSchtasks(new[] { "/Delete", "/F", "/TN", BackgroundUpdaterName });
     }
 
     private static void DeleteShortcuts()
@@ -259,6 +276,28 @@ public sealed class UninstallerServices
         catch
         {
             // Best effort cleanup; shortcut remnants are harmless.
+        }
+    }
+
+    private static void TryRunSchtasks(IEnumerable<string> arguments)
+    {
+        try
+        {
+            using var process = new Process();
+            process.StartInfo.FileName = "schtasks.exe";
+            process.StartInfo.UseShellExecute = false;
+            process.StartInfo.CreateNoWindow = true;
+            process.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
+            foreach (var argument in arguments)
+            {
+                process.StartInfo.ArgumentList.Add(argument);
+            }
+            process.Start();
+            process.WaitForExit(6000);
+        }
+        catch
+        {
+            // Locked-down profiles can deny task deletion; uninstall should keep going.
         }
     }
 }
