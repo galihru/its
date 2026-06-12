@@ -5417,6 +5417,179 @@ function setupVideoAiSwipe(sheetEl: HTMLElement, onClose: () => void, onWidthCha
   installWheelSheetDismiss(sheetEl, onClose);
 }
 
+function openVideoFullscreen(device: DeviceRecord | null): void {
+  if (document.getElementById("video-fullscreen-modal")) return;
+  const activeDevice = device ?? state.device ?? null;
+  const traffic = activeDevice ? trafficStateForDevice(activeDevice) : null;
+  const surface = renderCameraSurface(activeDevice, "video-fullscreen-media", "video-fullscreen-frame");
+  const ambient = traffic?.color === "red" ? "#7f1d1d" : traffic?.color === "yellow" ? "#854d0e" : "#064e3b";
+  const overlay = document.createElement("div");
+  overlay.id = "video-fullscreen-modal";
+  overlay.className = "video-fullscreen";
+  overlay.style.setProperty("--video-ambient-a", ambient);
+  overlay.innerHTML = `
+  <div class="video-fullscreen-shell">
+    <section class="video-fullscreen-stage" aria-label="Video realtime">
+      <div class="video-fullscreen-ambient" aria-hidden="true"></div>
+      <div class="video-fullscreen-surface" data-video-surface>
+        ${surface || `<div class="video-fullscreen-empty">Kamera realtime belum tersedia</div>`}
+        ${activeDevice ? renderDetectionOverlay(activeDevice) : ""}
+      </div>
+      <div class="video-fullscreen-status">
+        <span class="webrtc-dot" data-status="${state.webrtc.status}"></span>
+        <strong>${escapeHtml(activeDevice?.label || "Video Realtime")}</strong>
+      </div>
+      <div class="video-fullscreen-caption">${escapeHtml(webRtcStatusText())}</div>
+      <button type="button" class="video-fullscreen-play" data-video-play aria-label="Putar video">▶</button>
+      <div class="video-fullscreen-controls">
+        <button type="button" class="video-fullscreen-ai" data-video-ai>AI</button>
+        <button type="button" class="video-fullscreen-fit" data-video-fit aria-label="Fit to screen">⌖</button>
+        <button type="button" class="video-fullscreen-close" data-video-close aria-label="Tutup">x</button>
+      </div>
+    </section>
+    <aside class="video-ai-panel" aria-label="AI kendaraan">
+      <div class="video-ai-handle" data-swipe-handle aria-hidden="true"></div>
+      <header>
+        <div>
+          <span>AI YOLO</span>
+          <strong>${escapeHtml(webRtcStatusText())}</strong>
+        </div>
+        <button type="button" data-video-ai-close aria-label="Tutup AI">x</button>
+      </header>
+      ${renderVehicleStatsGrid(activeDevice, traffic, "video-ai-stats")}
+    </aside>
+  </div>
+`;
+  document.body.appendChild(overlay);
+  mapRoot.classList.add("hidden");
+  document.getElementById("m-bottom-nav")?.classList.add("hidden");
+
+  let scale = 1;
+  const pointers = new Map<number, PointerEvent>();
+  let startDistance = 0;
+  let startScale = 1;
+  const surfaceEl = overlay.querySelector<HTMLElement>("[data-video-surface]");
+  const aiPanel = overlay.querySelector<HTMLElement>(".video-ai-panel");
+  const setScale = (next: number) => {
+    scale = clamp(next, 0.82, 1.55);
+    overlay.style.setProperty("--video-scale", scale.toFixed(3));
+  };
+  const setAiWidth = (widthPx: number) => {
+    if (!usesDesktopSidePanel()) return;
+    overlay.style.setProperty("--video-ai-live-width", `${Math.max(0, Math.round(widthPx))}px`);
+  };
+  const closeVideo = () => {
+    overlay.classList.remove("open", "ai-open");
+    mapRoot.classList.remove("hidden");
+    document.getElementById("m-bottom-nav")?.classList.remove("hidden");
+    window.setTimeout(() => overlay.remove(), 220);
+  };
+  const openAi = () => {
+    if (aiPanel) aiPanel.style.transform = "";
+    overlay.classList.add("ai-open");
+    requestAnimationFrame(() => setAiWidth(aiPanel?.getBoundingClientRect().width || 0));
+  };
+  const closeAi = () => {
+    overlay.classList.remove("ai-open");
+    if (aiPanel) aiPanel.style.transform = "";
+    setAiWidth(0);
+  };
+
+  surfaceEl?.addEventListener("wheel", (event) => {
+    event.preventDefault();
+    setScale(scale + (event.deltaY < 0 ? 0.08 : -0.08));
+  }, { passive: false });
+  surfaceEl?.addEventListener("pointerdown", (event) => {
+    pointers.set(event.pointerId, event);
+    surfaceEl.setPointerCapture?.(event.pointerId);
+    if (pointers.size === 2) {
+      const [a, b] = [...pointers.values()];
+      startDistance = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+      startScale = scale;
+    }
+  });
+  surfaceEl?.addEventListener("pointermove", (event) => {
+    if (!pointers.has(event.pointerId)) return;
+    pointers.set(event.pointerId, event);
+    if (pointers.size === 2 && startDistance > 0) {
+      event.preventDefault();
+      const [a, b] = [...pointers.values()];
+      const nextDistance = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+      setScale(startScale * (nextDistance / startDistance));
+    }
+  });
+  const clearPointer = (event: PointerEvent) => pointers.delete(event.pointerId);
+  surfaceEl?.addEventListener("pointerup", clearPointer);
+  surfaceEl?.addEventListener("pointercancel", clearPointer);
+
+  overlay.querySelector<HTMLButtonElement>("[data-video-play]")?.addEventListener("click", () => {
+    overlay.querySelectorAll<HTMLVideoElement>("video").forEach((video) => {
+      void video.play().catch(() => undefined);
+    });
+  });
+  overlay.querySelector<HTMLButtonElement>("[data-video-fit]")?.addEventListener("click", () => setScale(1));
+  overlay.querySelector<HTMLButtonElement>("[data-video-ai]")?.addEventListener("click", openAi);
+  overlay.querySelector<HTMLButtonElement>("[data-video-ai-close]")?.addEventListener("click", closeAi);
+  overlay.querySelector<HTMLButtonElement>("[data-video-close]")?.addEventListener("click", closeVideo);
+
+  if (aiPanel) {
+    setupVideoAiSwipe(aiPanel, () => closeAi(), setAiWidth);
+  }
+  syncCameraViews(activeDevice);
+  attachWebRtcStream();
+  window.setTimeout(() => overlay.classList.add("open"), 20);
+}
+
+function setupVideoAiSwipe(sheetEl: HTMLElement, onClose: () => void, onWidthChange: (widthPx: number) => void): void {
+  let startAxis = 0;
+  let currentAxis = 0;
+  let pointerId = -1;
+  let startedAt = 0;
+  let dragging = false;
+
+  sheetEl.addEventListener("pointerdown", (event) => {
+    const target = event.target as HTMLElement;
+    const startsOnHandle = Boolean(target.closest("[data-swipe-handle], header"));
+    if (!startsOnHandle && target.closest("button, a, input, label, select, textarea")) return;
+    const horizontal = usesDesktopSidePanel();
+    startAxis = horizontal ? event.clientX : event.clientY;
+    currentAxis = 0;
+    pointerId = event.pointerId;
+    startedAt = performance.now();
+    dragging = true;
+    sheetEl.dataset.swipeAxis = horizontal ? "x" : "y";
+    sheetEl.style.transition = "none";
+    sheetEl.setPointerCapture?.(event.pointerId);
+  });
+
+  sheetEl.addEventListener("pointermove", (event) => {
+    if (!dragging || event.pointerId !== pointerId) return;
+    const horizontal = sheetEl.dataset.swipeAxis === "x";
+    const axis = horizontal ? event.clientX : event.clientY;
+    currentAxis = Math.max(0, axis - startAxis);
+    if (currentAxis > 2) event.preventDefault();
+    sheetEl.style.transform = horizontal ? `translateX(${currentAxis}px)` : `translateY(${currentAxis}px)`;
+    if (horizontal) onWidthChange(Math.max(0, sheetEl.getBoundingClientRect().width - currentAxis));
+  });
+
+  const finish = (event: PointerEvent) => {
+    if (!dragging || event.pointerId !== pointerId) return;
+    dragging = false;
+    pointerId = -1;
+    sheetEl.style.transition = "";
+    const velocity = currentAxis / Math.max(1, performance.now() - startedAt);
+    if (currentAxis > 56 || velocity > 0.55) {
+      onClose();
+    } else {
+      sheetEl.style.transform = "";
+      onWidthChange(sheetEl.getBoundingClientRect().width);
+    }
+  };
+  sheetEl.addEventListener("pointerup", finish);
+  sheetEl.addEventListener("pointercancel", finish);
+  installWheelSheetDismiss(sheetEl, onClose);
+}
+
 // Tablet & POI interactions
 const TABLET_CATEGORIES = ["all", "hospital", "worship", "mall", "campus", "parking"] as const;
 const TABLET_CATEGORY_LABELS: Record<(typeof TABLET_CATEGORIES)[number], string> = {

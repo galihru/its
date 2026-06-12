@@ -2268,6 +2268,108 @@ body {
   display: none;
 }
 
+.sheet-panel-header {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 2px 12px;
+  border-bottom: 1px solid #edf2f7;
+  touch-action: none;
+}
+
+.sheet-icon-btn {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #dbe4ef;
+  border-radius: 10px;
+  background: #fff;
+  color: #0f172a;
+  cursor: pointer;
+}
+
+.sheet-icon-btn svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.sheet-icon-btn svg path[fill] {
+  stroke: none;
+}
+
+.sheet-panel-header .modal-close {
+  position: static;
+  font-size: 0;
+}
+
+.sheet-title-cluster {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.sheet-place-icon,
+.sheet-device-icon {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: #f8fafc;
+  color: #111827;
+  border: 1px solid #dbe4ef;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.sheet-place-icon {
+  border-color: color-mix(in srgb, var(--poi-accent, #2563eb) 48%, #dbe4ef);
+}
+
+.sheet-title-copy {
+  min-width: 0;
+}
+
+.sheet-title-copy .modal-title {
+  padding: 0;
+  text-align: left;
+  font-size: 16px;
+  font-weight: 900;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sheet-title-copy p {
+  margin: 3px 0 0;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 750;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sheet-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.poi-panel-header + .modal-header,
+.device-panel-header + .modal-header {
+  display: none;
+}
+
 .modal-tabs {
   display: flex;
   border-bottom: 1px solid #e5e7eb;
