@@ -7,7 +7,7 @@ const { pathToFileURL } = require("node:url");
 
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
 const APP_UPDATE_URL = "https://itstelkom.web.app/app-update.json";
-const WINDOWS_EXE_NAME = "ITS-Maps-Windows-Custom-Setup-1.0.18-x64.exe";
+const WINDOWS_EXE_NAME = "ITS-Maps-Windows-Custom-Setup-1.0.19-x64.exe";
 const BACKGROUND_UPDATE_ARG = "--background-update-check";
 const APP_USER_MODEL_ID = "id.ac.telkomuniversity.its";
 const UPDATE_HISTORY_FILE = "update-history.json";

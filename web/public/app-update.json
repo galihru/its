@@ -3,18 +3,18 @@
   "appName": "ITS Maps",
   "ownerName": "Hanifa Septhi Larasati",
   "institution": "Telkom University",
-  "versionCode": 18,
-  "versionName": "1.0.18",
-  "windowsUrl": "https://github.com/galihru/its/releases/download/its-maps-v1.0.18/ITS-Maps-Windows-Custom-Setup-1.0.18-x64.exe",
-  "desktopUrl": "https://github.com/galihru/its/releases/download/its-maps-v1.0.18/ITS-Maps-Windows-Custom-Setup-1.0.18-x64.exe",
+  "versionCode": 19,
+  "versionName": "1.0.19",
+  "windowsUrl": "https://github.com/galihru/its/releases/download/its-maps-v1.0.19/ITS-Maps-Windows-Custom-Setup-1.0.19-x64.exe",
+  "desktopUrl": "https://github.com/galihru/its/releases/download/its-maps-v1.0.19/ITS-Maps-Windows-Custom-Setup-1.0.19-x64.exe",
   "pwaUrl": "https://itstelkom.web.app/",
   "logoUrl": "https://itstelkom.web.app/favicon.svg",
-  "updatedAt": "2026-06-12T21:18:00+07:00",
+  "updatedAt": "2026-06-12T22:38:01+07:00",
   "force": false,
   "autoDownload": true,
   "releaseNotes": [
-    "Memperbaiki kamera tunnel Cloudflare agar website dan ITS Maps Windows memakai iframe halaman kamera saat WebRTC/HLS tidak mengirim frame.",
-    "Merapikan overlay YOLO supaya kotak hanya digambar di atas frame yang benar-benar bisa dibaca canvas, bukan di atas iframe cross-origin.",
-    "Mengurangi ukuran/frekuensi publish thumbnail YOLO ke Firebase dan memindahkan installer Windows besar ke GitHub Release agar hosting Firebase tidak penuh."
+    "Membuat popup kamera hanya memakai tombol custom play dan fullscreen dengan iframe tunnel Cloudflare tanpa kontrol bawaan.",
+    "Menyamakan fullscreen website dan ITS Maps Windows: video cover, ambient cinematic light, panel AI fleksibel, dan canvas YOLO di atas video.",
+    "Menahan YOLO browser agar hanya berjalan saat AI dibuka, memfilter kotak palsu, dan membersihkan deteksi RTDB yang tidak valid."
   ]
 }
