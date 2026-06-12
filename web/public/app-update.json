@@ -9,12 +9,12 @@
   "desktopUrl": "https://itstelkom.web.app/artifacts/apps/ITS-Maps-Windows-Custom-Setup-1.0.13-x64.download",
   "pwaUrl": "https://itstelkom.web.app/",
   "logoUrl": "https://itstelkom.web.app/favicon.svg",
-  "updatedAt": "2026-06-11T00:00:00+07:00",
+  "updatedAt": "2026-06-12T14:38:16+07:00",
   "force": false,
-  "autoDownload": false,
+  "autoDownload": true,
   "releaseNotes": [
-    "Memperbaiki video Windows agar memakai URL kamera/HLS publik dari Firebase dan fallback halaman kamera saat HLS gagal.",
-    "Mengambil snapshot 10 detik, status YOLO, statistik kendaraan, dan lokasi Raspberry dari dataset realtime Firebase.",
-    "Menambahkan splash screen aplikasi, tombol download Windows di website, dan mencegah installer ikut terbungkus ulang ke payload aplikasi."
+    "Menambahkan vision overlay 2D berbasis segmentasi satelit untuk membaca jalan, trotoar, vegetasi, air, dan bangunan sekitar viewport.",
+    "Memperkaya tampilan peta Carto/OSM dengan arah jalan, rel, palang perlintasan, median hijau, bundaran, POI, dan share link internal ITS Maps.",
+    "Menyiapkan installer Windows 1.0.13 dan artifact .download untuk update otomatis tanpa uninstall."
   ]
 }

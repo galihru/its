@@ -256,6 +256,31 @@ type RoadGuideBundle = {
   greens: GreenGuideRecord[];
 };
 
+type VisionFeatureKind = "road" | "sidewalk" | "vegetation" | "water" | "building";
+
+type VisionFeatureRecord = {
+  id: string;
+  kind: VisionFeatureKind;
+  latlng: L.LatLng;
+  score: number;
+  radius: number;
+};
+
+type SatelliteVisionCapture = {
+  canvas: HTMLCanvasElement;
+  width: number;
+  height: number;
+  zoom: number;
+  pixelToLatLng: (x: number, y: number) => L.LatLng;
+};
+
+type VisionMaskData = {
+  width: number;
+  height: number;
+  data: Uint8ClampedArray | Uint8Array;
+  channels: number;
+};
+
 // ─── Constants ──────────────────────────────────────────────────
 
 const DEFAULT_CONFIG: Required<AppConfig> = {
@@ -283,6 +308,9 @@ const BEARING_STEP = 90;
 const BEARING_SNAP = 5;
 const MAPLIBRE_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
 const MAPLIBRE_3D_PITCH = 66;
+const VISION_SEGMENTATION_MODEL = "Xenova/segformer-b0-finetuned-ade-512-512";
+const VISION_MIN_ZOOM = 16;
+const VISION_CANVAS_SIZE = 512;
 const LAST_DEVICE_POSITIONS_STORAGE_KEY = "its-web-device-positions:v1";
 
 // ─── DOM bootstrap ──────────────────────────────────────────────
@@ -411,21 +439,21 @@ function renderStaticSitePage(root: HTMLElement, route: "document" | "new"): voi
         </a>
         <nav aria-label="${isDocs ? "Dokumentasi" : "Catatan pembaruan"}">
           ${(isDocs ? [
-            ["Mulai", "#mulai"],
-            ["Arsitektur", "#arsitektur"],
-            ["Peta", "#peta"],
-            ["Aplikasi", "#aplikasi"],
-            ["Windows", "#windows"],
-            ["Notifikasi", "#notifikasi"],
-            ["Build", "#build"],
-            ["Terminal", "#terminal"],
-          ] : [
-            ["Highlights", "#highlights"],
-            ["Windows app", "#windows"],
-            ["Website", "#website"],
-            ["Fixed", "#fixed"],
-            ["Terminal", "#terminal"],
-          ]).map(([label, href]) => `<a href="${href}">${label}</a>`).join("")}
+      ["Mulai", "#mulai"],
+      ["Arsitektur", "#arsitektur"],
+      ["Peta", "#peta"],
+      ["Aplikasi", "#aplikasi"],
+      ["Windows", "#windows"],
+      ["Notifikasi", "#notifikasi"],
+      ["Build", "#build"],
+      ["Terminal", "#terminal"],
+    ] : [
+      ["Highlights", "#highlights"],
+      ["Windows app", "#windows"],
+      ["Website", "#website"],
+      ["Fixed", "#fixed"],
+      ["Terminal", "#terminal"],
+    ]).map(([label, href]) => `<a href="${href}">${label}</a>`).join("")}
         </nav>
       </aside>
       <section class="static-content">
@@ -696,6 +724,7 @@ const state = {
   offlineReported: new Set<string>(),
   overpassLayer: null as L.LayerGroup | null,
   roadGuideLayer: null as L.LayerGroup | null,
+  visionLayer: null as L.LayerGroup | null,
   modeControl: null as L.Control | null,
   routeRequestSeq: 0,
   prevPositionById: new Map<string, L.LatLng>(),
@@ -743,6 +772,7 @@ if (map.attributionControl) {
 // Add Overpass vector layer for clickable features (kept separate from POI markers)
 state.overpassLayer = L.layerGroup().addTo(map);
 state.roadGuideLayer = L.layerGroup().addTo(map);
+state.visionLayer = L.layerGroup().addTo(map);
 
 function applySharedLocationFromUrl(): void {
   const params = new URLSearchParams(window.location.search);
@@ -970,9 +1000,9 @@ function makePoiIcon(poi: PoiRecord, size: number): L.DivIcon {
   return L.divIcon({
     className: "poi-marker-icon",
     html: `<div class="poi-marker ${sprite ? "poi-marker-custom" : ""} poi-kind-${poi.kind}" data-kind="${poi.kind}" title="${escapeHtml(poi.title)}" style="--poi-accent:${visual.color}; --poi-size:${size}px; --poi-width:${width}px;">
-      ${spriteHtml}
-      <span class="poi-marker-glyph">${escapeHtml(visual.icon)}</span>
-    </div>`,
+    ${spriteHtml}
+    <span class="poi-marker-glyph">${escapeHtml(visual.icon)}</span>
+  </div>`,
     iconSize: [width, size + 10],
     iconAnchor: [Math.round(width / 2), Math.round((size + 10) / 2)],
   });
@@ -981,58 +1011,58 @@ function makePoiIcon(poi: PoiRecord, size: number): L.DivIcon {
 function renderPoiModal(poi: PoiRecord): string {
   const visual = poiVisual(poi.kind);
   return `
-    <div class="sheet-panel-header poi-panel-header">
-      <button class="sheet-icon-btn modal-close" data-action="close" aria-label="Kembali" title="Kembali">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+  <div class="sheet-panel-header poi-panel-header">
+    <button class="sheet-icon-btn modal-close" data-action="close" aria-label="Kembali" title="Kembali">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <div class="sheet-title-cluster">
+      <div class="sheet-place-icon" style="--poi-accent:${visual.color};">${escapeHtml(poi.icon)}</div>
+      <div class="sheet-title-copy">
+        <h2 class="modal-title">${escapeHtml(poi.title)}</h2>
+        <p>${escapeHtml(poi.kind)}${poi.address ? ` · ${escapeHtml(poi.address)}` : ""}</p>
+      </div>
+    </div>
+    <div class="sheet-header-actions">
+      <button class="sheet-icon-btn btn-share" data-action="share" aria-label="Bagikan lokasi" title="Bagikan">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a3 3 0 1 0-2.83-4H15a3 3 0 0 0 1.2 2.4L8.8 10.1a3 3 0 1 0 0 3.8l7.4 3.7A3 3 0 1 0 17 16a2.9 2.9 0 0 0-.8.1l-7.4-3.7a3 3 0 0 0 0-.8l7.4-3.7A2.9 2.9 0 0 0 18 8Z"/></svg>
       </button>
-      <div class="sheet-title-cluster">
-        <div class="sheet-place-icon" style="--poi-accent:${visual.color};">${escapeHtml(poi.icon)}</div>
-        <div class="sheet-title-copy">
-          <h2 class="modal-title">${escapeHtml(poi.title)}</h2>
-          <p>${escapeHtml(poi.kind)}${poi.address ? ` · ${escapeHtml(poi.address)}` : ""}</p>
-        </div>
-      </div>
-      <div class="sheet-header-actions">
-        <button class="sheet-icon-btn btn-share" data-action="share" aria-label="Bagikan lokasi" title="Bagikan">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a3 3 0 1 0-2.83-4H15a3 3 0 0 0 1.2 2.4L8.8 10.1a3 3 0 1 0 0 3.8l7.4 3.7A3 3 0 1 0 17 16a2.9 2.9 0 0 0-.8.1l-7.4-3.7a3 3 0 0 0 0-.8l7.4-3.7A2.9 2.9 0 0 0 18 8Z"/></svg>
-        </button>
-        <button class="sheet-icon-btn btn-start" data-action="start" aria-label="Mulai rute" title="Rute">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l7 19-7-4-7 4 7-19Z"/></svg>
-        </button>
-        <button class="sheet-icon-btn btn-camera" data-action="camera" aria-label="Buka kamera AR" title="Kamera">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l1.6-2h6.8L17 8h3v10H4V8Zm8 8a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/></svg>
-        </button>
+      <button class="sheet-icon-btn btn-start" data-action="start" aria-label="Mulai rute" title="Rute">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l7 19-7-4-7 4 7-19Z"/></svg>
+      </button>
+      <button class="sheet-icon-btn btn-camera" data-action="camera" aria-label="Buka kamera AR" title="Kamera">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l1.6-2h6.8L17 8h3v10H4V8Zm8 8a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="modal-header poi-modal-header">
+    <button class="modal-close" data-action="close">×</button>
+    <h2 class="modal-title">${escapeHtml(poi.title)}</h2>
+    <div class="poi-actions">
+      <button class="btn-share" data-action="share">Share</button>
+      <button class="btn-start" data-action="start">Pergi</button>
+    </div>
+  </div>
+  <div class="modal-content poi-modal-content">
+    <div class="poi-hero">
+      <img class="poi-hero-image ${poi.imageUrl === ITS_APP_ICON ? "poi-hero-image-contained" : ""}" src="${escapeHtml(poi.imageUrl)}" alt="${escapeHtml(poi.title)}">
+      <div class="poi-hero-overlay">
+        <span class="poi-badge">${escapeHtml(poi.kind.toUpperCase())}</span>
+        <span class="poi-rating">★ ${escapeHtml(poi.rating)}</span>
       </div>
     </div>
-    <div class="modal-header poi-modal-header">
-      <button class="modal-close" data-action="close">×</button>
-      <h2 class="modal-title">${escapeHtml(poi.title)}</h2>
-      <div class="poi-actions">
-        <button class="btn-share" data-action="share">Share</button>
-        <button class="btn-start" data-action="start">Pergi</button>
+    <div class="poi-summary">
+      <div class="poi-icon-large">${poi.icon}</div>
+      <div>
+        <div class="poi-title">${escapeHtml(poi.title)}</div>
+        <div class="poi-address">${escapeHtml(poi.address)}</div>
+        <div class="poi-meta"><span data-field="poi-distance">-</span> • <span data-field="poi-eta">-</span></div>
       </div>
     </div>
-    <div class="modal-content poi-modal-content">
-      <div class="poi-hero">
-        <img class="poi-hero-image ${poi.imageUrl === ITS_APP_ICON ? "poi-hero-image-contained" : ""}" src="${escapeHtml(poi.imageUrl)}" alt="${escapeHtml(poi.title)}">
-        <div class="poi-hero-overlay">
-          <span class="poi-badge">${escapeHtml(poi.kind.toUpperCase())}</span>
-          <span class="poi-rating">★ ${escapeHtml(poi.rating)}</span>
-        </div>
-      </div>
-      <div class="poi-summary">
-        <div class="poi-icon-large">${poi.icon}</div>
-        <div>
-          <div class="poi-title">${escapeHtml(poi.title)}</div>
-          <div class="poi-address">${escapeHtml(poi.address)}</div>
-          <div class="poi-meta"><span data-field="poi-distance">-</span> • <span data-field="poi-eta">-</span></div>
-        </div>
-      </div>
-      <div class="poi-description">${escapeHtml(poi.description)}</div>
-      <div class="poi-route-summary" data-field="poi-route"></div>
-      <div class="info-row"><span class="label">Kategori</span><span class="value">${escapeHtml(poi.kind)}</span></div>
-      <div class="info-row"><span class="label">Koordinat</span><span class="value">${poi.lat.toFixed(6)}, ${poi.lng.toFixed(6)}</span></div>
-    </div>`;
+    <div class="poi-description">${escapeHtml(poi.description)}</div>
+    <div class="poi-route-summary" data-field="poi-route"></div>
+    <div class="info-row"><span class="label">Kategori</span><span class="value">${escapeHtml(poi.kind)}</span></div>
+    <div class="info-row"><span class="label">Koordinat</span><span class="value">${poi.lat.toFixed(6)}, ${poi.lng.toFixed(6)}</span></div>
+  </div>`;
 }
 
 function openPoiModal(poi: PoiRecord): void {
@@ -1043,9 +1073,9 @@ function openPoiModal(poi: PoiRecord): void {
     "m-poi-modal",
     "m-poi-sheet m-device-sheet",
     `
-      <div class="m-sheet-handle-bar"></div>
-      ${renderPoiModal(poi)}
-    `,
+    <div class="m-sheet-handle-bar"></div>
+    ${renderPoiModal(poi)}
+  `,
   );
   overlay.querySelector(".m-layer-backdrop")!.addEventListener("click", () => closeModal());
   const sheet = overlay.querySelector<HTMLElement>(".m-poi-sheet");
@@ -1125,38 +1155,38 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
   const overlay = document.createElement('div');
   overlay.id = 'm-ar-fullscreen';
   overlay.innerHTML = `
-    <div class="ar-fullscreen-wrapper">
-      <video class="ar-video" autoplay playsinline muted></video>
-      <canvas class="ar-canvas"></canvas>
-      <div class="ar-guidance">
-        <div class="ar-guidance-arrow" data-field="ar-arrow">↑</div>
-        <div class="ar-guidance-text" data-field="ar-direction">Arah tujuan</div>
-      </div>
-      <button class="ar-target-beacon" data-field="ar-target-beacon" type="button">
-        <span class="ar-target-beacon-icon">📍</span>
-        <span class="ar-target-beacon-text">Tujuan</span>
-      </button>
-      <div class="ar-hud-bottom">
-        <div class="ar-hud-status" data-field="ar-status">🎥 AR Mode aktif</div>
-        <div class="ar-hud-info">
-          <span data-field="ar-target">Tujuan: ${escapeHtml(targetPoi.title)}</span>
-          <span data-field="ar-distance">Jarak: -</span>
-          <span data-field="ar-eta">Waktu: -</span>
-        </div>
-      </div>
-      <div class="ar-poi-layer"></div>
-      <div class="ar-object-layer"></div>
-      <div class="ar-controls-bottom">
-        <button class="ar-toggle-3d" aria-label="Toggle 3D">3D</button>
-        <button class="ar-swap-pip" aria-label="Swap PiP">↔️</button>
-        <button class="ar-close">✕</button>
-      </div>
-      <div class="ar-pip-map-container" style="display:none">
-        <div id="ar-pip-map" class="ar-pip-map"></div>
-        <div class="ar-pip-info" data-field="pip-distance">Jarak: -</div>
+  <div class="ar-fullscreen-wrapper">
+    <video class="ar-video" autoplay playsinline muted></video>
+    <canvas class="ar-canvas"></canvas>
+    <div class="ar-guidance">
+      <div class="ar-guidance-arrow" data-field="ar-arrow">↑</div>
+      <div class="ar-guidance-text" data-field="ar-direction">Arah tujuan</div>
+    </div>
+    <button class="ar-target-beacon" data-field="ar-target-beacon" type="button">
+      <span class="ar-target-beacon-icon">📍</span>
+      <span class="ar-target-beacon-text">Tujuan</span>
+    </button>
+    <div class="ar-hud-bottom">
+      <div class="ar-hud-status" data-field="ar-status">🎥 AR Mode aktif</div>
+      <div class="ar-hud-info">
+        <span data-field="ar-target">Tujuan: ${escapeHtml(targetPoi.title)}</span>
+        <span data-field="ar-distance">Jarak: -</span>
+        <span data-field="ar-eta">Waktu: -</span>
       </div>
     </div>
-  `;
+    <div class="ar-poi-layer"></div>
+    <div class="ar-object-layer"></div>
+    <div class="ar-controls-bottom">
+      <button class="ar-toggle-3d" aria-label="Toggle 3D">3D</button>
+      <button class="ar-swap-pip" aria-label="Swap PiP">↔️</button>
+      <button class="ar-close">✕</button>
+    </div>
+    <div class="ar-pip-map-container" style="display:none">
+      <div id="ar-pip-map" class="ar-pip-map"></div>
+      <div class="ar-pip-info" data-field="pip-distance">Jarak: -</div>
+    </div>
+  </div>
+`;
   document.body.appendChild(overlay);
 
   const video = overlay.querySelector<HTMLVideoElement>('.ar-video');
@@ -1234,9 +1264,9 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
     card.dataset.poiId = id;
     card.title = title;
     card.innerHTML = `
-      <div class="ar-poi-icon">${escapeHtml(poiVisual(kind as PoiKind).icon)}</div>
-      <div class="ar-poi-distance">-</div>
-    `;
+    <div class="ar-poi-icon">${escapeHtml(poiVisual(kind as PoiKind).icon)}</div>
+    <div class="ar-poi-distance">-</div>
+  `;
     card.addEventListener('click', () => {
       const poi = activePoiLookup.get(id);
       if (!poi) return;
@@ -1254,9 +1284,9 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
     card.className = 'ar-object-card ar-skeleton-card';
     card.dataset.objectKey = key;
     card.innerHTML = `
-      <div class="ar-object-label">${escapeHtml(label)}</div>
-      <div class="ar-skeleton-box"></div>
-    `;
+    <div class="ar-object-label">${escapeHtml(label)}</div>
+    <div class="ar-skeleton-box"></div>
+  `;
     objectLayerEl.appendChild(card);
     objectCards.set(key, card);
     return card;
@@ -1301,12 +1331,12 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
       setStatus('Anda sudah sampai tujuan');
       closeModal();
       const reached = createSwipeableSheetModal('m-arrived-modal', 'm-arrived-sheet', `
-        <div class="m-sheet-handle-bar"></div>
-        <div class="ar-arrived">
-          <div class="ar-arrived-title">Anda sudah sampai tujuan</div>
-          <div class="ar-arrived-subtitle">${escapeHtml(currentTarget.title)}</div>
-        </div>
-      `);
+      <div class="m-sheet-handle-bar"></div>
+      <div class="ar-arrived">
+        <div class="ar-arrived-title">Anda sudah sampai tujuan</div>
+        <div class="ar-arrived-subtitle">${escapeHtml(currentTarget.title)}</div>
+      </div>
+    `);
       setTimeout(() => reached.remove(), 2600);
     }
   }
@@ -1336,9 +1366,9 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
     card.classList.remove('ar-skeleton-card');
     card.title = `${poi.title} · ${dirLabel} · ${turnLabel}`;
     card.innerHTML = `
-      <div class="ar-poi-icon">${escapeHtml(poi.icon || poiVisual(poi.kind).icon)}</div>
-      <div class="ar-poi-distance">${formatDistance(dist)}</div>
-    `;
+    <div class="ar-poi-icon">${escapeHtml(poi.icon || poiVisual(poi.kind).icon)}</div>
+    <div class="ar-poi-distance">${formatDistance(dist)}</div>
+  `;
     card.classList.toggle('ar-poi-centered', centered);
     Object.assign(card.style, {
       left: `${screenX}%`,
@@ -1403,9 +1433,9 @@ function openARCameraSheet(targetPoi: PoiRecord): void {
       const bg = /person/i.test(label) ? 'linear-gradient(180deg,#2563eb,#93c5fd)' : /car|truck|bus|motorcycle|vehicle/i.test(label) ? 'linear-gradient(180deg,#ef4444,#fb7185)' : /plant|tree/i.test(label) ? 'linear-gradient(180deg,#16a34a,#86efac)' : 'linear-gradient(180deg,#475569,#94a3b8)';
       card.classList.remove('ar-skeleton-card');
       card.innerHTML = `
-        <div class="ar-object-label">${escapeHtml(label)}</div>
-        <div class="ar-object-distance">${Math.max(1, Math.round(1200 / Math.max(bw, 8)))}m</div>
-      `;
+      <div class="ar-object-label">${escapeHtml(label)}</div>
+      <div class="ar-object-distance">${Math.max(1, Math.round(1200 / Math.max(bw, 8)))}m</div>
+    `;
       Object.assign(card.style, {
         left: `${cx}%`,
         top: `${cy}%`,
@@ -1778,55 +1808,55 @@ async function fetchOverpassFeaturesForBounds(bounds: L.LatLngBounds): Promise<P
   const bbox = buildOverpassBBoxString(bounds);
   // Query common POI tags; return nodes + ways + relations with center
   const q = `
-    [out:json][timeout:15];
-    (
-      node["amenity"](${bbox});
-      way["amenity"](${bbox});
-      relation["amenity"](${bbox});
-      node["shop"](${bbox});
-      way["shop"](${bbox});
-      relation["shop"](${bbox});
-      node["tourism"](${bbox});
-      way["tourism"](${bbox});
-      relation["tourism"](${bbox});
-      node["office"](${bbox});
-      way["office"](${bbox});
-      relation["office"](${bbox});
-      node["leisure"="park"](${bbox});
-      way["leisure"="park"](${bbox});
-      relation["leisure"="park"](${bbox});
-      node["public_transport"](${bbox});
-      way["public_transport"](${bbox});
-      relation["public_transport"](${bbox});
-      node["public_transport"~"station|platform|stop_position"](${bbox});
-      way["public_transport"~"station|platform|stop_position"](${bbox});
-      node["highway"="bus_stop"](${bbox});
-      node["amenity"="bus_station"](${bbox});
-      way["amenity"="bus_station"](${bbox});
-      node["railway"~"station|halt|tram_stop|subway_entrance"](${bbox});
-      way["railway"~"station|halt|tram_stop|subway_entrance"](${bbox});
-      relation["railway"~"station|halt|tram_stop|subway_entrance"](${bbox});
-      node["historic"](${bbox});
-      way["historic"](${bbox});
-      relation["historic"](${bbox});
-      node["healthcare"](${bbox});
-      way["healthcare"](${bbox});
-      relation["healthcare"](${bbox});
-      node["craft"](${bbox});
-      way["craft"](${bbox});
-      node["emergency"](${bbox});
-      way["emergency"](${bbox});
-      node["place"~"neighbourhood|suburb|quarter|village|hamlet"](${bbox});
-      way["place"~"neighbourhood|suburb|quarter|village|hamlet"](${bbox});
-      node["man_made"]["name"](${bbox});
-      way["man_made"]["name"](${bbox});
-      node["sport"]["name"](${bbox});
-      way["sport"]["name"](${bbox});
-      node["building"]["name"](${bbox});
-      way["building"]["name"](${bbox});
-    );
-    out center tags;
-  `;
+  [out:json][timeout:15];
+  (
+    node["amenity"](${bbox});
+    way["amenity"](${bbox});
+    relation["amenity"](${bbox});
+    node["shop"](${bbox});
+    way["shop"](${bbox});
+    relation["shop"](${bbox});
+    node["tourism"](${bbox});
+    way["tourism"](${bbox});
+    relation["tourism"](${bbox});
+    node["office"](${bbox});
+    way["office"](${bbox});
+    relation["office"](${bbox});
+    node["leisure"="park"](${bbox});
+    way["leisure"="park"](${bbox});
+    relation["leisure"="park"](${bbox});
+    node["public_transport"](${bbox});
+    way["public_transport"](${bbox});
+    relation["public_transport"](${bbox});
+    node["public_transport"~"station|platform|stop_position"](${bbox});
+    way["public_transport"~"station|platform|stop_position"](${bbox});
+    node["highway"="bus_stop"](${bbox});
+    node["amenity"="bus_station"](${bbox});
+    way["amenity"="bus_station"](${bbox});
+    node["railway"~"station|halt|tram_stop|subway_entrance"](${bbox});
+    way["railway"~"station|halt|tram_stop|subway_entrance"](${bbox});
+    relation["railway"~"station|halt|tram_stop|subway_entrance"](${bbox});
+    node["historic"](${bbox});
+    way["historic"](${bbox});
+    relation["historic"](${bbox});
+    node["healthcare"](${bbox});
+    way["healthcare"](${bbox});
+    relation["healthcare"](${bbox});
+    node["craft"](${bbox});
+    way["craft"](${bbox});
+    node["emergency"](${bbox});
+    way["emergency"](${bbox});
+    node["place"~"neighbourhood|suburb|quarter|village|hamlet"](${bbox});
+    way["place"~"neighbourhood|suburb|quarter|village|hamlet"](${bbox});
+    node["man_made"]["name"](${bbox});
+    way["man_made"]["name"](${bbox});
+    node["sport"]["name"](${bbox});
+    way["sport"]["name"](${bbox});
+    node["building"]["name"](${bbox});
+    way["building"]["name"](${bbox});
+  );
+  out center tags;
+`;
 
   try {
     const res = await fetch("https://overpass-api.de/api/interpreter", {
@@ -1994,7 +2024,7 @@ function roadLaneDividerStyle(road: RoadGuideRecord): L.PolylineOptions {
 function roadSidewalkStyle(road: RoadGuideRecord): L.PolylineOptions {
   const cls = roadRenderClass(road);
   return {
-    color: cls === "major" ? "#d7e6f7" : "#c7d6e6",
+    color: cls === "major" ? "rgb(215, 230, 247)" : "#c7d6e6",
     weight: cls === "major" ? 14.5 : cls === "service" ? 6.5 : 9,
     opacity: cls === "foot" ? 0 : 0.62,
     dashArray: road.hasSidewalk ? "10 9" : "2 14",
@@ -2167,20 +2197,20 @@ function roadGuideSamplePoints(points: L.LatLng[], maxCount: number): { latlng: 
 async function fetchRoadGuidesForBounds(bounds: L.LatLngBounds): Promise<RoadGuideBundle> {
   const bbox = buildOverpassBBoxString(bounds);
   const q = `
-    [out:json][timeout:18];
-    (
-      way["highway"~"motorway|trunk|primary|secondary|tertiary|residential|unclassified|service|living_street|pedestrian|footway|path|cycleway|steps"](${bbox});
-      way["railway"~"rail|light_rail|tram|subway|narrow_gauge"](${bbox});
-      node["railway"~"level_crossing|crossing|tram_crossing"](${bbox});
-      way["waterway"~"river|stream|canal|drain|ditch"](${bbox});
-      way["natural"="water"](${bbox});
-      way["water"~"river|stream|canal|drain|ditch|pond|lake"](${bbox});
-      way["leisure"~"park|garden|recreation_ground"](${bbox});
-      way["landuse"~"grass|forest|meadow|village_green|recreation_ground"](${bbox});
-      way["natural"~"wood|grassland|scrub|tree_row"](${bbox});
-    );
-    out tags geom 150;
-  `;
+  [out:json][timeout:18];
+  (
+    way["highway"~"motorway|trunk|primary|secondary|tertiary|residential|unclassified|service|living_street|pedestrian|footway|path|cycleway|steps"](${bbox});
+    way["railway"~"rail|light_rail|tram|subway|narrow_gauge"](${bbox});
+    node["railway"~"level_crossing|crossing|tram_crossing"](${bbox});
+    way["waterway"~"river|stream|canal|drain|ditch"](${bbox});
+    way["natural"="water"](${bbox});
+    way["water"~"river|stream|canal|drain|ditch|pond|lake"](${bbox});
+    way["leisure"~"park|garden|recreation_ground"](${bbox});
+    way["landuse"~"grass|forest|meadow|village_green|recreation_ground"](${bbox});
+    way["natural"~"wood|grassland|scrub|tree_row"](${bbox});
+  );
+  out tags geom 150;
+`;
 
   try {
     const res = await fetch("https://overpass-api.de/api/interpreter", {
@@ -2413,6 +2443,371 @@ async function refreshRoadGuideLayer(force = false): Promise<void> {
   });
 }
 
+let visionSegmenterPromise: Promise<any> | null = null;
+let visionBusy = false;
+let lastVisionKey = "";
+let visionStatusHideTimer = 0;
+
+function showVisionStatus(message: string, progress?: number, done = false): void {
+  let el = document.getElementById("vision-status") as HTMLDivElement | null;
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "vision-status";
+    el.className = "vision-status";
+    mapRoot.appendChild(el);
+  }
+  el.classList.toggle("done", done);
+  const pct = typeof progress === "number" ? clamp(progress, 0, 100) : null;
+  el.innerHTML = `
+  <span class="vision-status-dot"></span>
+  <span>${escapeHtml(message)}</span>
+  ${pct === null ? "" : `<strong>${Math.round(pct)}%</strong>`}
+`;
+  window.clearTimeout(visionStatusHideTimer);
+  if (done) {
+    visionStatusHideTimer = window.setTimeout(() => el?.remove(), 1900);
+  }
+}
+
+function hideVisionStatusSoon(): void {
+  const el = document.getElementById("vision-status");
+  window.clearTimeout(visionStatusHideTimer);
+  visionStatusHideTimer = window.setTimeout(() => el?.remove(), 1200);
+}
+
+async function loadVisionSegmenter(progress?: (value: number) => void): Promise<any> {
+  if (visionSegmenterPromise) return visionSegmenterPromise;
+  visionSegmenterPromise = (async () => {
+    const mod = await import("@huggingface/transformers");
+    const pipeline = (mod as any).pipeline;
+    const env = (mod as any).env;
+    if (env) {
+      env.allowRemoteModels = true;
+      env.useBrowserCache = true;
+    }
+
+    const progressByFile: Record<string, number> = {};
+    const progressCallback = (info: any) => {
+      if (info?.status === "progress" && info.file) {
+        progressByFile[info.file] = Number(info.progress) || 0;
+        const values = Object.values(progressByFile);
+        const avg = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+        progress?.(avg);
+      } else if (info?.status === "ready") {
+        progress?.(100);
+      }
+    };
+
+    const preferred: any = {
+      dtype: "q8",
+      progress_callback: progressCallback,
+    };
+    if ((navigator as any).gpu) preferred.device = "webgpu";
+
+    try {
+      return await pipeline("image-segmentation", VISION_SEGMENTATION_MODEL, preferred);
+    } catch (firstErr) {
+      console.warn("Vision WebGPU/q8 load failed, falling back to WASM:", firstErr);
+      try {
+        return await pipeline("image-segmentation", VISION_SEGMENTATION_MODEL, {
+          dtype: "q8",
+          progress_callback: progressCallback,
+        });
+      } catch (secondErr) {
+        console.warn("Vision q8 load failed, falling back to default dtype:", secondErr);
+        return pipeline("image-segmentation", VISION_SEGMENTATION_MODEL, {
+          progress_callback: progressCallback,
+        });
+      }
+    }
+  })();
+  return visionSegmenterPromise;
+}
+
+function latLngToGlobalPixel(lat: number, lng: number, zoom: number): { x: number; y: number } {
+  const sinLat = Math.sin((lat * Math.PI) / 180);
+  const size = 256 * Math.pow(2, zoom);
+  return {
+    x: ((lng + 180) / 360) * size,
+    y: (0.5 - Math.log((1 + sinLat) / (1 - sinLat)) / (4 * Math.PI)) * size,
+  };
+}
+
+function globalPixelToLatLng(x: number, y: number, zoom: number): L.LatLng {
+  const size = 256 * Math.pow(2, zoom);
+  const lng = (x / size) * 360 - 180;
+  const n = Math.PI - (2 * Math.PI * y) / size;
+  const lat = (180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
+  return L.latLng(lat, lng);
+}
+
+function satelliteVisionTileUrl(z: number, x: number, y: number): string {
+  return `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`;
+}
+
+function loadVisionTileImage(url: string): Promise<HTMLImageElement | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.decoding = "async";
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = url;
+  });
+}
+
+async function captureSatelliteVisionCanvas(): Promise<SatelliteVisionCapture> {
+  const zoom = clamp(Math.round(map.getZoom()), VISION_MIN_ZOOM, 18);
+  const size = isMobile() ? 384 : VISION_CANVAS_SIZE;
+  const center = map.getCenter();
+  const centerPx = latLngToGlobalPixel(center.lat, center.lng, zoom);
+  const origin = {
+    x: centerPx.x - size / 2,
+    y: centerPx.y - size / 2,
+  };
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) throw new Error("Canvas 2D tidak tersedia");
+  ctx.fillStyle = "#f8fafc";
+  ctx.fillRect(0, 0, size, size);
+
+  const maxTile = Math.pow(2, zoom);
+  const startX = Math.floor(origin.x / 256);
+  const startY = Math.floor(origin.y / 256);
+  const endX = Math.floor((origin.x + size) / 256);
+  const endY = Math.floor((origin.y + size) / 256);
+  const draws: Promise<void>[] = [];
+  let loadedTiles = 0;
+
+  for (let tx = startX; tx <= endX; tx += 1) {
+    for (let ty = startY; ty <= endY; ty += 1) {
+      if (ty < 0 || ty >= maxTile) continue;
+      const wrappedX = ((tx % maxTile) + maxTile) % maxTile;
+      const dx = Math.round(tx * 256 - origin.x);
+      const dy = Math.round(ty * 256 - origin.y);
+      draws.push(loadVisionTileImage(satelliteVisionTileUrl(zoom, wrappedX, ty)).then((img) => {
+        if (!img) return;
+        loadedTiles += 1;
+        ctx.drawImage(img, dx, dy, 256, 256);
+      }));
+    }
+  }
+
+  await Promise.all(draws);
+  if (!loadedTiles) throw new Error("Tile satelit tidak bisa dibaca untuk computer vision");
+
+  return {
+    canvas,
+    width: size,
+    height: size,
+    zoom,
+    pixelToLatLng: (x, y) => globalPixelToLatLng(origin.x + x, origin.y + y, zoom),
+  };
+}
+
+function visionKindFromLabel(rawLabel: string): VisionFeatureKind | null {
+  const label = rawLabel.toLowerCase();
+  if (/\b(water|river|sea|lake|canal|pool|pond|waterfall)\b/.test(label)) return "water";
+  if (/\b(sidewalk|pavement|path|walkway|footpath|stairway|stairs)\b/.test(label)) return "sidewalk";
+  if (/\b(road|street|runway|highway|route)\b/.test(label)) return "road";
+  if (/\b(tree|plant|grass|field|earth|flower|palm|forest|wood|vegetation|land|terrain)\b/.test(label)) return "vegetation";
+  if (/\b(building|house|skyscraper|edifice|apartment|booth|tower)\b/.test(label)) return "building";
+  return null;
+}
+
+function visionMaskData(mask: any): VisionMaskData | null {
+  if (!mask) return null;
+  if (mask instanceof HTMLCanvasElement) {
+    const ctx = mask.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return null;
+    const image = ctx.getImageData(0, 0, mask.width, mask.height);
+    return { width: mask.width, height: mask.height, data: image.data, channels: 4 };
+  }
+  if (typeof ImageData !== "undefined" && mask instanceof ImageData) {
+    return { width: mask.width, height: mask.height, data: mask.data, channels: 4 };
+  }
+  if (mask.canvas instanceof HTMLCanvasElement) return visionMaskData(mask.canvas);
+  const width = Number(mask.width || mask.naturalWidth || 0);
+  const height = Number(mask.height || mask.naturalHeight || 0);
+  const data = mask.data as Uint8ClampedArray | Uint8Array | undefined;
+  if (!width || !height || !data) return null;
+  const channels = data.length >= width * height * 4 ? 4 : 1;
+  return { width, height, data, channels };
+}
+
+function visionMaskValue(mask: VisionMaskData, x: number, y: number, capture: SatelliteVisionCapture): number {
+  const ix = clamp(Math.floor((x / capture.width) * mask.width), 0, mask.width - 1);
+  const iy = clamp(Math.floor((y / capture.height) * mask.height), 0, mask.height - 1);
+  const offset = (iy * mask.width + ix) * mask.channels;
+  if (mask.channels === 1) return Number(mask.data[offset] || 0);
+  const alpha = Number(mask.data[offset + 3] || 0);
+  if (alpha) return alpha;
+  return (Number(mask.data[offset] || 0) + Number(mask.data[offset + 1] || 0) + Number(mask.data[offset + 2] || 0)) / 3;
+}
+
+function visionSampleStep(kind: VisionFeatureKind): number {
+  if (kind === "vegetation") return 26;
+  if (kind === "water") return 24;
+  if (kind === "sidewalk") return 28;
+  if (kind === "road") return 34;
+  return 42;
+}
+
+function visionFeatureLimit(kind: VisionFeatureKind): number {
+  if (kind === "vegetation") return 120;
+  if (kind === "water") return 80;
+  if (kind === "sidewalk") return 86;
+  if (kind === "road") return 64;
+  return 44;
+}
+
+function visionRadius(kind: VisionFeatureKind, score: number): number {
+  const base = kind === "vegetation" ? 2.8 : kind === "water" ? 3.4 : kind === "sidewalk" ? 2.2 : kind === "road" ? 2.6 : 2.4;
+  return clamp(base + score * 2, 2, 6);
+}
+
+function extractVisionFeatures(result: any, capture: SatelliteVisionCapture): VisionFeatureRecord[] {
+  const segments = Array.isArray(result) ? result : Array.isArray(result?.segments) ? result.segments : [];
+  const features: VisionFeatureRecord[] = [];
+  const countByKind: Record<VisionFeatureKind, number> = {
+    road: 0,
+    sidewalk: 0,
+    vegetation: 0,
+    water: 0,
+    building: 0,
+  };
+
+  segments.forEach((segment: any, segmentIndex: number) => {
+    const kind = visionKindFromLabel(String(segment.label || segment.class || ""));
+    if (!kind) return;
+    const mask = visionMaskData(segment.mask || segment.bitmap || segment.image);
+    if (!mask) return;
+    const score = clamp(Number(segment.score) || 0.55, 0.2, 1);
+    const step = visionSampleStep(kind);
+    const limit = visionFeatureLimit(kind);
+    const phase = (segmentIndex * 11) % step;
+
+    for (let y = phase; y < capture.height && countByKind[kind] < limit; y += step) {
+      for (let x = phase; x < capture.width && countByKind[kind] < limit; x += step) {
+        const value = visionMaskValue(mask, x, y, capture);
+        if (value < 46) continue;
+        if (((Math.round(x) + Math.round(y) + segmentIndex * 17) % (kind === "vegetation" ? 2 : 3)) !== 0) continue;
+        const latlng = capture.pixelToLatLng(x, y);
+        if (!map.getBounds().pad(0.08).contains(latlng)) continue;
+        countByKind[kind] += 1;
+        features.push({
+          id: `vision-${kind}-${segmentIndex}-${countByKind[kind]}`,
+          kind,
+          latlng,
+          score,
+          radius: visionRadius(kind, score),
+        });
+      }
+    }
+  });
+
+  return features;
+}
+
+function renderVisionFeatures(features: VisionFeatureRecord[]): void {
+  if (!state.visionLayer) state.visionLayer = L.layerGroup().addTo(map);
+  state.visionLayer.clearLayers();
+
+  const styleByKind: Record<VisionFeatureKind, L.CircleMarkerOptions> = {
+    vegetation: {
+      radius: 3,
+      color: "#16a34a",
+      fillColor: "#4ade80",
+      fillOpacity: 0.72,
+      opacity: 0.62,
+      weight: 1,
+      interactive: false,
+    },
+    water: {
+      radius: 3.4,
+      color: "#0284c7",
+      fillColor: "#7dd3fc",
+      fillOpacity: 0.64,
+      opacity: 0.62,
+      weight: 1,
+      interactive: false,
+    },
+    sidewalk: {
+      radius: 2.5,
+      color: "#94a3b8",
+      fillColor: "#e2e8f0",
+      fillOpacity: 0.76,
+      opacity: 0.56,
+      weight: 1,
+      interactive: false,
+    },
+    road: {
+      radius: 2.6,
+      color: "#f59e0b",
+      fillColor: "#fde68a",
+      fillOpacity: 0.46,
+      opacity: 0.44,
+      weight: 1,
+      interactive: false,
+    },
+    building: {
+      radius: 2.3,
+      color: "#c08457",
+      fillColor: "#f1d6bb",
+      fillOpacity: 0.42,
+      opacity: 0.4,
+      weight: 1,
+      interactive: false,
+    },
+  };
+
+  features.forEach((feature) => {
+    const style = { ...styleByKind[feature.kind], radius: feature.radius };
+    L.circleMarker(feature.latlng, style).addTo(state.visionLayer as L.LayerGroup);
+  });
+}
+
+function visionRefreshKey(): string {
+  const zoom = clamp(Math.round(map.getZoom()), VISION_MIN_ZOOM, 18);
+  const center = map.getCenter();
+  const px = latLngToGlobalPixel(center.lat, center.lng, zoom);
+  return `${state.baseMode}:${zoom}:${Math.floor(px.x / 192)}:${Math.floor(px.y / 192)}`;
+}
+
+async function refreshVisionLayer(force = false): Promise<void> {
+  if (!state.visionLayer) state.visionLayer = L.layerGroup().addTo(map);
+  if (state.baseMode !== "street" || map.getZoom() < VISION_MIN_ZOOM) {
+    state.visionLayer.clearLayers();
+    return;
+  }
+  if (visionBusy) return;
+  const key = visionRefreshKey();
+  if (!force && key === lastVisionKey) return;
+  visionBusy = true;
+  lastVisionKey = key;
+  showVisionStatus("Memuat AI vision peta 2D...");
+  try {
+    const segmenter = await loadVisionSegmenter((progress) => {
+      showVisionStatus("Mengunduh model vision peta 2D", progress);
+    });
+    showVisionStatus("Membaca citra satelit viewport...");
+    const capture = await captureSatelliteVisionCanvas();
+    showVisionStatus("Mendeteksi pohon, air, trotoar, dan bangunan...");
+    const result = await segmenter(capture.canvas);
+    const features = extractVisionFeatures(result, capture);
+    renderVisionFeatures(features);
+    showVisionStatus(`Vision 2D selesai - ${features.length} petunjuk real`, 100, true);
+  } catch (err) {
+    console.warn("Vision enhancement failed:", err);
+    showVisionStatus("Vision belum tersedia, memakai OSM/Overpass", undefined, true);
+  } finally {
+    visionBusy = false;
+    hideVisionStatusSoon();
+  }
+}
+
 let lastOverpassFetchBounds: L.LatLngBounds | null = null;
 
 // Helper: Update MapLibre POI layer with GeoJSON features
@@ -2521,25 +2916,25 @@ map.on('click', async (ev: L.LeafletMouseEvent) => {
   // Fallback: query Overpass for nearby features
   try {
     const q = `
-      [out:json][timeout:10];
-      (
-        node(around:80,${lat},${lng})["amenity"];
-        way(around:80,${lat},${lng})["amenity"];
-        relation(around:80,${lat},${lng})["amenity"];
-        node(around:80,${lat},${lng})["shop"];
-        way(around:80,${lat},${lng})["shop"];
-        relation(around:80,${lat},${lng})["shop"];
-        node(around:80,${lat},${lng})["tourism"];
-        way(around:80,${lat},${lng})["tourism"];
-        relation(around:80,${lat},${lng})["tourism"];
-        node(around:80,${lat},${lng})["public_transport"];
-        node(around:80,${lat},${lng})["highway"="bus_stop"];
-        node(around:80,${lat},${lng})["railway"="station"];
-        way(around:80,${lat},${lng})["leisure"="park"];
-        relation(around:80,${lat},${lng})["leisure"="park"];
-      );
-      out center tags;
-    `;
+    [out:json][timeout:10];
+    (
+      node(around:80,${lat},${lng})["amenity"];
+      way(around:80,${lat},${lng})["amenity"];
+      relation(around:80,${lat},${lng})["amenity"];
+      node(around:80,${lat},${lng})["shop"];
+      way(around:80,${lat},${lng})["shop"];
+      relation(around:80,${lat},${lng})["shop"];
+      node(around:80,${lat},${lng})["tourism"];
+      way(around:80,${lat},${lng})["tourism"];
+      relation(around:80,${lat},${lng})["tourism"];
+      node(around:80,${lat},${lng})["public_transport"];
+      node(around:80,${lat},${lng})["highway"="bus_stop"];
+      node(around:80,${lat},${lng})["railway"="station"];
+      way(around:80,${lat},${lng})["leisure"="park"];
+      relation(around:80,${lat},${lng})["leisure"="park"];
+    );
+    out center tags;
+  `;
     const res = await fetch("https://overpass-api.de/api/interpreter", {
       method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: q,
     });
@@ -2572,10 +2967,12 @@ map.on('moveend', () => {
   if (state.baseMode === '3d') {
     if (state.overpassLayer) state.overpassLayer.clearLayers();
     if (state.roadGuideLayer) state.roadGuideLayer.clearLayers();
+    if (state.visionLayer) state.visionLayer.clearLayers();
     return;
   }
   void refreshOverpassLayer();
   void refreshRoadGuideLayer();
+  void refreshVisionLayer();
 });
 
 // ─── Helpers ────────────────────────────────────────────────────
@@ -2860,13 +3257,13 @@ function renderVehicleStatsGrid(device?: DeviceRecord | null, traffic?: TrafficS
     ["Total", stats.total],
   ];
   return `<div class="${className}">
-    ${items.map(([label, value]) => `
-      <div>
-        <span>${escapeHtml(String(label))}</span>
-        <strong>${Number(value)}</strong>
-      </div>
-    `).join("")}
-  </div>`;
+  ${items.map(([label, value]) => `
+    <div>
+      <span>${escapeHtml(String(label))}</span>
+      <strong>${Number(value)}</strong>
+    </div>
+  `).join("")}
+</div>`;
 }
 
 function renderDetectionOverlay(device: DeviceRecord | null): string {
@@ -2875,17 +3272,17 @@ function renderDetectionOverlay(device: DeviceRecord | null): string {
   const frameHeight = device?.detectorFrameHeight || 0;
   if (!detections.length || frameWidth <= 0 || frameHeight <= 0) return "";
   return `<div class="m-detection-overlay" aria-hidden="true">
-    ${detections.slice(0, 12).map((d) => {
-      const left = clamp((d.x / frameWidth) * 100, 0, 100);
-      const top = clamp((d.y / frameHeight) * 100, 0, 100);
-      const width = clamp((d.width / frameWidth) * 100, 1, 100 - left);
-      const height = clamp((d.height / frameHeight) * 100, 1, 100 - top);
-      const label = `${detectionLabel(d.label)} ${(d.confidence * 100).toFixed(0)}%`;
-      return `<span class="m-detection-box${d.vehicle ? " is-vehicle" : ""}${top < 8 ? " is-top-edge" : ""}" style="left:${left}%;top:${top}%;width:${width}%;height:${height}%">
-        <span class="m-detection-label">${escapeHtml(label)}</span>
-      </span>`;
-    }).join("")}
-  </div>`;
+  ${detections.slice(0, 12).map((d) => {
+    const left = clamp((d.x / frameWidth) * 100, 0, 100);
+    const top = clamp((d.y / frameHeight) * 100, 0, 100);
+    const width = clamp((d.width / frameWidth) * 100, 1, 100 - left);
+    const height = clamp((d.height / frameHeight) * 100, 1, 100 - top);
+    const label = `${detectionLabel(d.label)} ${(d.confidence * 100).toFixed(0)}%`;
+    return `<span class="m-detection-box${d.vehicle ? " is-vehicle" : ""}${top < 8 ? " is-top-edge" : ""}" style="left:${left}%;top:${top}%;width:${width}%;height:${height}%">
+      <span class="m-detection-label">${escapeHtml(label)}</span>
+    </span>`;
+  }).join("")}
+</div>`;
 }
 
 async function resolveRoadName(device: DeviceRecord): Promise<string> {
@@ -3070,15 +3467,15 @@ function makeTrafficLightSvg(state: TrafficState, size: number): string {
   const active = colorMap[state.color];
   const inactive = "#4b5563";
   const bulb = (cx: number, cy: number, lit: boolean, fill: string) => `
-    <circle cx="${cx}" cy="${cy}" r="5.6" fill="${lit ? fill : inactive}" opacity="${lit ? 1 : 0.45}"/>
-    <circle cx="${cx}" cy="${cy}" r="2.4" fill="${lit ? "#fff" : "#9ca3af"}" opacity="${lit ? 0.35 : 0.2}"/>
-  `;
+  <circle cx="${cx}" cy="${cy}" r="5.6" fill="${lit ? fill : inactive}" opacity="${lit ? 1 : 0.45}"/>
+  <circle cx="${cx}" cy="${cy}" r="2.4" fill="${lit ? "#fff" : "#9ca3af"}" opacity="${lit ? 0.35 : 0.2}"/>
+`;
   return `<svg viewBox="0 0 32 48" xmlns="http://www.w3.org/2000/svg" class="traffic-light-marker" width="${size}" height="${size * 1.5}">
-    <rect x="2" y="2" width="28" height="44" rx="6" fill="#111827" stroke="#374151" stroke-width="1.2"/>
-    ${bulb(16, 11, state.color === "red", active)}
-    ${bulb(16, 24, state.color === "yellow", active)}
-    ${bulb(16, 37, state.color === "green", active)}
-  </svg>`;
+  <rect x="2" y="2" width="28" height="44" rx="6" fill="#111827" stroke="#374151" stroke-width="1.2"/>
+  ${bulb(16, 11, state.color === "red", active)}
+  ${bulb(16, 24, state.color === "yellow", active)}
+  ${bulb(16, 37, state.color === "green", active)}
+</svg>`;
 }
 
 function renderDeviceModal(device: DeviceRecord, traffic: TrafficState): string {
@@ -3086,46 +3483,46 @@ function renderDeviceModal(device: DeviceRecord, traffic: TrafficState): string 
   const recommendation = escapeHtml(traffic.recommendation);
   const statsGrid = renderVehicleStatsGrid(device, traffic, "modal-vehicle-grid");
   return `
-    <div class="sheet-panel-header device-panel-header">
-      <button class="sheet-icon-btn modal-close" data-action="close" aria-label="Kembali" title="Kembali">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
-      </button>
-      <div class="sheet-title-cluster">
-        <div class="sheet-device-icon" aria-hidden="true">${makeTrafficLightSvg(traffic, 28)}</div>
-        <div class="sheet-title-copy">
-          <h2 class="modal-title">${escapeHtml(device.label)}</h2>
-          <p>${escapeHtml(device.status)} · ${road}</p>
-        </div>
+  <div class="sheet-panel-header device-panel-header">
+    <button class="sheet-icon-btn modal-close" data-action="close" aria-label="Kembali" title="Kembali">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <div class="sheet-title-cluster">
+      <div class="sheet-device-icon" aria-hidden="true">${makeTrafficLightSvg(traffic, 28)}</div>
+      <div class="sheet-title-copy">
+        <h2 class="modal-title">${escapeHtml(device.label)}</h2>
+        <p>${escapeHtml(device.status)} · ${road}</p>
       </div>
     </div>
-    <div class="modal-header">
-      <button class="modal-close" data-action="close">×</button>
-      <h2 class="modal-title">${escapeHtml(device.label)}</h2>
+  </div>
+  <div class="modal-header">
+    <button class="modal-close" data-action="close">×</button>
+    <h2 class="modal-title">${escapeHtml(device.label)}</h2>
+  </div>
+  <div class="modal-tabs">
+    <button class="modal-tab-btn active" data-tab="system">
+      <span class="tab-icon">ℹ️</span> Sistem
+    </button>
+    <button class="modal-tab-btn" data-tab="traffic">
+      <span class="tab-icon">🚦</span> Lalu Lintas
+    </button>
+  </div>
+  <div class="modal-content">
+    <div class="modal-tab-pane active" data-tab="system">
+      <div class="info-row"><span class="label">Lokasi</span><span class="value" data-field="device-location">${device.position.lat.toFixed(6)}, ${device.position.lng.toFixed(6)}</span></div>
+      <div class="info-row"><span class="label">ID Sistem</span><span class="value" data-field="device-id">${escapeHtml(device.id)}</span></div>
+      <div class="info-row"><span class="label">Status</span><span class="value status-${device.status}" data-field="device-status">${escapeHtml(device.status)}</span></div>
+      <div class="info-row"><span class="label">Last Seen</span><span class="value" data-field="device-last-seen">${escapeHtml(device.lastSeenText || formatTime(device.lastSeen))}</span></div>
+      <div class="info-row"><span class="label">Age</span><span class="value" data-field="device-age">${formatAge(device.lastSeen)}</span></div>
+      <div class="info-row"><span class="label">Jalan</span><span class="value" data-field="device-road">${road}</span></div>
     </div>
-    <div class="modal-tabs">
-      <button class="modal-tab-btn active" data-tab="system">
-        <span class="tab-icon">ℹ️</span> Sistem
-      </button>
-      <button class="modal-tab-btn" data-tab="traffic">
-        <span class="tab-icon">🚦</span> Lalu Lintas
-      </button>
+    <div class="modal-tab-pane" data-tab="traffic">
+      ${statsGrid}
+      <div class="info-row"><span class="label">Jalan</span><span class="value" data-field="traffic-road">${road}</span></div>
+      <div class="info-row"><span class="label">Durasi Lampu</span><span class="value" data-field="traffic-duration">${traffic.duration}s (${traffic.color})</span></div>
+      <div class="info-row"><span class="label">Rekomendasi</span><span class="value" data-field="traffic-recommendation">${recommendation}</span></div>
     </div>
-    <div class="modal-content">
-      <div class="modal-tab-pane active" data-tab="system">
-        <div class="info-row"><span class="label">Lokasi</span><span class="value" data-field="device-location">${device.position.lat.toFixed(6)}, ${device.position.lng.toFixed(6)}</span></div>
-        <div class="info-row"><span class="label">ID Sistem</span><span class="value" data-field="device-id">${escapeHtml(device.id)}</span></div>
-        <div class="info-row"><span class="label">Status</span><span class="value status-${device.status}" data-field="device-status">${escapeHtml(device.status)}</span></div>
-        <div class="info-row"><span class="label">Last Seen</span><span class="value" data-field="device-last-seen">${escapeHtml(device.lastSeenText || formatTime(device.lastSeen))}</span></div>
-        <div class="info-row"><span class="label">Age</span><span class="value" data-field="device-age">${formatAge(device.lastSeen)}</span></div>
-        <div class="info-row"><span class="label">Jalan</span><span class="value" data-field="device-road">${road}</span></div>
-      </div>
-      <div class="modal-tab-pane" data-tab="traffic">
-        ${statsGrid}
-        <div class="info-row"><span class="label">Jalan</span><span class="value" data-field="traffic-road">${road}</span></div>
-        <div class="info-row"><span class="label">Durasi Lampu</span><span class="value" data-field="traffic-duration">${traffic.duration}s (${traffic.color})</span></div>
-        <div class="info-row"><span class="label">Rekomendasi</span><span class="value" data-field="traffic-recommendation">${recommendation}</span></div>
-      </div>
-    </div>`;
+  </div>`;
 }
 
 function usesDesktopSidePanel(): boolean {
@@ -3198,9 +3595,9 @@ function createSwipeableSheetModal(id: string, sheetClass: string, bodyHtml: str
   overlay.id = id;
   overlay.className = id;
   overlay.innerHTML = `
-    <div class="m-layer-backdrop"></div>
-    <div class="${sheetClass}">${bodyHtml}</div>
-  `;
+  <div class="m-layer-backdrop"></div>
+  <div class="${sheetClass}">${bodyHtml}</div>
+`;
   document.body.appendChild(overlay);
   requestAnimationFrame(() => {
     overlay.classList.add("open");
@@ -3226,9 +3623,9 @@ function openModal(device: DeviceRecord): void {
     "m-device-modal",
     "m-device-sheet",
     `
-      <div class="m-sheet-handle-bar"></div>
-      ${renderDeviceModal(device, traffic)}
-    `,
+    <div class="m-sheet-handle-bar"></div>
+    ${renderDeviceModal(device, traffic)}
+  `,
   );
 
   overlay.querySelector(".m-layer-backdrop")!.addEventListener("click", () => closeModal());
@@ -3256,9 +3653,9 @@ function refreshOpenDeviceModal(device: DeviceRecord): void {
   const activeTab = getActiveModalTab(sheet);
   const nextTraffic = trafficStateForDevice(device);
   sheet.innerHTML = `
-    <div class="m-sheet-handle-bar"></div>
-    ${renderDeviceModal(device, nextTraffic)}
-  `;
+  <div class="m-sheet-handle-bar"></div>
+  ${renderDeviceModal(device, nextTraffic)}
+`;
   sheet.querySelector<HTMLButtonElement>(".modal-close")?.addEventListener("click", () => closeModal());
   sheet.querySelectorAll<HTMLButtonElement>(".modal-tab-btn").forEach((btn) => {
     btn.addEventListener("click", () => setSheetActiveTab(sheet, btn.dataset.tab || "system"));
@@ -3753,6 +4150,8 @@ async function setBaseMap(mode: BaseMapMode): Promise<void> {
 
   state.baseMode = mode;
   void refreshRoadGuideLayer(true);
+  if (mode === "street") void refreshVisionLayer(true);
+  else state.visionLayer?.clearLayers();
 }
 
 // ─── Camera tile ────────────────────────────────────────────────
@@ -4095,14 +4494,14 @@ function syncCameraViews(device: DeviceRecord | null = state.device): void {
 function renderWebRtcSurface(device: DeviceRecord, videoClass: string): string {
   const status = escapeHtml(webRtcStatusText());
   return `
-    <div class="webrtc-video-wrap">
-      <video class="${videoClass} webrtc-video" data-webrtc-camera="${escapeHtml(device.id)}" autoplay playsinline muted></video>
-      <div class="webrtc-status-bar">
-        <span class="webrtc-dot" data-webrtc-dot data-status="${state.webrtc.status}"></span>
-        <span data-webrtc-status data-status="${state.webrtc.status}">${status}</span>
-      </div>
+  <div class="webrtc-video-wrap">
+    <video class="${videoClass} webrtc-video" data-webrtc-camera="${escapeHtml(device.id)}" autoplay playsinline muted></video>
+    <div class="webrtc-status-bar">
+      <span class="webrtc-dot" data-webrtc-dot data-status="${state.webrtc.status}"></span>
+      <span data-webrtc-status data-status="${state.webrtc.status}">${status}</span>
     </div>
-  `;
+  </div>
+`;
 }
 
 function renderCameraSurface(device: DeviceRecord | null, imageClass: string, frameClass: string): string {
@@ -4172,13 +4571,13 @@ function openCameraPreview(): void {
   const cameraSurface = renderCameraSurface(device, "camera-image camera-video-popup", "camera-frame");
   const content = cameraSurface
     ? `<div class="camera-card">
-        ${cameraSurface}
-        <div class="camera-caption">${escapeHtml(device?.label || "Raspberry camera")} live</div>
-      </div>`
+      ${cameraSurface}
+      <div class="camera-caption">${escapeHtml(device?.label || "Raspberry camera")} live</div>
+    </div>`
     : `<div class="camera-card">
-        <div class="camera-placeholder">Camera preview belum tersedia.</div>
-        <div class="camera-caption">Controller belum mengirim URL publik atau path WebRTC.</div>
-      </div>`;
+      <div class="camera-placeholder">Camera preview belum tersedia.</div>
+      <div class="camera-caption">Controller belum mengirim URL publik atau path WebRTC.</div>
+    </div>`;
   L.popup({ className: "camera-popup", closeButton: true, autoPan: true, maxWidth: 320 })
     .setLatLng(anchor).setContent(content).openOn(map);
   syncCameraViews(device);
@@ -4196,38 +4595,38 @@ function openVideoFullscreen(device: DeviceRecord | null): void {
   overlay.className = "video-fullscreen";
   overlay.style.setProperty("--video-ambient-a", ambient);
   overlay.innerHTML = `
-    <div class="video-fullscreen-shell">
-      <section class="video-fullscreen-stage" aria-label="Video realtime">
-        <div class="video-fullscreen-ambient" aria-hidden="true"></div>
-        <div class="video-fullscreen-surface" data-video-surface>
-          ${surface || `<div class="video-fullscreen-empty">Kamera realtime belum tersedia</div>`}
-          ${activeDevice ? renderDetectionOverlay(activeDevice) : ""}
+  <div class="video-fullscreen-shell">
+    <section class="video-fullscreen-stage" aria-label="Video realtime">
+      <div class="video-fullscreen-ambient" aria-hidden="true"></div>
+      <div class="video-fullscreen-surface" data-video-surface>
+        ${surface || `<div class="video-fullscreen-empty">Kamera realtime belum tersedia</div>`}
+        ${activeDevice ? renderDetectionOverlay(activeDevice) : ""}
+      </div>
+      <div class="video-fullscreen-status">
+        <span class="webrtc-dot" data-status="${state.webrtc.status}"></span>
+        <strong>${escapeHtml(activeDevice?.label || "Video Realtime")}</strong>
+      </div>
+      <div class="video-fullscreen-caption">${escapeHtml(webRtcStatusText())}</div>
+      <button type="button" class="video-fullscreen-play" data-video-play aria-label="Putar video">▶</button>
+      <div class="video-fullscreen-controls">
+        <button type="button" class="video-fullscreen-ai" data-video-ai>AI</button>
+        <button type="button" class="video-fullscreen-fit" data-video-fit aria-label="Fit to screen">⌖</button>
+        <button type="button" class="video-fullscreen-close" data-video-close aria-label="Tutup">x</button>
+      </div>
+    </section>
+    <aside class="video-ai-panel" aria-label="AI kendaraan">
+      <div class="video-ai-handle" data-swipe-handle aria-hidden="true"></div>
+      <header>
+        <div>
+          <span>AI YOLO</span>
+          <strong>${escapeHtml(webRtcStatusText())}</strong>
         </div>
-        <div class="video-fullscreen-status">
-          <span class="webrtc-dot" data-status="${state.webrtc.status}"></span>
-          <strong>${escapeHtml(activeDevice?.label || "Video Realtime")}</strong>
-        </div>
-        <div class="video-fullscreen-caption">${escapeHtml(webRtcStatusText())}</div>
-        <button type="button" class="video-fullscreen-play" data-video-play aria-label="Putar video">▶</button>
-        <div class="video-fullscreen-controls">
-          <button type="button" class="video-fullscreen-ai" data-video-ai>AI</button>
-          <button type="button" class="video-fullscreen-fit" data-video-fit aria-label="Fit to screen">⌖</button>
-          <button type="button" class="video-fullscreen-close" data-video-close aria-label="Tutup">x</button>
-        </div>
-      </section>
-      <aside class="video-ai-panel" aria-label="AI kendaraan">
-        <div class="video-ai-handle" data-swipe-handle aria-hidden="true"></div>
-        <header>
-          <div>
-            <span>AI YOLO</span>
-            <strong>${escapeHtml(webRtcStatusText())}</strong>
-          </div>
-          <button type="button" data-video-ai-close aria-label="Tutup AI">x</button>
-        </header>
-        ${renderVehicleStatsGrid(activeDevice, traffic, "video-ai-stats")}
-      </aside>
-    </div>
-  `;
+        <button type="button" data-video-ai-close aria-label="Tutup AI">x</button>
+      </header>
+      ${renderVehicleStatsGrid(activeDevice, traffic, "video-ai-stats")}
+    </aside>
+  </div>
+`;
   document.body.appendChild(overlay);
   mapRoot.classList.add("hidden");
   document.getElementById("m-bottom-nav")?.classList.add("hidden");
@@ -4411,21 +4810,21 @@ function createTabletCategoryPanel(autoFocus = false): void {
     return;
   }
   const bodyHtml = `
-    <div class="m-sheet-handle-bar"></div>
-    <div class="tablet-categories">
-      <div class="tablet-header">
-        <div class="tablet-title">Lokasi Anda</div>
-        <div class="tablet-subtitle">Cari POI atau pilih kategori untuk menampilkan tempat terdekat</div>
-      </div>
-      <label class="tablet-search">
-        <span class="tablet-search-icon">⌕</span>
-        <input type="search" class="tablet-search-input" placeholder="Cari masjid, sekolah, SPBU, mall..." autocomplete="off" />
-      </label>
-      <div class="tablet-cats-list">
-        ${TABLET_CATEGORIES.map((c, i) => `<button class="tablet-cat-btn" data-index="${i}">${TABLET_CATEGORY_LABELS[c]}</button>`).join("")}
-      </div>
-      <div class="tablet-hint">Ketuk marker POI di peta untuk memilih tujuan.</div>
-    </div>`;
+  <div class="m-sheet-handle-bar"></div>
+  <div class="tablet-categories">
+    <div class="tablet-header">
+      <div class="tablet-title">Lokasi Anda</div>
+      <div class="tablet-subtitle">Cari POI atau pilih kategori untuk menampilkan tempat terdekat</div>
+    </div>
+    <label class="tablet-search">
+      <span class="tablet-search-icon">⌕</span>
+      <input type="search" class="tablet-search-input" placeholder="Cari masjid, sekolah, SPBU, mall..." autocomplete="off" />
+    </label>
+    <div class="tablet-cats-list">
+      ${TABLET_CATEGORIES.map((c, i) => `<button class="tablet-cat-btn" data-index="${i}">${TABLET_CATEGORY_LABELS[c]}</button>`).join("")}
+    </div>
+    <div class="tablet-hint">Ketuk marker POI di peta untuk memilih tujuan.</div>
+  </div>`;
   const overlay = createSwipeableSheetModal("m-tablet-categories", "m-tablet-sheet", bodyHtml);
   overlay.querySelector<HTMLDivElement>('.m-layer-backdrop')?.addEventListener('click', () => { overlay.remove(); });
   const sheet = overlay.querySelector<HTMLElement>(".m-tablet-sheet");
@@ -4557,20 +4956,20 @@ async function patchFirebaseDevice(deviceId: string, payload: Record<string, unk
 
 function makeCompassSvg(): string {
   return `<svg class="compass-svg" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-    <circle cx="24" cy="24" r="21.5" class="compass-ring-bg"/>
-    <path d="M11.2 24 L15.2 20.8 L15.2 27.2 Z" class="compass-arrow-left"/>
-    <path d="M36.8 24 L32.8 20.8 L32.8 27.2 Z" class="compass-arrow-right"/>
-    <text x="24" y="9.8" text-anchor="middle" class="compass-label compass-label-n">N</text>
-    <text x="24" y="42.4" text-anchor="middle" class="compass-label">S</text>
-    <text x="9" y="26.4" text-anchor="middle" class="compass-label">W</text>
-    <text x="39" y="26.4" text-anchor="middle" class="compass-label">E</text>
-    <g class="compass-needle-group">
-      <polygon points="24,13.5 28.4,24 24,34.5 19.6,24" class="compass-needle-shadow"/>
-      <polygon points="24,13.5 28.4,24 24,24 19.6,24" class="compass-needle-north"/>
-      <polygon points="24,34.5 28.4,24 24,24 19.6,24" class="compass-needle-south"/>
-      <circle cx="24" cy="24" r="2.2" class="compass-needle-cap"/>
-    </g>
-  </svg>`;
+  <circle cx="24" cy="24" r="21.5" class="compass-ring-bg"/>
+  <path d="M11.2 24 L15.2 20.8 L15.2 27.2 Z" class="compass-arrow-left"/>
+  <path d="M36.8 24 L32.8 20.8 L32.8 27.2 Z" class="compass-arrow-right"/>
+  <text x="24" y="9.8" text-anchor="middle" class="compass-label compass-label-n">N</text>
+  <text x="24" y="42.4" text-anchor="middle" class="compass-label">S</text>
+  <text x="9" y="26.4" text-anchor="middle" class="compass-label">W</text>
+  <text x="39" y="26.4" text-anchor="middle" class="compass-label">E</text>
+  <g class="compass-needle-group">
+    <polygon points="24,13.5 28.4,24 24,34.5 19.6,24" class="compass-needle-shadow"/>
+    <polygon points="24,13.5 28.4,24 24,24 19.6,24" class="compass-needle-north"/>
+    <polygon points="24,34.5 28.4,24 24,24 19.6,24" class="compass-needle-south"/>
+    <circle cx="24" cy="24" r="2.2" class="compass-needle-cap"/>
+  </g>
+</svg>`;
 }
 
 const BottomRightControl = L.Control.extend({
@@ -4579,62 +4978,62 @@ const BottomRightControl = L.Control.extend({
     const mobile = isMobile();
     const container = L.DomUtil.create("div", mobile ? "map-toolbar map-toolbar-mobile" : "map-toolbar");
     container.innerHTML = mobile ? `
-      <button type="button" class="toolbar-compass" data-action="compass"
-              title="Kompas – klik untuk putar peta">
-        ${makeCompassSvg()}
-      </button>
-      <button type="button" class="toolbar-btn" data-action="locate" title="Lokasi saya">
-        <svg viewBox="0 0 20 20" fill="none" width="16" height="16">
-          <circle cx="10" cy="10" r="3.2" stroke="currentColor" stroke-width="1.7"/>
-          <path d="M10 1.5v2.8M10 15.7v2.8M1.5 10h2.8M15.7 10h2.8"
-                stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
-        </svg>
-      </button>
-      <button type="button" class="toolbar-btn" data-action="home" title="Kembali ke posisi device">
-        <svg viewBox="0 0 20 20" fill="none" width="16" height="16">
-          <path d="M3 9.5L10 3l7 6.5V17a1 1 0 01-1 1H5a1 1 0 01-1-1V9.5z"
-                stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
-          <path d="M7.5 18v-5h5v5"
-                stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
-        </svg>
-      </button>
-      <div class="toolbar-divider"></div>
-      <button type="button" class="toolbar-btn toolbar-zoom" data-action="zoom-in"  title="Zoom in">+</button>
-      <button type="button" class="toolbar-btn toolbar-zoom" data-action="zoom-out" title="Zoom out">−</button>
-      <div class="toolbar-divider"></div>
-      <button type="button" class="toolbar-camera" data-action="camera" title="Camera preview">
-        <div class="camera-thumb-wrap"></div>
-        <span class="camera-tile-label">全景</span>
-      </button>
-    ` : `
-      <button type="button" class="toolbar-compass" data-action="compass"
-              title="Kompas – klik untuk putar peta">
-        ${makeCompassSvg()}
-      </button>
-      <button type="button" class="toolbar-btn" data-action="locate" title="Lokasi saya">
-        <svg viewBox="0 0 20 20" fill="none" width="16" height="16">
-          <circle cx="10" cy="10" r="3.2" stroke="currentColor" stroke-width="1.7"/>
-          <path d="M10 1.5v2.8M10 15.7v2.8M1.5 10h2.8M15.7 10h2.8"
-                stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
-        </svg>
-      </button>
-      <button type="button" class="toolbar-btn" data-action="home" title="Kembali ke posisi device">
-        <svg viewBox="0 0 20 20" fill="none" width="16" height="16">
-          <path d="M3 9.5L10 3l7 6.5V17a1 1 0 01-1 1H5a1 1 0 01-1-1V9.5z"
-                stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
-          <path d="M7.5 18v-5h5v5"
-                stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
-        </svg>
-      </button>
-      <div class="toolbar-divider"></div>
-      <button type="button" class="toolbar-btn toolbar-zoom" data-action="zoom-in"  title="Zoom in">+</button>
-      <button type="button" class="toolbar-btn toolbar-zoom" data-action="zoom-out" title="Zoom out">−</button>
-      <div class="toolbar-divider"></div>
-      <button type="button" class="toolbar-camera" data-action="camera" title="Camera preview">
-        <div class="camera-thumb-wrap"></div>
-        <span class="camera-tile-label">全景</span>
-      </button>
-    `;
+    <button type="button" class="toolbar-compass" data-action="compass"
+            title="Kompas – klik untuk putar peta">
+      ${makeCompassSvg()}
+    </button>
+    <button type="button" class="toolbar-btn" data-action="locate" title="Lokasi saya">
+      <svg viewBox="0 0 20 20" fill="none" width="16" height="16">
+        <circle cx="10" cy="10" r="3.2" stroke="currentColor" stroke-width="1.7"/>
+        <path d="M10 1.5v2.8M10 15.7v2.8M1.5 10h2.8M15.7 10h2.8"
+              stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+      </svg>
+    </button>
+    <button type="button" class="toolbar-btn" data-action="home" title="Kembali ke posisi device">
+      <svg viewBox="0 0 20 20" fill="none" width="16" height="16">
+        <path d="M3 9.5L10 3l7 6.5V17a1 1 0 01-1 1H5a1 1 0 01-1-1V9.5z"
+              stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+        <path d="M7.5 18v-5h5v5"
+              stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+      </svg>
+    </button>
+    <div class="toolbar-divider"></div>
+    <button type="button" class="toolbar-btn toolbar-zoom" data-action="zoom-in"  title="Zoom in">+</button>
+    <button type="button" class="toolbar-btn toolbar-zoom" data-action="zoom-out" title="Zoom out">−</button>
+    <div class="toolbar-divider"></div>
+    <button type="button" class="toolbar-camera" data-action="camera" title="Camera preview">
+      <div class="camera-thumb-wrap"></div>
+      <span class="camera-tile-label">全景</span>
+    </button>
+  ` : `
+    <button type="button" class="toolbar-compass" data-action="compass"
+            title="Kompas – klik untuk putar peta">
+      ${makeCompassSvg()}
+    </button>
+    <button type="button" class="toolbar-btn" data-action="locate" title="Lokasi saya">
+      <svg viewBox="0 0 20 20" fill="none" width="16" height="16">
+        <circle cx="10" cy="10" r="3.2" stroke="currentColor" stroke-width="1.7"/>
+        <path d="M10 1.5v2.8M10 15.7v2.8M1.5 10h2.8M15.7 10h2.8"
+              stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+      </svg>
+    </button>
+    <button type="button" class="toolbar-btn" data-action="home" title="Kembali ke posisi device">
+      <svg viewBox="0 0 20 20" fill="none" width="16" height="16">
+        <path d="M3 9.5L10 3l7 6.5V17a1 1 0 01-1 1H5a1 1 0 01-1-1V9.5z"
+              stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+        <path d="M7.5 18v-5h5v5"
+              stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+      </svg>
+    </button>
+    <div class="toolbar-divider"></div>
+    <button type="button" class="toolbar-btn toolbar-zoom" data-action="zoom-in"  title="Zoom in">+</button>
+    <button type="button" class="toolbar-btn toolbar-zoom" data-action="zoom-out" title="Zoom out">−</button>
+    <div class="toolbar-divider"></div>
+    <button type="button" class="toolbar-camera" data-action="camera" title="Camera preview">
+      <div class="camera-thumb-wrap"></div>
+      <span class="camera-tile-label">全景</span>
+    </button>
+  `;
 
     const tooltipLabels: Record<string, string> = {
       compass: "Kompas - klik untuk putar peta ke Timur (90 deg)",
@@ -4699,10 +5098,10 @@ const ModeControl = L.Control.extend({
   onAdd(): HTMLElement {
     const container = L.DomUtil.create('div', 'mode-control');
     container.innerHTML = `
-      <button class="mode-btn" data-mode="street" title="Street">2D</button>
-      <button class="mode-btn" data-mode="3d" title="3D">3D</button>
-      <button class="mode-btn" data-mode="satellite" title="Satellite">Sat</button>
-    `;
+    <button class="mode-btn" data-mode="street" title="Street">2D</button>
+    <button class="mode-btn" data-mode="3d" title="3D">3D</button>
+    <button class="mode-btn" data-mode="satellite" title="Satellite">Sat</button>
+  `;
     L.DomEvent.disableClickPropagation(container);
     L.DomEvent.disableScrollPropagation(container);
     container.querySelectorAll<HTMLButtonElement>('.mode-btn').forEach((btn) => {
@@ -4880,13 +5279,13 @@ function showGlobalNotice(
   const notice = document.createElement("div");
   notice.className = `global-notice global-notice-${kind}`;
   notice.innerHTML = `
-    <div class="global-notice-dot"></div>
-    <div class="global-notice-copy">
-      <strong>${escapeHtml(title)}</strong>
-      <span>${escapeHtml(message)}</span>
-    </div>
-    ${action ? `<button class="global-notice-action" type="button">${escapeHtml(action.actionLabel)}</button>` : ""}
-  `;
+  <div class="global-notice-dot"></div>
+  <div class="global-notice-copy">
+    <strong>${escapeHtml(title)}</strong>
+    <span>${escapeHtml(message)}</span>
+  </div>
+  ${action ? `<button class="global-notice-action" type="button">${escapeHtml(action.actionLabel)}</button>` : ""}
+`;
   notice.querySelector<HTMLButtonElement>(".global-notice-action")?.addEventListener("click", () => {
     action?.onAction();
     notice.classList.remove("show");
@@ -5044,39 +5443,39 @@ function createMobileBottomNav(): HTMLElement {
   const nav = document.createElement("nav");
   nav.id = "m-bottom-nav";
   nav.innerHTML = `
-    <button class="m-nav-tab active" data-tab="peta">
-      <span class="m-nav-icon">
-        <img src="/petaits.png" alt="" width="22" height="22"
-             onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
-        <svg style="display:none" viewBox="0 0 24 24" fill="none" width="22" height="22">
-          <path d="M3 6l7-3 4 2 7-3v15l-7 3-4-2-7 3V6z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
-          <path d="M10 3v15M14 5v15" stroke="currentColor" stroke-width="1.5"/>
-        </svg>
-      </span>
-      <span class="m-nav-label">Peta</span>
-    </button>
-    <button class="m-nav-tab" data-tab="its">
-      <span class="m-nav-icon">
-        <img src="/itss.png" alt="" width="22" height="22"
-             onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
-        <svg style="display:none" viewBox="0 0 24 24" fill="none" width="22" height="22">
-          <rect x="2" y="3" width="20" height="14" rx="2" stroke="currentColor" stroke-width="1.8"/>
-          <path d="M8 21h8M12 17v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-        </svg>
-      </span>
-      <span class="m-nav-label">ITS</span>
-    </button>
-    <button class="m-nav-tab" data-tab="profil">
-      <span class="m-nav-icon">
-        <svg viewBox="0 0 24 24" fill="none" width="22" height="22">
-          <circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="1.8"/>
-          <path d="M4 20c0-3.314 3.582-6 8-6s8 2.686 8 6"
-                stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-        </svg>
-      </span>
-      <span class="m-nav-label">Profil</span>
-    </button>
-  `;
+  <button class="m-nav-tab active" data-tab="peta">
+    <span class="m-nav-icon">
+      <img src="/petaits.png" alt="" width="22" height="22"
+           onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
+      <svg style="display:none" viewBox="0 0 24 24" fill="none" width="22" height="22">
+        <path d="M3 6l7-3 4 2 7-3v15l-7 3-4-2-7 3V6z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+        <path d="M10 3v15M14 5v15" stroke="currentColor" stroke-width="1.5"/>
+      </svg>
+    </span>
+    <span class="m-nav-label">Peta</span>
+  </button>
+  <button class="m-nav-tab" data-tab="its">
+    <span class="m-nav-icon">
+      <img src="/itss.png" alt="" width="22" height="22"
+           onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
+      <svg style="display:none" viewBox="0 0 24 24" fill="none" width="22" height="22">
+        <rect x="2" y="3" width="20" height="14" rx="2" stroke="currentColor" stroke-width="1.8"/>
+        <path d="M8 21h8M12 17v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>
+    </span>
+    <span class="m-nav-label">ITS</span>
+  </button>
+  <button class="m-nav-tab" data-tab="profil">
+    <span class="m-nav-icon">
+      <svg viewBox="0 0 24 24" fill="none" width="22" height="22">
+        <circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="1.8"/>
+        <path d="M4 20c0-3.314 3.582-6 8-6s8 2.686 8 6"
+              stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>
+    </span>
+    <span class="m-nav-label">Profil</span>
+  </button>
+`;
 
   nav.querySelectorAll<HTMLButtonElement>(".m-nav-tab").forEach(btn => {
     btn.addEventListener("click", () => switchMobileTab(btn.dataset.tab as MobileTab));
@@ -5108,9 +5507,9 @@ function createLayerButton(): HTMLElement {
   btn.id = "m-layer-btn";
   btn.setAttribute("aria-label", "Ganti lapisan peta");
   btn.innerHTML = `
-    <img src="/lapisan.svg" alt="Lapisan" width="20" height="20"
-         onerror="this.outerHTML='<svg viewBox=\\'0 0 24 24\\' fill=\\'none\\' width=\\'20\\' height=\\'20\\'><path d=\\'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5\\' stroke=\\'currentColor\\' stroke-width=\\'1.8\\' stroke-linejoin=\\'round\\'/></svg>'">
-  `;
+  <img src="/lapisan.svg" alt="Lapisan" width="20" height="20"
+       onerror="this.outerHTML='<svg viewBox=\\'0 0 24 24\\' fill=\\'none\\' width=\\'20\\' height=\\'20\\'><path d=\\'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5\\' stroke=\\'currentColor\\' stroke-width=\\'1.8\\' stroke-linejoin=\\'round\\'/></svg>'">
+`;
   // Prevent clicks on the layer button from propagating to the map (which
   // could trigger marker popups underneath). Also stop default to avoid
   // unexpected map interactions.
@@ -5127,26 +5526,26 @@ function openLayerModal(): void {
   const overlay = document.createElement("div");
   overlay.id = "m-layer-modal";
   overlay.innerHTML = `
-    <div class="m-layer-backdrop"></div>
-    <div class="m-layer-sheet">
-      <div class="m-sheet-handle-bar"></div>
-      <div class="m-layer-title">Pilih Tampilan Peta</div>
-      <div class="m-layer-options">
-        <button class="m-layer-opt ${state.baseMode === 'street' ? 'active' : ''}" data-mode="street">
-          <div class="m-layer-icon">🗺️</div>
-          <span>Carto 2D</span>
-        </button>
-        <button class="m-layer-opt ${state.baseMode === 'satellite' ? 'active' : ''}" data-mode="satellite">
-          <div class="m-layer-icon">🛰️</div>
-          <span>Satelit</span>
-        </button>
-        <button class="m-layer-opt ${state.baseMode === '3d' ? 'active' : ''}" data-mode="3d">
-          <div class="m-layer-icon">🏙️</div>
-          <span>3D</span>
-        </button>
-      </div>
+  <div class="m-layer-backdrop"></div>
+  <div class="m-layer-sheet">
+    <div class="m-sheet-handle-bar"></div>
+    <div class="m-layer-title">Pilih Tampilan Peta</div>
+    <div class="m-layer-options">
+      <button class="m-layer-opt ${state.baseMode === 'street' ? 'active' : ''}" data-mode="street">
+        <div class="m-layer-icon">🗺️</div>
+        <span>Carto 2D</span>
+      </button>
+      <button class="m-layer-opt ${state.baseMode === 'satellite' ? 'active' : ''}" data-mode="satellite">
+        <div class="m-layer-icon">🛰️</div>
+        <span>Satelit</span>
+      </button>
+      <button class="m-layer-opt ${state.baseMode === '3d' ? 'active' : ''}" data-mode="3d">
+        <div class="m-layer-icon">🏙️</div>
+        <span>3D</span>
+      </button>
     </div>
-  `;
+  </div>
+`;
 
   overlay.querySelector(".m-layer-backdrop")!.addEventListener("click", closeLayerModal);
 
@@ -5446,11 +5845,11 @@ function createITSSheet(): HTMLElement {
   });
 
   sheet.innerHTML = `
-    <div class="m-its-handle-zone">
-      <div class="m-its-handle-bar"></div>
-    </div>
-    <div class="m-its-scroll-content" id="m-its-scroll"></div>
-  `;
+  <div class="m-its-handle-zone">
+    <div class="m-its-handle-bar"></div>
+  </div>
+  <div class="m-its-scroll-content" id="m-its-scroll"></div>
+`;
 
   sheet.style.transform = `translateY(${window.innerHeight - 64}px)`;
   return sheet;
@@ -5480,65 +5879,65 @@ function renderITSSheetContent(): void {
   const bulbColor = traffic ? colorMap[traffic.color] : "#9ca3af";
 
   scroll.innerHTML = `
-    <div class="m-its-section" id="m-its-video">
-      <div class="m-its-section-title">Video Realtime</div>
-      <div class="m-its-camera-box">
-        ${cameraSurface || `<div class="m-camera-placeholder">
-               <svg viewBox="0 0 48 48" fill="none" width="36" height="36">
-                 <rect x="4" y="12" width="34" height="26" rx="4" stroke="#9ca3af" stroke-width="2"/>
-                 <path d="M38 20l6-4v16l-6-4V20z" stroke="#9ca3af" stroke-width="2" stroke-linejoin="round"/>
-               </svg>
-               <span>Belum ada kamera</span>
-             </div>`}
-        ${cameraSurface ? renderDetectionOverlay(device) : ""}
-        <button class="m-camera-fullscreen" aria-label="Fullscreen">
-          <svg viewBox="0 0 16 16" fill="none" width="14" height="14">
-            <path d="M1 6V1h5M10 1h5v5M15 10v5h-5M6 15H1v-5"
-                  stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-          </svg>
-        </button>
+  <div class="m-its-section" id="m-its-video">
+    <div class="m-its-section-title">Video Realtime</div>
+    <div class="m-its-camera-box">
+      ${cameraSurface || `<div class="m-camera-placeholder">
+             <svg viewBox="0 0 48 48" fill="none" width="36" height="36">
+               <rect x="4" y="12" width="34" height="26" rx="4" stroke="#9ca3af" stroke-width="2"/>
+               <path d="M38 20l6-4v16l-6-4V20z" stroke="#9ca3af" stroke-width="2" stroke-linejoin="round"/>
+             </svg>
+             <span>Belum ada kamera</span>
+           </div>`}
+      ${cameraSurface ? renderDetectionOverlay(device) : ""}
+      <button class="m-camera-fullscreen" aria-label="Fullscreen">
+        <svg viewBox="0 0 16 16" fill="none" width="14" height="14">
+          <path d="M1 6V1h5M10 1h5v5M15 10v5h-5M6 15H1v-5"
+                stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="m-its-section">
+    <div class="m-its-section-title">Data Kendaraan</div>
+    ${statsGrid}
+  </div>
+
+  ${traffic ? `
+  <div class="m-its-section">
+    <div class="m-its-section-title">Status Lalu Lintas</div>
+    <div class="m-its-traffic-row">
+      <div class="m-traffic-light-col">
+        ${makeTrafficLightSvg(traffic, 32)}
+      </div>
+      <div class="m-traffic-info-col">
+        <div class="m-traffic-road">${escapeHtml(traffic.roadName)}</div>
+        <div class="m-traffic-recom" style="color:${bulbColor}">${escapeHtml(traffic.recommendation)}</div>
+        <div class="m-traffic-meta">
+          <span>🚗 ${traffic.vehicleCount} kendaraan</span>
+          <span>${escapeHtml(vehicleBreakdownText(device?.vehicleBreakdown))}</span>
+          <span>⏱ ${traffic.duration}s</span>
+        </div>
       </div>
     </div>
+  </div>` : ""}
 
-    <div class="m-its-section">
-      <div class="m-its-section-title">Data Kendaraan</div>
-      ${statsGrid}
-    </div>
+  <div class="m-its-section">
+    <div class="m-its-section-title">Perangkat (${state.devices.length})</div>
+    ${state.devices.map(d => {          // FIX 2: hapus parameter idx yang tidak dipakai
+    const t = trafficStateForDevice(d);
+    const c = colorMap[t.color];
+    return `<div class="m-device-row" data-id="${d.id}">
+        <span class="m-device-bulb" style="background:${c}"></span>
+        <span class="m-device-name">${escapeHtml(d.label)}</span>
+        <span class="m-device-status status-${d.status}">${d.status}</span>
+      </div>`;
+  }).join("")}
+  </div>
 
-    ${traffic ? `
-    <div class="m-its-section">
-      <div class="m-its-section-title">Status Lalu Lintas</div>
-      <div class="m-its-traffic-row">
-        <div class="m-traffic-light-col">
-          ${makeTrafficLightSvg(traffic, 32)}
-        </div>
-        <div class="m-traffic-info-col">
-          <div class="m-traffic-road">${escapeHtml(traffic.roadName)}</div>
-          <div class="m-traffic-recom" style="color:${bulbColor}">${escapeHtml(traffic.recommendation)}</div>
-          <div class="m-traffic-meta">
-            <span>🚗 ${traffic.vehicleCount} kendaraan</span>
-            <span>${escapeHtml(vehicleBreakdownText(device?.vehicleBreakdown))}</span>
-            <span>⏱ ${traffic.duration}s</span>
-          </div>
-        </div>
-      </div>
-    </div>` : ""}
-
-    <div class="m-its-section">
-      <div class="m-its-section-title">Perangkat (${state.devices.length})</div>
-      ${state.devices.map(d => {          // FIX 2: hapus parameter idx yang tidak dipakai
-      const t = trafficStateForDevice(d);
-      const c = colorMap[t.color];
-      return `<div class="m-device-row" data-id="${d.id}">
-          <span class="m-device-bulb" style="background:${c}"></span>
-          <span class="m-device-name">${escapeHtml(d.label)}</span>
-          <span class="m-device-status status-${d.status}">${d.status}</span>
-        </div>`;
-    }).join("")}
-    </div>
-
-    <div style="height:24px"></div>
-  `;
+  <div style="height:24px"></div>
+`;
 
   syncCameraViews(device);
   attachWebRtcStream();
@@ -5664,35 +6063,35 @@ function openProfilSheet(): void {
   const offline = state.devices.filter(d => d.status === "offline").length;
 
   sheet.innerHTML = `
-    <div class="m-layer-backdrop"></div>
-    <div class="m-profil-inner">
-      <div class="m-sheet-handle-bar" style="margin:0 auto 16px"></div>
-      <div class="m-profil-avatar">
-        <svg viewBox="0 0 64 64" fill="none" width="56" height="56">
-          <circle cx="32" cy="24" r="14" fill="#3b82f6" opacity="0.15"/>
-          <circle cx="32" cy="24" r="10" stroke="#3b82f6" stroke-width="2"/>
-          <path d="M8 56c0-11 10.745-20 24-20s24 8.955 24 20"
-                stroke="#3b82f6" stroke-width="2" stroke-linecap="round"/>
-        </svg>
+  <div class="m-layer-backdrop"></div>
+  <div class="m-profil-inner">
+    <div class="m-sheet-handle-bar" style="margin:0 auto 16px"></div>
+    <div class="m-profil-avatar">
+      <svg viewBox="0 0 64 64" fill="none" width="56" height="56">
+        <circle cx="32" cy="24" r="14" fill="#3b82f6" opacity="0.15"/>
+        <circle cx="32" cy="24" r="10" stroke="#3b82f6" stroke-width="2"/>
+        <path d="M8 56c0-11 10.745-20 24-20s24 8.955 24 20"
+              stroke="#3b82f6" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <div class="m-profil-name">Operator ITS Maps</div>
+    <div class="m-profil-role">Sistem Manajemen Lalu Lintas</div>
+    <div class="m-profil-stats">
+      <div class="m-stat">
+        <span class="m-stat-val">${state.devices.length}</span>
+        <span class="m-stat-lbl">Perangkat</span>
       </div>
-      <div class="m-profil-name">Operator ITS Maps</div>
-      <div class="m-profil-role">Sistem Manajemen Lalu Lintas</div>
-      <div class="m-profil-stats">
-        <div class="m-stat">
-          <span class="m-stat-val">${state.devices.length}</span>
-          <span class="m-stat-lbl">Perangkat</span>
-        </div>
-        <div class="m-stat">
-          <span class="m-stat-val" style="color:#22c55e">${online}</span>
-          <span class="m-stat-lbl">Online</span>
-        </div>
-        <div class="m-stat">
-          <span class="m-stat-val" style="color:#ef4444">${offline}</span>
-          <span class="m-stat-lbl">Offline</span>
-        </div>
+      <div class="m-stat">
+        <span class="m-stat-val" style="color:#22c55e">${online}</span>
+        <span class="m-stat-lbl">Online</span>
+      </div>
+      <div class="m-stat">
+        <span class="m-stat-val" style="color:#ef4444">${offline}</span>
+        <span class="m-stat-lbl">Offline</span>
       </div>
     </div>
-  `;
+  </div>
+`;
 
   const goBackToPeta = () => {
     sheet.remove();
@@ -5758,6 +6157,7 @@ void refreshSnapshot();
 // Also fetch nearby POIs immediately so tablet filters have data even if devices are empty
 void refreshOverpassLayer();
 void refreshRoadGuideLayer(true);
+void refreshVisionLayer(true);
 }
 
 // ─── PWA: Service Worker registration and install prompt handler ─────

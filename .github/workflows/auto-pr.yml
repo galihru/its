@@ -1,0 +1,82 @@
+name: Auto Open Codex PR
+
+on:
+  push:
+    branches: ["codex/**"]
+  workflow_dispatch:
+    inputs:
+      head_branch:
+        description: "Branch to open as PR head"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  open-pr:
+    runs-on: ubuntu-latest
+    env:
+      TARGET_REPO: ${{ vars.AUTO_PR_TARGET_REPO || 'hanifasepthi/its' }}
+      TARGET_BASE: ${{ vars.AUTO_PR_BASE_BRANCH || 'main' }}
+      HEAD_OWNER: ${{ github.repository_owner }}
+      HEAD_BRANCH: ${{ inputs.head_branch || github.ref_name }}
+      AUTO_MERGE: ${{ vars.AUTO_PR_ENABLE_AUTOMERGE || 'false' }}
+      GH_TOKEN: ${{ secrets.AUTO_PR_TOKEN || github.token }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Open or update pull request
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          title="[codex] ${HEAD_BRANCH#codex/}"
+          body_file="$(mktemp)"
+          cat > "$body_file" <<EOF
+          ## Ringkasan
+          - Membuka pull request otomatis dari branch \`${HEAD_OWNER}:${HEAD_BRANCH}\`.
+          - Target: \`${TARGET_REPO}:${TARGET_BASE}\`.
+          - Title dan deskripsi dibuat oleh workflow agar tidak perlu lewat halaman compare GitHub.
+
+          ## Validasi
+          - Workflow ini hanya membuat atau memperbarui PR.
+          - Build/test tetap mengikuti workflow lain di repository.
+
+          ## Auto-merge
+          Auto-merge hanya dijalankan jika repository mengaktifkan variable \`AUTO_PR_ENABLE_AUTOMERGE=true\` dan aturan branch GitHub mengizinkan auto-merge.
+          EOF
+
+          existing="$(gh pr list \
+            --repo "$TARGET_REPO" \
+            --head "${HEAD_OWNER}:${HEAD_BRANCH}" \
+            --base "$TARGET_BASE" \
+            --state open \
+            --json number \
+            --jq '.[0].number // empty')"
+
+          if [[ -n "$existing" ]]; then
+            gh pr edit "$existing" \
+              --repo "$TARGET_REPO" \
+              --title "$title" \
+              --body-file "$body_file"
+            pr_url="$(gh pr view "$existing" --repo "$TARGET_REPO" --json url --jq '.url')"
+            echo "Updated PR: $pr_url"
+          else
+            pr_url="$(gh pr create \
+              --repo "$TARGET_REPO" \
+              --base "$TARGET_BASE" \
+              --head "${HEAD_OWNER}:${HEAD_BRANCH}" \
+              --title "$title" \
+              --body-file "$body_file")"
+            echo "Created PR: $pr_url"
+          fi
+
+          if [[ "$AUTO_MERGE" == "true" ]]; then
+            gh pr merge "$pr_url" --repo "$TARGET_REPO" --squash --auto --delete-branch=false
+            echo "Auto-merge requested for: $pr_url"
+          fi
