@@ -3,18 +3,18 @@
   "appName": "ITS Maps",
   "ownerName": "Hanifa Septhi Larasati",
   "institution": "Telkom University",
-  "versionCode": 15,
-  "versionName": "1.0.15",
-  "windowsUrl": "https://itstelkom.web.app/artifacts/apps/ITS-Maps-Windows-Custom-Setup-1.0.15-x64.download",
-  "desktopUrl": "https://itstelkom.web.app/artifacts/apps/ITS-Maps-Windows-Custom-Setup-1.0.15-x64.download",
+  "versionCode": 16,
+  "versionName": "1.0.16",
+  "windowsUrl": "https://itstelkom.web.app/artifacts/apps/ITS-Maps-Windows-Custom-Setup-1.0.16-x64.download",
+  "desktopUrl": "https://itstelkom.web.app/artifacts/apps/ITS-Maps-Windows-Custom-Setup-1.0.16-x64.download",
   "pwaUrl": "https://itstelkom.web.app/",
   "logoUrl": "https://itstelkom.web.app/favicon.svg",
-  "updatedAt": "2026-06-12T17:35:00+07:00",
+  "updatedAt": "2026-06-12T18:42:57+07:00",
   "force": false,
   "autoDownload": true,
   "releaseNotes": [
-    "Membuat custom video player web dan Windows dengan tombol play/fullscreen, ambient cinematic light, retry HLS, dan panel AI fullscreen yang flex dengan video.",
-    "Menambahkan YOLO ONNX offline di browser/Windows untuk mengolah frame video dan snapshot/capture menjadi gambar annotated berisi kotak object, label, confidence, dan hitungan kendaraan.",
-    "Mengganti branding aplikasi menjadi ITS Maps dan menyiapkan installer Windows 1.0.15 agar pengguna versi 1.0.14 bisa auto-update."
+    "Memprioritaskan WebRTC Firebase signaling saat device kamera memakai mode WebRTC agar app tidak membuka tunnel HLS yang sedang 503.",
+    "Menambahkan WebRTC player di Windows renderer, status timeout yang jelas, custom video controls, ambient light, dan panel AI fullscreen flex dengan Gaussian blur.",
+    "Menambahkan background update check saat login Windows sehingga notifikasi dan auto-install update bisa berjalan walau jendela ITS Maps tidak dibuka."
   ]
 }

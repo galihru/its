@@ -105,6 +105,7 @@ type ControllerUpdateInfo = {
   message?: string;
   updatedAt?: number;
   source?: string;
+  bundleSha?: string;
 };
 
 type DeviceRecord = {
@@ -3217,14 +3218,18 @@ function normalizeUpdateInfo(rawRecord: Record<string, unknown>): ControllerUpda
   const source = typeof nested.source === "string" ? nested.source
     : typeof rawRecord.updateSource === "string" ? rawRecord.updateSource
       : undefined;
+  const bundleSha = typeof nested.bundleSha === "string" ? nested.bundleSha
+    : typeof rawRecord.updateBundleSha === "string" ? rawRecord.updateBundleSha
+      : undefined;
 
-  if (!status && !stage && !message && !updatedAt) return undefined;
+  if (!status && !stage && !message && !updatedAt && !bundleSha) return undefined;
   return {
     status: status === "running" || status === "complete" || status === "error" ? status : undefined,
     stage: stage?.trim() || undefined,
     message: message?.trim() || undefined,
     updatedAt,
     source: source?.trim() || undefined,
+    bundleSha: bundleSha?.trim() || undefined,
   };
 }
 function normalizeVehicleBreakdown(v: unknown): VehicleBreakdown | undefined {
@@ -4380,15 +4385,19 @@ function isLikelyImageUrl(url: string): boolean {
   return /^data:image/i.test(url) || /\.(mjpg|mjpeg|jpg|jpeg|png|webp)(\?|$)/i.test(url);
 }
 
+function prefersWebRtcCamera(device: DeviceRecord | null): boolean {
+  return Boolean(device && (device.cameraMode === "webrtc" || device.webrtcEnabled || device.cameraReady));
+}
+
 function cameraModeFor(device: DeviceRecord | null): CameraMode | null {
   if (!device || device.status === "offline") return null;
+  if (prefersWebRtcCamera(device)) return "webrtc";
   if (publicCameraPageUrl(device) || publicCameraHlsUrl(device)) return device.cameraMode || "mjpeg";
-  if (device.cameraMode === "webrtc" || device.webrtcEnabled || device.cameraReady) return "webrtc";
   return null;
 }
 
 function isWebRtcSignalingCamera(device: DeviceRecord | null): boolean {
-  return cameraModeFor(device) === "webrtc" && !publicCameraUrl(device);
+  return cameraModeFor(device) === "webrtc";
 }
 
 function webRtcSignalPath(device: DeviceRecord): string {
@@ -4696,6 +4705,7 @@ function renderWebRtcSurface(device: DeviceRecord, videoClass: string): string {
 }
 
 function renderCameraSurface(device: DeviceRecord | null, imageClass: string, frameClass: string): string {
+  if (device && isWebRtcSignalingCamera(device)) return renderWebRtcSurface(device, imageClass);
   const hlsUrl = publicCameraHlsUrl(device);
   if (hlsUrl) {
     const poster = latestCameraSnapshot(device);
@@ -4711,7 +4721,6 @@ function renderCameraSurface(device: DeviceRecord | null, imageClass: string, fr
       ? `<img class="${imageClass}" src="${escapeHtml(url)}" alt="Camera preview" crossorigin="anonymous">`
       : `<iframe class="${frameClass}" src="${escapeHtml(url)}" allow="autoplay; camera; microphone; fullscreen" referrerpolicy="no-referrer" loading="lazy"></iframe>`;
   }
-  if (device && isWebRtcSignalingCamera(device)) return renderWebRtcSurface(device, imageClass);
   return "";
 }
 
@@ -4876,11 +4885,12 @@ function syncCustomVideoButtons(root: ParentNode = document): void {
 function renderCameraTile(): void {
   if (!state.cameraPreview) return;
   const device = state.device;
+  const webrtc = isWebRtcSignalingCamera(device);
   const url = publicCameraPageUrl(device);
   const hlsUrl = publicCameraHlsUrl(device);
-  state.cameraPreview.innerHTML = url && !hlsUrl && isLikelyImageUrl(url)
+  state.cameraPreview.innerHTML = !webrtc && url && !hlsUrl && isLikelyImageUrl(url)
     ? `<img class="camera-thumb-img" src="${escapeHtml(url)}" alt="Camera preview">`
-    : device && (url || hlsUrl || isWebRtcSignalingCamera(device))
+    : device && (webrtc || url || hlsUrl)
       ? `<div class="camera-live-badge"><span data-webrtc-dot data-status="${state.webrtc.status}"></span>LIVE</div>`
       : "";
   processWidgetSnapshotYolo(device);
@@ -5016,7 +5026,6 @@ function openCameraPreview(): void {
           </svg>
         </button>
       </div>
-      <div class="camera-caption">${escapeHtml(device?.label || "Raspberry camera")} live</div>
     </div>`
     : `<div class="camera-card">
       <div class="camera-placeholder">Camera preview belum tersedia.</div>
@@ -5241,6 +5250,12 @@ function deviceForVideoYolo(): DeviceRecord | null {
     || state.device;
 }
 
+function cameraSourceForBrowserYolo(device: DeviceRecord): string {
+  return isWebRtcSignalingCamera(device)
+    ? webRtcSignalPath(device)
+    : publicCameraHlsUrl(device) || publicCameraUrl(device) || latestCameraSnapshot(device) || "browser-frame";
+}
+
 function applyVideoYoloResult(device: DeviceRecord, result: BrowserYoloResult): void {
   const detections = result.detections.map(toWebYoloDetection);
   const trafficLevel = result.vehicleCount >= 11 ? "padat" : result.vehicleCount >= 6 ? "sedang" : "lancar";
@@ -5261,7 +5276,7 @@ function applyVideoYoloResult(device: DeviceRecord, result: BrowserYoloResult): 
     detectorFps: result.fps,
     detectorFrameWidth: result.frameWidth,
     detectorFrameHeight: result.frameHeight,
-    detectorCameraSource: publicCameraHlsUrl(device) || publicCameraUrl(device) || "browser-frame",
+    detectorCameraSource: cameraSourceForBrowserYolo(device),
     detectorConfidence: 0.12,
     detectorOutputShape: result.outputShape,
     cameraThumbnailUrl: result.annotatedThumbnailUrl || result.rawThumbnailUrl || device.cameraThumbnailUrl,
@@ -5294,7 +5309,7 @@ function toWebYoloDetection(det: BrowserYoloDetection): YoloDetection {
 function publishVideoYoloIfNeeded(device: DeviceRecord, result: BrowserYoloResult): void {
   if (Date.now() - state.videoYoloLastPublishAt < 5000) return;
   state.videoYoloLastPublishAt = Date.now();
-  const cameraUrl = publicCameraHlsUrl(device) || publicCameraUrl(device) || latestCameraSnapshot(device);
+  const cameraUrl = cameraSourceForBrowserYolo(device);
   void publishBrowserYoloResult(FIREBASE_ROOT_URL, device.id, browserViewerId(), cameraUrl, result)
     .catch((err) => {
       console.warn("[ITS] browser YOLO publish failed:", err);
@@ -5890,6 +5905,14 @@ function updateNoticeTitle(update: ControllerUpdateInfo): string {
   return "Status update controller";
 }
 
+function updateNoticeMessage(update: ControllerUpdateInfo): string {
+  const rawBundle = update.bundleSha?.replace(/\s+/g, "").toLowerCase() || "";
+  if (update.status === "error" && rawBundle.startsWith("<!doctypehtml")) {
+    return "Controller menerima HTML website dari hosting, bukan paket update controller. Tidak ada filesystem Raspberry yang disentuh dashboard; URL update controller di Raspberry perlu diarahkan ke artefak controller yang benar.";
+  }
+  return update.message || "Status update controller berubah";
+}
+
 function maybeShowBrowserNotification(title: string, message: string): void {
   if (!("Notification" in window)) return;
   if (Notification.permission !== "granted") return;
@@ -5987,7 +6010,7 @@ function showUpdateNoticeForDevice(device: DeviceRecord | null): void {
         ? "warning"
         : "info";
   const title = updateNoticeTitle(update);
-  const message = update.message || "Status update controller berubah";
+  const message = updateNoticeMessage(update);
   showGlobalNotice(kind, title, message);
   maybeShowBrowserNotification(title, message);
 }

@@ -143,6 +143,32 @@ type ItsDesktopBridge = {
   onUpdateHistory?: (callback: (history: UpdateStatus[]) => void) => () => void;
 };
 
+type WebRtcStatus = "idle" | "connecting" | "live" | "failed";
+
+type WebRtcSessionRecord = {
+  answer?: RTCSessionDescriptionInit;
+  cameraCandidates?: Record<string, RTCIceCandidateInit>;
+  streamerStatus?: string;
+  streamerError?: string;
+};
+
+type WebRtcRuntime = {
+  pc: RTCPeerConnection | null;
+  deviceId: string;
+  signalPath: string;
+  sessionId: string;
+  stream: MediaStream | null;
+  pollTimer: number;
+  heartbeatTimer: number;
+  candidateSeq: number;
+  seenCameraCandidates: Set<string>;
+  pendingCandidates: RTCIceCandidateInit[];
+  sessionReady: boolean;
+  startedAt: number;
+  status: WebRtcStatus;
+  message: string;
+};
+
 type DesktopClientRecord = {
   id?: string;
   label?: string;
@@ -189,6 +215,13 @@ const FIREBASE_TRAFFIC_DATASET_ROOT = `${FIREBASE_ROOT_URL}/trafficObjectDetecti
 const FIREBASE_BROWSER_YOLO_ROOT = `${FIREBASE_ROOT_URL}/browserYolo/devices`;
 const OFFLINE_AFTER_MS = 60_000;
 const BROWSER_YOLO_FRESH_MS = 90_000;
+const WEBRTC_SIGNAL_ROOT = "webrtc/devices";
+const WEBRTC_POLL_MS = 700;
+const WEBRTC_HEARTBEAT_MS = 5_000;
+const WEBRTC_ANSWER_TIMEOUT_MS = 18_000;
+const WEBRTC_ICE_SERVERS: RTCIceServer[] = [
+  { urls: "stun:stun.l.google.com:19302" },
+];
 const HLS_JS_URL = "https://cdn.jsdelivr.net/npm/hls.js@1.5.20/dist/hls.min.js";
 const TILE_URL = "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
 const DEFAULT_CENTER: [number, number] = [-6.180487, 106.90368];
@@ -242,6 +275,22 @@ const state = {
   userPublishAt: 0,
   hlsInstance: null as any,
   hlsScriptPromise: null as Promise<void> | null,
+  webrtc: {
+    pc: null,
+    deviceId: "",
+    signalPath: "",
+    sessionId: "",
+    stream: null,
+    pollTimer: 0,
+    heartbeatTimer: 0,
+    candidateSeq: 0,
+    seenCameraCandidates: new Set<string>(),
+    pendingCandidates: [],
+    sessionReady: false,
+    startedAt: 0,
+    status: "idle",
+    message: "",
+  } as WebRtcRuntime,
   cameraKey: "",
   ambientTimer: 0,
   cameraReadyTimer: 0,
@@ -1571,7 +1620,7 @@ function openPoiSheet(poi: PoiRecord): void {
 function openDeviceSheet(device: DeviceRecord): void {
   const stats = aiStatsForDevice(device);
   const online = deviceIsOnline(device);
-  const camera = publicCameraHlsUrl(device) || publicCameraUrl(device);
+  const camera = isWebRtcSignalingCamera(device) ? webRtcSignalPath(device) : publicCameraHlsUrl(device) || publicCameraUrl(device);
   openInfoSheet(`
     <p>${escapeHtml(device.note || "Data Raspberry disinkronkan realtime dari Firebase RTDB.")}</p>
     <div class="win-poi-meta">
@@ -1583,7 +1632,7 @@ function openDeviceSheet(device: DeviceRecord): void {
       <div><span>AI status</span><strong>${escapeHtml(aiStatusText(device))}</strong></div>
       <div><span>Total kendaraan</span><strong>${stats.breakdown.total}</strong></div>
       <div><span>Total objek</span><strong>${stats.objectCount}</strong></div>
-      <div><span>Kamera</span><strong>${escapeHtml(camera ? cameraHostLabel(camera) : "URL kamera belum tersedia")}</strong></div>
+      <div><span>Kamera</span><strong>${escapeHtml(camera || "URL kamera belum tersedia")}</strong></div>
       <div><span>Sumber</span><strong>${escapeHtml(device.trafficSource || "Firebase RTDB")}</strong></div>
     </div>
   `, device.label, `${online ? "online" : `offline - terakhir ${formatAge(device.lastSeen)}`} - ${locationLabel(device)}`);
@@ -1634,10 +1683,11 @@ function closePoiSheet(): void {
 function trafficPreviewHtml(device: DeviceRecord): string {
   const poster = latestCameraSnapshot(device) || FALLBACK_IMAGE_URL;
   const label = deviceIsOnline(device) ? "LIVE" : "OFFLINE";
+  const cameraTitle = isWebRtcSignalingCamera(device) ? "WebRTC Raspberry" : cameraHostLabel(publicCameraHlsUrl(device) || publicCameraUrl(device)) || "Kamera Raspberry";
   return `
     <button type="button" class="win-map-video-preview" data-open-camera-from-map>
       <span class="win-map-video-head">
-        <strong>${escapeHtml(cameraHostLabel(publicCameraHlsUrl(device) || publicCameraUrl(device)) || "Kamera Raspberry")}</strong>
+        <strong>${escapeHtml(cameraTitle)}</strong>
         <b data-live="${deviceIsOnline(device) ? "true" : "false"}">${label}</b>
       </span>
       <img src="${escapeHtml(poster)}" alt="Preview kamera Raspberry">
@@ -1848,7 +1898,7 @@ function renderCameraView(): void {
 
 function cameraSurfaceHtml(device: DeviceRecord | null): string {
   const media = cameraMediaHtml(device);
-  const live = Boolean(device && deviceIsOnline(device) && (publicCameraUrl(device) || publicCameraHlsUrl(device)));
+  const live = Boolean(device && deviceIsOnline(device) && (isWebRtcSignalingCamera(device) || publicCameraUrl(device) || publicCameraHlsUrl(device)));
   return `
     <section class="win-camera-surface" data-camera-surface data-live-state="${live ? "online" : "offline"}">
       <div class="win-camera-frame" data-camera-frame data-ai-open="false">
@@ -1877,6 +1927,9 @@ function cameraMediaHtml(device: DeviceRecord | null): string {
   const poster = latestCameraSnapshot(device);
   if (device && !deviceIsOnline(device)) {
     return `<img src="${escapeHtml(poster || FALLBACK_IMAGE_URL)}" alt="Snapshot kamera offline" data-camera-image crossorigin="anonymous">`;
+  }
+  if (device && isWebRtcSignalingCamera(device)) {
+    return renderWebRtcSurface(device);
   }
   if (url && isLikelyImageUrl(url)) {
     return `<img src="${escapeHtml(url)}" alt="${escapeHtml(device?.label || "Kamera Raspberry")}" data-camera-image crossorigin="anonymous">`;
@@ -1923,7 +1976,12 @@ function setupCameraSurface(): void {
   if (aiPanel) setupSwipeClose(aiPanel, () => setAiOpen(false), window.matchMedia("(max-width: 760px)").matches ? "down" : "right");
 
   if (video) {
-    setupVideo(video);
+    if (video.dataset.webrtcCamera) {
+      syncCameraViews(state.device);
+      attachWebRtcStream();
+    } else {
+      setupVideo(video);
+    }
     video.addEventListener("play", syncPlayButton);
     video.addEventListener("pause", syncPlayButton);
     video.addEventListener("loadeddata", () => hideCameraFrameFallback(video));
@@ -2085,6 +2143,7 @@ function loadHlsScript(): Promise<void> {
 }
 
 function resetCameraRuntime(): void {
+  stopWebRtcSession(true);
   window.clearInterval(state.ambientTimer);
   window.clearTimeout(state.cameraReadyTimer);
   window.clearTimeout(state.cameraRetryTimer);
@@ -2198,7 +2257,7 @@ function applyBrowserYoloResult(result: BrowserYoloResult): void {
     detectorFps: result.fps,
     detectorFrameWidth: result.frameWidth,
     detectorFrameHeight: result.frameHeight,
-    detectorCameraSource: publicCameraHlsUrl(device) || publicCameraUrl(device) || "browser-frame",
+    detectorCameraSource: cameraSourceForYolo(device),
     cameraThumbnailUrl: result.annotatedThumbnailUrl || result.rawThumbnailUrl || device.cameraThumbnailUrl,
     cameraDataset: mergeCameraDataset(snapshotDataset, device.cameraDataset),
     cameraUpdatedAt: Math.max(device.cameraUpdatedAt || 0, result.updatedAt),
@@ -2230,7 +2289,7 @@ function publishBrowserYoloIfNeeded(result: BrowserYoloResult): void {
   const device = state.device;
   if (!device || Date.now() - state.browserYoloLastPublishAt < 5000) return;
   state.browserYoloLastPublishAt = Date.now();
-  const cameraUrl = publicCameraHlsUrl(device) || publicCameraUrl(device) || latestCameraSnapshot(device);
+  const cameraUrl = cameraSourceForYolo(device);
   void publishBrowserYoloResult(firebaseRootUrl(), device.id, state.clientId, cameraUrl, result)
     .catch((err) => {
       console.warn("[ITS Windows] browser YOLO publish failed:", err);
@@ -2759,6 +2818,7 @@ function cameraStatusText(device: DeviceRecord | null): string {
   if (!deviceIsOnline(device)) {
     return `Raspberry offline - terakhir ${formatAge(device.lastSeen)}${device.lastSeenText ? ` (${device.lastSeenText})` : ""}`;
   }
+  if (isWebRtcSignalingCamera(device)) return state.webrtc.status === "live" ? "WebRTC live" : "WebRTC Firebase signaling";
   const url = publicCameraUrl(device) || publicCameraHlsUrl(device);
   if (url) {
     const host = cameraHostLabel(url);
@@ -2817,8 +2877,313 @@ function isLikelyImageUrl(url: string): boolean {
   return /^data:image/i.test(url) || /\.(mjpg|mjpeg|jpg|jpeg|png|webp)(\?|$)/i.test(url);
 }
 
+function isWebRtcSignalingCamera(device: DeviceRecord | null): boolean {
+  return Boolean(device && deviceIsOnline(device) && (device.cameraMode === "webrtc" || device.webrtcEnabled || device.cameraReady));
+}
+
+function webRtcSignalPath(device: DeviceRecord): string {
+  return (device.webrtcPath?.trim() || `${WEBRTC_SIGNAL_ROOT}/${device.id}`).replace(/^\/+|\/+$/g, "");
+}
+
+function firebaseDbUrl(path: string): string {
+  const encoded = path
+    .split("/")
+    .filter(Boolean)
+    .map((part) => encodeURIComponent(part))
+    .join("/");
+  return `${firebaseRootUrl()}/${encoded}.json`;
+}
+
+async function firebaseGetPath<T>(path: string): Promise<T | null> {
+  const res = await fetch(firebaseDbUrl(path), { cache: "no-store" });
+  if (!res.ok) throw new Error(`Firebase GET ${path} failed: HTTP ${res.status}`);
+  const text = await res.text();
+  if (!text || text === "null") return null;
+  return JSON.parse(text) as T;
+}
+
+async function firebaseWritePath(method: "PUT" | "PATCH" | "DELETE", path: string, payload?: unknown): Promise<void> {
+  const res = await fetch(firebaseDbUrl(path), {
+    method,
+    headers: payload === undefined ? undefined : { "Content-Type": "application/json" },
+    body: payload === undefined ? undefined : JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(`Firebase ${method} ${path} failed: HTTP ${res.status}`);
+}
+
+function windowsViewerId(): string {
+  const storageKey = "its-windows-webrtc-viewer-id:v1";
+  const existing = localStorage.getItem(storageKey);
+  if (existing) return existing;
+  const random = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const id = `windows-${random.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+  localStorage.setItem(storageKey, id);
+  return id;
+}
+
+function newWebRtcSessionId(deviceId: string): string {
+  const random = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const safeDeviceId = deviceId.replace(/[^a-zA-Z0-9_-]/g, "_");
+  return `${safeDeviceId}-${random.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+}
+
+function webRtcSessionPath(): string {
+  return `${state.webrtc.signalPath}/sessions/${state.webrtc.sessionId}`;
+}
+
+function webRtcStatusText(): string {
+  if (state.webrtc.status === "live") return "Live WebRTC";
+  if (state.webrtc.status === "failed") return state.webrtc.message || "WebRTC gagal tersambung";
+  if (state.webrtc.status === "connecting") return state.webrtc.message || "Menghubungkan WebRTC...";
+  return "Menunggu kamera WebRTC";
+}
+
+function updateWebRtcStatusElements(): void {
+  const text = webRtcStatusText();
+  document.querySelectorAll<HTMLElement>("[data-webrtc-status]").forEach((el) => {
+    el.textContent = text;
+    el.dataset.status = state.webrtc.status;
+  });
+  document.querySelectorAll<HTMLElement>("[data-webrtc-dot]").forEach((el) => {
+    el.dataset.status = state.webrtc.status;
+  });
+  setText("[data-camera-status]", cameraStatusText(state.device));
+  syncPlayButton();
+}
+
+function setWebRtcStatus(status: WebRtcStatus, message = ""): void {
+  state.webrtc.status = status;
+  state.webrtc.message = message;
+  updateWebRtcStatusElements();
+}
+
+function attachWebRtcStream(): void {
+  const stream = state.webrtc.stream;
+  document.querySelectorAll<HTMLVideoElement>("video[data-webrtc-camera]").forEach((video) => {
+    if (video.dataset.webrtcCamera !== state.webrtc.deviceId) return;
+    if (stream && video.srcObject !== stream) video.srcObject = stream;
+    if (stream) void video.play().catch(() => undefined);
+  });
+  updateWebRtcStatusElements();
+}
+
+function resetWebRtcRuntime(): void {
+  Object.assign(state.webrtc, {
+    pc: null,
+    deviceId: "",
+    signalPath: "",
+    sessionId: "",
+    stream: null,
+    pollTimer: 0,
+    heartbeatTimer: 0,
+    candidateSeq: 0,
+    seenCameraCandidates: new Set<string>(),
+    pendingCandidates: [],
+    sessionReady: false,
+    startedAt: 0,
+    status: "idle" as WebRtcStatus,
+    message: "",
+  });
+}
+
+function stopWebRtcSession(removeRemote = true): void {
+  const sessionPath = state.webrtc.signalPath && state.webrtc.sessionId ? webRtcSessionPath() : "";
+  window.clearInterval(state.webrtc.pollTimer);
+  window.clearInterval(state.webrtc.heartbeatTimer);
+  if (removeRemote && sessionPath) {
+    void firebaseWritePath("PATCH", sessionPath, {
+      viewerStatus: "closed",
+      updatedAt: Date.now(),
+    })
+      .finally(() => {
+        void firebaseWritePath("DELETE", sessionPath).catch(() => undefined);
+      })
+      .catch(() => undefined);
+  }
+  state.webrtc.pc?.close();
+  state.webrtc.stream?.getTracks().forEach((track) => track.stop());
+  document.querySelectorAll<HTMLVideoElement>("video[data-webrtc-camera]").forEach((video) => {
+    video.srcObject = null;
+  });
+  resetWebRtcRuntime();
+  updateWebRtcStatusElements();
+}
+
+async function sendViewerCandidate(candidate: RTCIceCandidateInit): Promise<void> {
+  if (!state.webrtc.signalPath || !state.webrtc.sessionId) return;
+  if (!state.webrtc.sessionReady) {
+    state.webrtc.pendingCandidates.push(candidate);
+    return;
+  }
+  state.webrtc.candidateSeq += 1;
+  const key = `${Date.now()}_${state.webrtc.candidateSeq}`;
+  await firebaseWritePath("PUT", `${webRtcSessionPath()}/viewerCandidates/${key}`, candidate);
+}
+
+function flushPendingViewerCandidates(): void {
+  const pending = state.webrtc.pendingCandidates.splice(0);
+  pending.forEach((candidate) => {
+    void sendViewerCandidate(candidate).catch((err) => console.warn("[ITS Windows] WebRTC candidate failed:", err));
+  });
+}
+
+async function pollWebRtcSession(): Promise<void> {
+  const pc = state.webrtc.pc;
+  if (!pc || !state.webrtc.sessionId) return;
+  const session = await firebaseGetPath<WebRtcSessionRecord>(webRtcSessionPath());
+  if (!session) return;
+
+  if (session.streamerStatus === "failed") {
+    throw new Error(session.streamerError || "Streamer Raspberry gagal membuat answer");
+  }
+
+  if (session.answer && !pc.currentRemoteDescription) {
+    await pc.setRemoteDescription(session.answer);
+    setWebRtcStatus("connecting", "Answer diterima, membuka jalur video...");
+  }
+
+  if (session.cameraCandidates && typeof session.cameraCandidates === "object") {
+    for (const [key, candidate] of Object.entries(session.cameraCandidates)) {
+      if (state.webrtc.seenCameraCandidates.has(key)) continue;
+      state.webrtc.seenCameraCandidates.add(key);
+      await pc.addIceCandidate(new RTCIceCandidate(candidate));
+    }
+  }
+
+  if (!pc.currentRemoteDescription && Date.now() - state.webrtc.startedAt > WEBRTC_ANSWER_TIMEOUT_MS) {
+    throw new Error("Timeout menunggu answer WebRTC dari Raspberry Pi");
+  }
+}
+
+async function startWebRtcSession(device: DeviceRecord): Promise<void> {
+  if (!isWebRtcSignalingCamera(device)) return;
+  if (!("RTCPeerConnection" in window)) {
+    setWebRtcStatus("failed", "Runtime Windows tidak mendukung WebRTC");
+    return;
+  }
+  if (state.webrtc.pc && state.webrtc.deviceId === device.id && state.webrtc.status !== "failed") {
+    attachWebRtcStream();
+    return;
+  }
+
+  stopWebRtcSession(true);
+  const signalPath = webRtcSignalPath(device);
+  const sessionId = newWebRtcSessionId(device.id);
+  const pc = new RTCPeerConnection({ iceServers: WEBRTC_ICE_SERVERS });
+
+  Object.assign(state.webrtc, {
+    pc,
+    deviceId: device.id,
+    signalPath,
+    sessionId,
+    stream: null,
+    pollTimer: 0,
+    heartbeatTimer: 0,
+    candidateSeq: 0,
+    seenCameraCandidates: new Set<string>(),
+    pendingCandidates: [],
+    sessionReady: false,
+    startedAt: Date.now(),
+    status: "connecting" as WebRtcStatus,
+    message: "Mengirim offer ke Raspberry Pi...",
+  });
+  updateWebRtcStatusElements();
+
+  pc.addTransceiver("video", { direction: "recvonly" });
+  pc.ontrack = (event) => {
+    const [remoteStream] = event.streams;
+    state.webrtc.stream = remoteStream || new MediaStream([event.track]);
+    setWebRtcStatus("live");
+    attachWebRtcStream();
+  };
+  pc.onicecandidate = (event) => {
+    if (!event.candidate) return;
+    void sendViewerCandidate(event.candidate.toJSON()).catch((err) => {
+      console.warn("[ITS Windows] WebRTC ICE candidate publish failed:", err);
+    });
+  };
+  pc.onconnectionstatechange = () => {
+    void firebaseWritePath("PATCH", webRtcSessionPath(), {
+      viewerConnectionState: pc.connectionState,
+      viewerSeenAt: Date.now(),
+      updatedAt: Date.now(),
+    }).catch(() => undefined);
+    if (pc.connectionState === "connected") setWebRtcStatus("live");
+    if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
+      setWebRtcStatus("failed", `Koneksi WebRTC ${pc.connectionState}`);
+    }
+  };
+
+  try {
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    if (!pc.localDescription) throw new Error("Local WebRTC offer kosong");
+
+    await firebaseWritePath("PUT", webRtcSessionPath(), {
+      deviceId: device.id,
+      sessionId,
+      viewerId: windowsViewerId(),
+      viewerStatus: "offer-sent",
+      viewerSeenAt: Date.now(),
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      offer: {
+        type: pc.localDescription.type,
+        sdp: pc.localDescription.sdp,
+      },
+    });
+
+    state.webrtc.sessionReady = true;
+    flushPendingViewerCandidates();
+    state.webrtc.pollTimer = window.setInterval(() => {
+      void pollWebRtcSession().catch((err) => {
+        console.warn("[ITS Windows] WebRTC poll failed:", err);
+        setWebRtcStatus("failed", err instanceof Error ? err.message : "WebRTC poll gagal");
+      });
+    }, WEBRTC_POLL_MS);
+    state.webrtc.heartbeatTimer = window.setInterval(() => {
+      void firebaseWritePath("PATCH", webRtcSessionPath(), {
+        viewerStatus: "watching",
+        viewerSeenAt: Date.now(),
+        updatedAt: Date.now(),
+      }).catch(() => undefined);
+    }, WEBRTC_HEARTBEAT_MS);
+    await pollWebRtcSession();
+  } catch (err) {
+    console.warn("[ITS Windows] WebRTC start failed:", err);
+    setWebRtcStatus("failed", err instanceof Error ? err.message : "WebRTC gagal dimulai");
+  }
+}
+
+function syncCameraViews(device: DeviceRecord | null = state.device): void {
+  if (!device || !isWebRtcSignalingCamera(device)) {
+    if (!device || state.webrtc.deviceId !== device.id) stopWebRtcSession(true);
+    return;
+  }
+  if (state.webrtc.pc && state.webrtc.deviceId === device.id && state.webrtc.status !== "failed") {
+    attachWebRtcStream();
+    return;
+  }
+  void startWebRtcSession(device);
+}
+
+function renderWebRtcSurface(device: DeviceRecord): string {
+  return `
+      <div class="win-webrtc-video-wrap">
+        <video data-camera-video data-webrtc-camera="${escapeHtml(device.id)}" muted playsinline autoplay preload="auto" disablepictureinpicture></video>
+        <div class="win-camera-media-message win-webrtc-status" data-webrtc-status data-status="${state.webrtc.status}">${escapeHtml(webRtcStatusText())}</div>
+      </div>
+    `;
+}
+
+function cameraSourceForYolo(device: DeviceRecord): string {
+  return isWebRtcSignalingCamera(device)
+    ? webRtcSignalPath(device)
+    : publicCameraHlsUrl(device) || publicCameraUrl(device) || latestCameraSnapshot(device) || "browser-frame";
+}
+
 function cameraSurfaceKey(device: DeviceRecord | null): string {
-  const url = publicCameraHlsUrl(device) || publicCameraUrl(device) || device?.cameraThumbnailUrl || "";
+  const url = isWebRtcSignalingCamera(device) ? webRtcSignalPath(device as DeviceRecord) : publicCameraHlsUrl(device) || publicCameraUrl(device) || device?.cameraThumbnailUrl || "";
   return `${device?.id || "none"}:${device?.status || "none"}:${device?.lastSeen || 0}:${device?.cameraMode || "auto"}:${device?.cameraDataset?.updatedAt || 0}:${url}`;
 }
 

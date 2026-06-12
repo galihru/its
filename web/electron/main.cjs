@@ -7,8 +7,11 @@ const { pathToFileURL } = require("node:url");
 
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
 const APP_UPDATE_URL = "https://itstelkom.web.app/app-update.json";
-const WINDOWS_EXE_NAME = "ITS-Maps-Windows-Custom-Setup-1.0.15-x64.exe";
+const WINDOWS_EXE_NAME = "ITS-Maps-Windows-Custom-Setup-1.0.16-x64.exe";
+const BACKGROUND_UPDATE_ARG = "--background-update-check";
+const APP_USER_MODEL_ID = "id.ac.telkomuniversity.its.maps.windows";
 const UPDATE_HISTORY_FILE = "update-history.json";
+const isBackgroundUpdate = process.argv.includes(BACKGROUND_UPDATE_ARG);
 let mainWindow = null;
 let splashWindow = null;
 let updateTimer = null;
@@ -16,6 +19,15 @@ let forceQuit = false;
 let mainWindowReady = false;
 let rendererDataReady = false;
 let splashFallbackTimer = null;
+
+if (process.platform === "win32") {
+  app.setAppUserModelId(APP_USER_MODEL_ID);
+}
+
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+}
 
 function iconPath() {
   const candidates = [
@@ -176,7 +188,22 @@ function downloadFile(url, destination, onProgress) {
 }
 
 function openRendererPanel(panel) {
-  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    if (!splashWindow || splashWindow.isDestroyed()) createSplashWindow();
+    createWindow();
+    const sendPanelWhenReady = setInterval(() => {
+      if (!mainWindow || mainWindow.isDestroyed()) {
+        clearInterval(sendPanelWhenReady);
+        return;
+      }
+      if (mainWindowReady && rendererDataReady) {
+        clearInterval(sendPanelWhenReady);
+        openRendererPanel(panel);
+      }
+    }, 500);
+    setTimeout(() => clearInterval(sendPanelWhenReady), 15_000);
+    return;
+  }
   if (mainWindow.isMinimized()) mainWindow.restore();
   mainWindow.show();
   mainWindow.focus();
@@ -188,6 +215,20 @@ function notifyUpdate(title, body, panel = "settings") {
   const notification = new Notification({ title, body, icon: iconPath() });
   notification.on("click", () => openRendererPanel(panel));
   notification.show();
+}
+
+function enableBackgroundUpdateAtLogin() {
+  if (process.platform !== "win32" || isDev) return;
+  try {
+    app.setLoginItemSettings({
+      openAtLogin: true,
+      path: app.getPath("exe"),
+      args: [BACKGROUND_UPDATE_ARG],
+      name: "ITS Maps",
+    });
+  } catch (error) {
+    console.warn("[ITS Maps] Background update registration failed:", error);
+  }
 }
 
 function createSplashWindow() {
@@ -335,6 +376,11 @@ async function checkForUpdates({ autoInstall = false } = {}) {
 }
 
 function createWindow() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.show();
+    mainWindow.focus();
+    return;
+  }
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 920,
@@ -395,8 +441,21 @@ function createWindow() {
   }
 }
 
+app.on("second-instance", (_event, argv) => {
+  if (argv.includes(BACKGROUND_UPDATE_ARG)) return;
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    if (!splashWindow || splashWindow.isDestroyed()) createSplashWindow();
+    createWindow();
+    return;
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+});
+
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
+  enableBackgroundUpdateAtLogin();
 
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
     callback(permission === "geolocation" || permission === "media" || permission === "notifications");
@@ -425,6 +484,20 @@ app.whenReady().then(() => {
     maybeShowMainWindow();
   });
 
+  if (isBackgroundUpdate) {
+    rendererDataReady = true;
+    mainWindowReady = true;
+    setTimeout(() => void checkForUpdates({ autoInstall: true }), 4_000);
+    updateTimer = setInterval(() => void checkForUpdates({ autoInstall: true }), 6 * 60 * 60 * 1000);
+    app.on("activate", () => {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        createSplashWindow();
+        createWindow();
+      }
+    });
+    return;
+  }
+
   createSplashWindow();
   createWindow();
   setTimeout(() => void checkForUpdates({ autoInstall: true }), 10_000);
@@ -436,7 +509,7 @@ app.whenReady().then(() => {
 });
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
+  if (process.platform !== "darwin" && !isBackgroundUpdate) app.quit();
 });
 
 app.on("before-quit", () => {
