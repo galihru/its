@@ -13,13 +13,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Detect Android Gradle project
+        id: android_project
+        run: |
+          if [ -f "web/android/gradlew" ] && [ -f "web/android/settings.gradle" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Android Gradle wrapper is not committed at web/android/gradlew; skipping APK build."
+          fi
+
       - name: Set up JDK 21
+        if: steps.android_project.outputs.available == 'true'
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
 
       - name: Build Android debug APK
+        if: steps.android_project.outputs.available == 'true'
         working-directory: web/android
         run: |
           chmod +x ./gradlew
