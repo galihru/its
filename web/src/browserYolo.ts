@@ -40,7 +40,7 @@ type ImageSource = HTMLVideoElement | HTMLImageElement | HTMLCanvasElement | Ima
 
 const YOLO_INPUT_SIZE = 640;
 const YOLO_CAPTURE_MAX_EDGE = 960;
-const YOLO_CONFIDENCE = 0.45;
+const YOLO_CONFIDENCE = 0.28;
 const YOLO_NMS = 0.45;
 const YOLO_MAX_DETECTIONS = 80;
 const ORT_WASM_VERSION = "1.26.0-dev.20260416-b7804b056c";

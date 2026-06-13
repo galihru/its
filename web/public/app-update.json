@@ -3,18 +3,18 @@
   "appName": "ITS Maps",
   "ownerName": "Hanifa Septhi Larasati",
   "institution": "Telkom University",
-  "versionCode": 20,
-  "versionName": "1.0.20",
-  "windowsUrl": "https://github.com/galihru/its/releases/download/its-maps-v1.0.20/ITS-Maps-Windows-Custom-Setup-1.0.20-x64.exe",
-  "desktopUrl": "https://github.com/galihru/its/releases/download/its-maps-v1.0.20/ITS-Maps-Windows-Custom-Setup-1.0.20-x64.exe",
+  "versionCode": 21,
+  "versionName": "1.0.21",
+  "windowsUrl": "https://github.com/galihru/its/releases/download/its-maps-v1.0.21/ITS-Maps-Windows-Custom-Setup-1.0.21-x64.exe",
+  "desktopUrl": "https://github.com/galihru/its/releases/download/its-maps-v1.0.21/ITS-Maps-Windows-Custom-Setup-1.0.21-x64.exe",
   "pwaUrl": "https://itstelkom.web.app/",
   "logoUrl": "https://itstelkom.web.app/favicon.svg",
-  "updatedAt": "2026-06-12T23:42:19+07:00",
+  "updatedAt": "2026-06-13T09:09:56+07:00",
   "force": false,
   "autoDownload": true,
   "releaseNotes": [
-    "Memisahkan status kamera online dari heartbeat controller agar tunnel Cloudflare tidak diblokir saat kamera ready.",
-    "Merapikan player website dan ITS Maps Windows: judul tanpa URL stream, pause/resume iframe, fullscreen landscape, ambient cinematic, dan panel AI blur fleksibel.",
-    "Mendaftarkan background updater Windows dari installer serta memberi notifikasi update dengan ikon ITS Maps."
+    "Menyamakan status Raspberry dan kamera menjadi online/offline saja, termasuk dot LIVE/OFFLINE pada website dan ITS Maps Windows.",
+    "Menambahkan canvas YOLO di atas video, popup, fullscreen, dan snapshot supaya hasil deteksi tampil langsung pada frame yang sedang dilihat.",
+    "Memperbaiki prioritas snapshot RTDB/browserYolo agar carousel dan widget memakai frame terbaru, serta tombol play/fullscreen tetap klikable di mode iframe."
   ]
 }

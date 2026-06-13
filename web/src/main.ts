@@ -73,7 +73,7 @@ declare module "leaflet" {
 
 // ─── Types ──────────────────────────────────────────────────────
 
-type DeviceStatus = "online" | "offline" | "degraded";
+type DeviceStatus = "online" | "offline";
 type CameraMode = "webrtc" | "mjpeg";
 type VehicleBreakdown = {
   car: number;
@@ -335,6 +335,7 @@ const DEFAULT_CONFIG: Required<AppConfig> = {
 const DEFAULT_CENTER: L.LatLngExpression = [-6.180487, 106.90368];
 const DEFAULT_ZOOM = 17;
 const OFFLINE_AFTER_MS = 60_000;
+const BROWSER_YOLO_FRESH_MS = 90_000;
 const FIREBASE_DEVICES_URL =
   "https://itstelkom-default-rtdb.asia-southeast1.firebasedatabase.app/devices.json";
 const FIREBASE_ROOT_URL = FIREBASE_DEVICES_URL.replace(/\/devices\.json$/, "");
@@ -3130,7 +3131,7 @@ if (staticRoute) {
   // ─── Helpers ────────────────────────────────────────────────────
 
   function isDeviceStatus(v: unknown): v is DeviceStatus {
-    return v === "online" || v === "offline" || v === "degraded";
+    return v === "online" || v === "offline";
   }
   function isCameraMode(v: unknown): v is CameraMode {
     return v === "webrtc" || v === "mjpeg";
@@ -3146,6 +3147,10 @@ if (staticRoute) {
 
   function stringValue(v: unknown): string | undefined {
     return typeof v === "string" && v.trim() ? v.trim() : undefined;
+  }
+
+  function objectRecord(v: unknown): Record<string, unknown> {
+    return v && typeof v === "object" ? v as Record<string, unknown> : {};
   }
 
   function isValidCoordinate(lat: number, lng: number): boolean {
@@ -3540,9 +3545,9 @@ if (staticRoute) {
     const cameraReady = typeof rawRecord.cameraReady === "boolean" ? rawRecord.cameraReady : undefined;
     const lastSeen = normalizeEpoch(typeof raw.lastSeen === "number" ? raw.lastSeen : 0);
     const rawStatus = isDeviceStatus(raw.status) ? raw.status : "offline";
-    const controllerHeartbeatStale = lastSeen > 0 && Date.now() - lastSeen > OFFLINE_AFTER_MS;
-    const cameraLooksLive = cameraStatus?.toLowerCase() === "online" || Boolean(cameraReady || cameraUrl || cameraHlsUrl || webrtcUrl);
-    const status = controllerHeartbeatStale ? (cameraLooksLive ? "degraded" : "offline") : rawStatus;
+    const controllerHeartbeatLive = rawStatus === "online" && lastSeen > 0 && Date.now() - lastSeen <= OFFLINE_AFTER_MS;
+    const cameraLooksLive = cameraStatus?.toLowerCase() === "online" || Boolean(cameraReady);
+    const status: DeviceStatus = controllerHeartbeatLive || cameraLooksLive ? "online" : "offline";
     const cameraMode = isCameraMode(rawCameraMode)
       ? rawCameraMode
       : cameraUrl || webrtcUrl
@@ -3697,6 +3702,7 @@ if (staticRoute) {
     const road = escapeHtml(traffic.roadName);
     const recommendation = escapeHtml(traffic.recommendation);
     const statsGrid = renderVehicleStatsGrid(device, traffic, "modal-vehicle-grid");
+    const status = effectiveDeviceStatus(device);
     return `
   <div class="sheet-panel-header device-panel-header">
     <button class="sheet-icon-btn modal-close" data-action="close" aria-label="Kembali" title="Kembali">
@@ -3706,7 +3712,7 @@ if (staticRoute) {
       <div class="sheet-device-icon" aria-hidden="true">${makeTrafficLightSvg(traffic, 28)}</div>
       <div class="sheet-title-copy">
         <h2 class="modal-title">${escapeHtml(device.label)}</h2>
-        <p>${escapeHtml(device.status)} · ${road}</p>
+        <p>${escapeHtml(status)} · ${road}</p>
       </div>
     </div>
   </div>
@@ -3726,7 +3732,7 @@ if (staticRoute) {
     <div class="modal-tab-pane active" data-tab="system">
       <div class="info-row"><span class="label">Lokasi</span><span class="value" data-field="device-location">${device.position.lat.toFixed(6)}, ${device.position.lng.toFixed(6)}</span></div>
       <div class="info-row"><span class="label">ID Sistem</span><span class="value" data-field="device-id">${escapeHtml(device.id)}</span></div>
-      <div class="info-row"><span class="label">Status</span><span class="value status-${device.status}" data-field="device-status">${escapeHtml(device.status)}</span></div>
+      <div class="info-row"><span class="label">Status</span><span class="value status-${status}" data-field="device-status">${escapeHtml(status)}</span></div>
       <div class="info-row"><span class="label">Last Seen</span><span class="value" data-field="device-last-seen">${escapeHtml(device.lastSeenText || formatTime(device.lastSeen))}</span></div>
       <div class="info-row"><span class="label">Age</span><span class="value" data-field="device-age">${formatAge(device.lastSeen)}</span></div>
       <div class="info-row"><span class="label">Jalan</span><span class="value" data-field="device-road">${road}</span></div>
@@ -4390,10 +4396,14 @@ if (staticRoute) {
   }
 
   function latestCameraSnapshot(device: DeviceRecord | null): string {
-    return device?.cameraThumbnailUrl?.trim()
-      || device?.cameraDataset?.snapshot1Url?.trim()
-      || device?.cameraDataset?.snapshot2Url?.trim()
+    if (!device) return "";
+    const datasetShot = device.cameraDataset?.snapshot1Url?.trim()
+      || device.cameraDataset?.snapshot2Url?.trim()
       || "";
+    const thumbnail = device.cameraThumbnailUrl?.trim() || "";
+    const datasetAt = device.cameraDataset?.updatedAt || 0;
+    const thumbnailAt = Math.max(device.cameraUpdatedAt || 0, device.detectorUpdatedAt || 0);
+    return datasetShot && datasetAt >= thumbnailAt ? datasetShot : thumbnail || datasetShot;
   }
 
   function latestCameraAnalysisSnapshot(device: DeviceRecord | null): string {
@@ -4415,7 +4425,7 @@ if (staticRoute) {
 
   function cameraDescriptionText(device: DeviceRecord | null): string {
     if (!device) return "Kamera Raspberry menunggu sinkronisasi.";
-    const updatedAt = device.cameraUpdatedAt || device.detectorUpdatedAt || device.lastSeen;
+    const updatedAt = cameraStatusTime(device);
     const updated = updatedAt ? `Diperbarui ${formatAge(updatedAt)}` : "Menunggu pembaruan kamera";
     const ai = cameraYoloHeadline(device);
     return `${cameraTitleText(device)} - ${ai || "AI YOLO siap memproses snapshot/video"} - ${updated}.`;
@@ -4430,15 +4440,27 @@ if (staticRoute) {
     return `YOLO web${fps ? ` ${fps}` : ""} - ${objectCount} object - ${vehicleCount} kendaraan`;
   }
 
+  function cameraStatusTime(device: DeviceRecord | null): number {
+    return device?.cameraUpdatedAt || device?.detectorUpdatedAt || device?.lastSeen || 0;
+  }
+
   function deviceCameraIsLive(device: DeviceRecord | null): boolean {
     if (!device) return false;
     return Boolean(
       device.cameraStatus?.toLowerCase() === "online"
       || device.cameraReady
-      || publicCameraPageUrl(device)
-      || publicCameraHlsUrl(device)
-      || publicCameraUrl(device),
+      || (isWebRtcSignalingCamera(device) && state.webrtc.status === "live"),
     );
+  }
+
+  function deviceIsOnline(device: DeviceRecord | null): boolean {
+    if (!device) return false;
+    const heartbeatLive = device.status === "online" && device.lastSeen > 0 && Date.now() - device.lastSeen <= OFFLINE_AFTER_MS;
+    return heartbeatLive || deviceCameraIsLive(device);
+  }
+
+  function effectiveDeviceStatus(device: DeviceRecord | null): DeviceStatus {
+    return deviceIsOnline(device) ? "online" : "offline";
   }
 
   function usablePublicMediaUrl(value: unknown): string {
@@ -5097,9 +5119,10 @@ if (staticRoute) {
   function videoSurfaceStatusText(device: DeviceRecord | null): string {
     const yolo = cameraYoloHeadline(device);
     if (yolo) return yolo;
-    if (deviceCameraIsLive(device)) return cameraTitleText(device);
+    if (deviceCameraIsLive(device)) return `kamera online - update ${formatAge(cameraStatusTime(device))}`;
     if (isWebRtcSignalingCamera(device)) return webRtcStatusText();
-    return latestCameraSnapshot(device) ? "snapshot kamera tersedia" : "Menunggu frame video live...";
+    if (latestCameraSnapshot(device)) return `kamera offline - snapshot terakhir ${formatAge(cameraStatusTime(device))}`;
+    return "kamera offline - menunggu frame";
   }
 
   function renderCameraTile(): void {
@@ -5235,11 +5258,13 @@ if (staticRoute) {
     const anchor = map.getCenter();
     const cameraSurface = renderCameraSurface(device, "camera-image camera-video-popup", "camera-frame");
     const statusText = videoSurfaceStatusText(device);
+    const cameraLive = deviceCameraIsLive(device);
     const content = cameraSurface
-      ? `<div class="camera-card custom-video-card">
+      ? `<div class="camera-card custom-video-card" data-live-state="${cameraLive ? "online" : "offline"}">
       <div class="custom-video-status">${escapeHtml(statusText || "Menunggu frame video live...")}</div>
-      <div class="custom-video-live"><span></span>LIVE</div>
+      <div class="custom-video-live"><span></span>${cameraLive ? "LIVE" : "OFFLINE"}</div>
       ${cameraSurface}
+      <canvas class="camera-yolo-canvas" data-video-yolo-canvas aria-hidden="true"></canvas>
       <div class="camera-popup-controls">
         <button type="button" data-custom-video-play aria-label="Putar video">${playSvg()}</button>
         <button type="button" data-popup-fullscreen aria-label="Fullscreen">${fullscreenSvg()}</button>
@@ -5254,9 +5279,16 @@ if (staticRoute) {
     setupHlsVideos(document);
     syncCameraViews(device);
     attachWebRtcStream();
-    document.querySelector<HTMLElement>(".camera-popup")?.querySelector<HTMLButtonElement>("[data-custom-video-play]")
+    const popupEl = document.querySelector<HTMLElement>(".camera-popup");
+    if (popupEl && cameraSurface) {
+      startVideoBrowserYolo(popupEl, device);
+      map.once("popupclose", () => {
+        if (!document.getElementById("video-fullscreen-modal")) stopVideoBrowserYolo();
+      });
+    }
+    popupEl?.querySelector<HTMLButtonElement>("[data-custom-video-play]")
       ?.addEventListener("click", (event) => toggleCustomVideoPlayback(customVideoRoot(event.currentTarget as HTMLElement)));
-    document.querySelector<HTMLElement>(".camera-popup")?.querySelector<HTMLButtonElement>("[data-popup-fullscreen]")
+    popupEl?.querySelector<HTMLButtonElement>("[data-popup-fullscreen]")
       ?.addEventListener("click", () => openVideoFullscreen(device));
     syncCustomVideoButtons(document);
   }
@@ -5270,6 +5302,7 @@ if (staticRoute) {
     const statusText = videoSurfaceStatusText(activeDevice);
     const titleText = cameraTitleText(activeDevice);
     const descriptionText = cameraDescriptionText(activeDevice);
+    const cameraLive = deviceCameraIsLive(activeDevice);
     const overlay = document.createElement("div");
     overlay.id = "video-fullscreen-modal";
     overlay.className = "video-fullscreen";
@@ -5287,7 +5320,7 @@ if (staticRoute) {
         <strong>${escapeHtml(titleText || "Video Realtime")}</strong>
       </button>
       <div class="video-fullscreen-description" data-video-description hidden>${escapeHtml(descriptionText)}</div>
-      <div class="video-fullscreen-live"><span></span>LIVE</div>
+      <div class="video-fullscreen-live" data-live-state="${cameraLive ? "online" : "offline"}"><span></span>${cameraLive ? "LIVE" : "OFFLINE"}</div>
       <div class="video-fullscreen-caption" data-video-yolo-note>${escapeHtml(statusText || "AI YOLO siap memproses video")}</div>
       <button type="button" class="video-fullscreen-play" data-custom-video-play aria-label="Putar video">${playSvg()}</button>
       <div class="video-fullscreen-controls">
@@ -5341,14 +5374,13 @@ if (staticRoute) {
       overlay.classList.add("ai-open");
       requestAnimationFrame(() => setAiWidth(aiPanel?.getBoundingClientRect().width || 0));
       drawExistingVideoDetections(overlay, deviceForVideoYolo() || activeDevice);
-      startVideoBrowserYolo(overlay, activeDevice);
+      updateVideoAiPanel(overlay);
     };
     const closeAi = () => {
       overlay.classList.remove("ai-open");
       if (aiPanel) aiPanel.style.transform = "";
       setAiWidth(0);
-      stopVideoBrowserYolo();
-      clearVideoYoloCanvas(overlay);
+      updateVideoAiPanel(overlay);
     };
 
     surfaceEl?.addEventListener("wheel", (event) => {
@@ -5400,6 +5432,7 @@ if (staticRoute) {
     attachWebRtcStream();
     setupHlsVideos(overlay);
     applyVideoAmbientFromSnapshot(overlay, activeDevice);
+    startVideoBrowserYolo(overlay, activeDevice);
     syncCustomVideoButtons(overlay);
     const orientationLock = (screen.orientation as any)?.lock?.("landscape");
     if (orientationLock?.catch) void orientationLock.catch(() => undefined);
@@ -5418,7 +5451,6 @@ if (staticRoute) {
         stopVideoBrowserYolo();
         return;
       }
-      if (!overlay.classList.contains("ai-open")) return;
       void processVideoYoloFrame(overlay);
     };
     tick();
@@ -5452,6 +5484,7 @@ if (staticRoute) {
           : waitingNextSnapshot
             ? "YOLO menunggu snapshot kamera berikutnya..."
             : "Menunggu frame video live...";
+        overlay.classList.toggle("yolo-active", hasCachedDetections);
         clearVideoYoloCanvas(overlay);
         drawExistingVideoDetections(overlay, cached);
         updateVideoAiPanel(overlay);
@@ -5467,6 +5500,7 @@ if (staticRoute) {
         const canvas = overlay.querySelector<HTMLCanvasElement>("[data-video-yolo-canvas]");
         if (canvas) drawYoloDetections(canvas, result.detections, result.frameWidth, result.frameHeight);
         else clearVideoYoloCanvas(overlay);
+        overlay.classList.toggle("yolo-active", result.detections.length > 0);
         const device = deviceForVideoYolo();
         if (device) {
           applyVideoYoloResult(device, result);
@@ -5475,6 +5509,7 @@ if (staticRoute) {
         updateVideoAiPanel(overlay);
         return;
       }
+      overlay.classList.remove("yolo-active");
       clearVideoYoloCanvas(overlay);
       updateVideoAiPanel(overlay);
     } finally {
@@ -5486,7 +5521,7 @@ if (staticRoute) {
     const video = Array.from(overlay.querySelectorAll<HTMLVideoElement>("video"))
       .find((candidate) => !candidate.classList.contains("hls-fallback-hidden") && candidate.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && candidate.videoWidth > 0 && candidate.videoHeight > 0);
     if (video) return { source: video, drawOverlay: true, key: `video:${video.currentSrc || video.dataset.src || ""}:${Math.floor(video.currentTime * 2)}` };
-    const image = overlay.querySelector<HTMLImageElement>(".video-fullscreen-surface img");
+    const image = overlay.querySelector<HTMLImageElement>(".video-fullscreen-surface img, .camera-card img, img.camera-image");
     if (image?.complete && image.naturalWidth && image.naturalHeight) return { source: image, drawOverlay: true, key: `image:${image.currentSrc || image.src}` };
     const snapshot = latestCameraAnalysisSnapshot(deviceForVideoYolo());
     const snapshotKey = snapshot ? `snapshot:${snapshot.slice(0, 96)}:${snapshot.length}` : "";
@@ -5507,14 +5542,19 @@ if (staticRoute) {
 
   function drawExistingVideoDetections(overlay: HTMLElement, device: DeviceRecord | null): void {
     const canvas = overlay.querySelector<HTMLCanvasElement>("[data-video-yolo-canvas]");
-    if (!canvas || !device?.detections?.length || !device.detectorFrameWidth || !device.detectorFrameHeight) return;
+    if (!canvas || !device?.detections?.length || !device.detectorFrameWidth || !device.detectorFrameHeight) {
+      overlay.classList.remove("yolo-active");
+      return;
+    }
     const detections = device.detections
       .filter((d) => detectionBoxIsUsable(d, device.detectorFrameWidth || 0, device.detectorFrameHeight || 0))
       .map((d) => ({ ...d }));
     if (!detections.length) {
+      overlay.classList.remove("yolo-active");
       clearVideoYoloCanvas(overlay);
       return;
     }
+    overlay.classList.add("yolo-active");
     drawYoloDetections(canvas, detections, device.detectorFrameWidth, device.detectorFrameHeight);
   }
 
@@ -6104,6 +6144,73 @@ if (staticRoute) {
     return { devices: data as Record<string, SnapshotDevice>, source: "firebase" };
   }
 
+  async function hydrateFirebaseTelemetry(devices: DeviceRecord[]): Promise<DeviceRecord[]> {
+    return Promise.all(devices.map(async (device) => {
+      try {
+        const [traffic, yolo] = await Promise.all([
+          firebaseGetPath<unknown>(`trafficObjectDetectionDataset/devices/${device.id}`).catch(() => null),
+          firebaseGetPath<unknown>(`browserYolo/devices/${device.id}`).catch(() => null),
+        ]);
+        return mergeDeviceTelemetry(device, traffic, yolo);
+      } catch {
+        return device;
+      }
+    }));
+  }
+
+  function mergeDeviceTelemetry(device: DeviceRecord, trafficRaw: unknown, yoloRaw: unknown): DeviceRecord {
+    const traffic = objectRecord(trafficRaw);
+    const yolo = objectRecord(yoloRaw);
+    const yoloUpdatedAt = normalizeEpoch(finiteNumber(yolo.updatedAt) ?? finiteNumber(yolo.thumbnailUpdatedAt) ?? 0);
+    const trafficUpdatedAt = normalizeEpoch(finiteNumber(traffic.updatedAt) ?? 0);
+    const yoloFresh = yoloUpdatedAt > 0 && Date.now() - yoloUpdatedAt <= BROWSER_YOLO_FRESH_MS;
+    const yoloDataset = yoloFresh ? normalizeCameraDataset(objectRecord(yolo.cameraDataset)) : undefined;
+    const trafficDataset = normalizeCameraDataset(traffic);
+    const mergedDataset = mergeCameraDataset(yoloDataset, trafficDataset, device.cameraDataset);
+    const yoloFrameWidth = yoloFresh ? finiteNumber(yolo.frameWidth) : undefined;
+    const yoloFrameHeight = yoloFresh ? finiteNumber(yolo.frameHeight) : undefined;
+    const yoloDetections = yoloFresh ? normalizeDetections(yolo.detections) : [];
+    const yoloValidDetections = yoloFrameWidth && yoloFrameHeight
+      ? yoloDetections.filter((det) => detectionBoxIsUsable(det, yoloFrameWidth, yoloFrameHeight))
+      : yoloDetections;
+    const yoloPayloadValid = !yoloFresh || !yoloDetections.length || yoloValidDetections.length > 0;
+    const yoloBreakdown = yoloFresh && yoloPayloadValid ? normalizeVehicleBreakdown(yolo.vehicleBreakdown) : undefined;
+    const trafficBreakdown = normalizeVehicleBreakdown(traffic.vehicleBreakdown);
+    const yoloCameraUrl = yoloFresh ? usablePublicMediaUrl(stringValue(yolo.cameraUrl)) : "";
+    const trafficCameraUrl = usablePublicMediaUrl(stringValue(traffic.cameraUrl));
+    const yoloThumbnail = yoloFresh ? stringValue(yolo.thumbnailUrl) : "";
+    const trafficThumbnail = stringValue(traffic.thumbnailUrl);
+    const yoloStatus = yoloFresh ? stringValue(yolo.status) : "";
+    const trafficDetectorStatus = stringValue(traffic.detectorStatus);
+
+    return {
+      ...device,
+      cameraUrl: device.cameraUrl || yoloCameraUrl || trafficCameraUrl,
+      cameraThumbnailUrl: yoloThumbnail || trafficThumbnail || mergedDataset?.snapshot1Url || mergedDataset?.snapshot2Url || device.cameraThumbnailUrl,
+      cameraDataset: mergedDataset,
+      cameraUpdatedAt: Math.max(device.cameraUpdatedAt || 0, yoloUpdatedAt, trafficUpdatedAt) || device.cameraUpdatedAt,
+      detectorStatus: yoloStatus || trafficDetectorStatus || device.detectorStatus,
+      detectorNote: (yoloFresh ? stringValue(yolo.note) : "") || stringValue(traffic.detectorNote) || device.detectorNote,
+      detectorUpdatedAt: Math.max(device.detectorUpdatedAt || 0, yoloFresh ? yoloUpdatedAt : 0, trafficUpdatedAt) || device.detectorUpdatedAt,
+      detectorFps: (yoloFresh ? finiteNumber(yolo.fps) : undefined) ?? device.detectorFps,
+      detectorFrameWidth: yoloFrameWidth ?? finiteNumber(traffic.detectorFrameWidth) ?? device.detectorFrameWidth,
+      detectorFrameHeight: yoloFrameHeight ?? finiteNumber(traffic.detectorFrameHeight) ?? device.detectorFrameHeight,
+      vehicleBreakdown: yoloBreakdown || trafficBreakdown || device.vehicleBreakdown,
+      vehicleCount: (yoloFresh && yoloPayloadValid ? finiteNumber(yolo.vehicleCount) : undefined)
+        ?? finiteNumber(traffic.vehicleCount)
+        ?? device.vehicleCount,
+      objectCount: Math.max(
+        device.objectCount || 0,
+        Math.round(yoloFresh && yoloPayloadValid ? finiteNumber(yolo.objectCount) ?? 0 : 0),
+        Math.round(finiteNumber(traffic.objectCount) ?? 0),
+      ),
+      detections: yoloFresh ? yoloValidDetections : device.detections,
+      trafficColor: isTrafficColor(traffic.trafficColor) ? traffic.trafficColor : device.trafficColor,
+      trafficDuration: finiteNumber(traffic.trafficDurationSec) ?? finiteNumber(traffic.trafficDuration) ?? device.trafficDuration,
+      trafficSource: (yoloFresh ? stringValue(yolo.source) : "") || stringValue(traffic.source) || device.trafficSource,
+    };
+  }
+
   function applyDevices(devices: DeviceRecord[]): void {
     state.devices = devices;
     const activeIds = new Set(devices.map((d) => d.id));
@@ -6318,6 +6425,9 @@ if (staticRoute) {
       }
 
       let devices = normalizeDevices(snapshot);
+      if (snapshot.source === "firebase" && devices.length) {
+        devices = await hydrateFirebaseTelemetry(devices);
+      }
 
       // Jika lokal ada tapi kosong, coba Firebase
       if (!devices.length) {
@@ -6325,6 +6435,7 @@ if (staticRoute) {
         try {
           const fbSnapshot = await fetchFirebaseDevices();
           devices = normalizeDevices(fbSnapshot);
+          if (devices.length) devices = await hydrateFirebaseTelemetry(devices);
         } catch { /* Firebase juga gagal, biarkan devices tetap kosong */ }
       }
 
@@ -6878,10 +6989,11 @@ if (staticRoute) {
     ${state.devices.map(d => {          // FIX 2: hapus parameter idx yang tidak dipakai
       const t = trafficStateForDevice(d);
       const c = colorMap[t.color];
+      const status = effectiveDeviceStatus(d);
       return `<div class="m-device-row" data-id="${d.id}">
         <span class="m-device-bulb" style="background:${c}"></span>
         <span class="m-device-name">${escapeHtml(d.label)}</span>
-        <span class="m-device-status status-${d.status}">${d.status}</span>
+        <span class="m-device-status status-${status}">${status}</span>
       </div>`;
     }).join("")}
   </div>
@@ -7014,8 +7126,8 @@ if (staticRoute) {
     const sheet = document.createElement("div");
     sheet.id = "m-profil-sheet";
 
-    const online = state.devices.filter(d => d.status === "online").length;
-    const offline = state.devices.filter(d => d.status === "offline").length;
+    const online = state.devices.filter((d) => effectiveDeviceStatus(d) === "online").length;
+    const offline = state.devices.filter((d) => effectiveDeviceStatus(d) === "offline").length;
 
     sheet.innerHTML = `
   <div class="m-layer-backdrop"></div>

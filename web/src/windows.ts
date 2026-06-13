@@ -13,7 +13,7 @@ import {
 } from "./browserYolo";
 import "./windows.css";
 
-type DeviceStatus = "online" | "offline" | "degraded";
+type DeviceStatus = "online" | "offline";
 type CameraMode = "webrtc" | "mjpeg";
 type TrafficColor = "red" | "yellow" | "green";
 
@@ -1097,7 +1097,7 @@ function mergeDeviceTelemetry(device: DeviceRecord, trafficRaw: unknown, yoloRaw
   const yoloUpdatedAt = normalizeEpoch(finiteNumber(yolo.updatedAt) ?? finiteNumber(yolo.thumbnailUpdatedAt) ?? 0);
   const trafficUpdatedAt = normalizeEpoch(finiteNumber(traffic.updatedAt) ?? 0);
   const yoloFresh = yoloUpdatedAt > 0 && Date.now() - yoloUpdatedAt <= BROWSER_YOLO_FRESH_MS;
-  const mergedDataset = mergeCameraDataset(device.cameraDataset, yoloFresh ? yoloDataset : undefined, trafficDataset);
+  const mergedDataset = mergeCameraDataset(yoloFresh ? yoloDataset : undefined, trafficDataset, device.cameraDataset);
   const yoloFrameWidth = yoloFresh ? finiteNumber(yolo.frameWidth) : undefined;
   const yoloFrameHeight = yoloFresh ? finiteNumber(yolo.frameHeight) : undefined;
   const yoloDetections = yoloFresh ? normalizeDetections(yolo.detections) : [];
@@ -1117,7 +1117,7 @@ function mergeDeviceTelemetry(device: DeviceRecord, trafficRaw: unknown, yoloRaw
   return {
     ...device,
     cameraUrl: device.cameraUrl || yoloCameraUrl || trafficCameraUrl,
-    cameraThumbnailUrl: device.cameraThumbnailUrl || yoloThumbnail || trafficThumbnail || mergedDataset?.snapshot1Url || mergedDataset?.snapshot2Url,
+    cameraThumbnailUrl: yoloThumbnail || trafficThumbnail || mergedDataset?.snapshot1Url || mergedDataset?.snapshot2Url || device.cameraThumbnailUrl,
     cameraDataset: mergedDataset,
     cameraUpdatedAt: Math.max(device.cameraUpdatedAt || 0, yoloUpdatedAt, trafficUpdatedAt) || device.cameraUpdatedAt,
     detectorStatus: yoloStatus || trafficDetectorStatus || device.detectorStatus,
@@ -1223,9 +1223,9 @@ function normalizeOneDevice(raw: SnapshotDevice): DeviceRecord | null {
   const cameraReady = typeof record.cameraReady === "boolean" ? record.cameraReady : undefined;
   const lastSeen = normalizeEpoch(finiteNumber(raw.lastSeen) ?? 0);
   const rawStatus = isDeviceStatus(record.status) ? record.status : "offline";
-  const controllerHeartbeatStale = lastSeen > 0 && Date.now() - lastSeen > OFFLINE_AFTER_MS;
-  const cameraLooksLive = (cameraStatus || "").toLowerCase() === "online" || Boolean(cameraReady || cameraUrl || cameraHlsUrl || webrtcUrl);
-  const status = controllerHeartbeatStale ? (cameraLooksLive ? "degraded" : "offline") : rawStatus;
+  const controllerHeartbeatLive = rawStatus === "online" && lastSeen > 0 && Date.now() - lastSeen <= OFFLINE_AFTER_MS;
+  const cameraLooksLive = (cameraStatus || "").toLowerCase() === "online" || Boolean(cameraReady);
+  const status: DeviceStatus = controllerHeartbeatLive || cameraLooksLive ? "online" : "offline";
   const detectorFrameWidth = finiteNumber(record.detectorFrameWidth);
   const detectorFrameHeight = finiteNumber(record.detectorFrameHeight);
   const rawDetections = normalizeDetections(record.detections);
@@ -1303,7 +1303,7 @@ function renderTitle(): void {
   setText("[data-title-device]", device?.label || "ITS Maps");
   const raspiOnline = deviceIsOnline(device);
   setText("[data-title-meta]", device
-    ? `${raspiOnline ? "online" : "offline"} - ${locationLabel(device)} - update ${formatAge(device.lastSeen)}`
+    ? `${raspiOnline ? "online" : "offline"} - ${locationLabel(device)} - update ${formatAge(cameraStatusTime(device))}`
     : "Raspberry Pi live traffic");
   setText("[data-raspi-state]", device ? (raspiOnline ? "online" : "offline") : "-");
   setText("[data-windows-state]", state.userLocation ? locationStateLabel(state.userLocation) : state.geolocationState);
@@ -1329,6 +1329,7 @@ function renderGallery(): void {
         <img src="${escapeHtml(url)}" alt="Snapshot Raspberry ${index + 1}" loading="${index === 0 ? "eager" : "lazy"}" crossorigin="anonymous">
       </div>
     `).join("")}
+    <canvas class="win-gallery-yolo-canvas" data-gallery-yolo-canvas aria-hidden="true"></canvas>
     <div class="win-gallery-shade"></div>
     <div class="win-gallery-caption">
       <div>
@@ -1341,7 +1342,20 @@ function renderGallery(): void {
     </div>
   `;
   syncImageAmbient(gallery, gallery.querySelector<HTMLImageElement>(".win-gallery-slide.active img"), "gallery");
+  drawGalleryDetections(gallery);
   processGallerySnapshotYolo(active);
+}
+
+function drawGalleryDetections(gallery: HTMLElement): void {
+  const canvas = gallery.querySelector<HTMLCanvasElement>("[data-gallery-yolo-canvas]");
+  const device = state.device;
+  if (!canvas || !device?.detections?.length || !device.detectorFrameWidth || !device.detectorFrameHeight) {
+    const ctx = canvas?.getContext("2d");
+    if (canvas && ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+    return;
+  }
+  const detections = device.detections.filter((det) => detectionBoxIsUsable(det, device.detectorFrameWidth || 0, device.detectorFrameHeight || 0));
+  drawYoloDetections(canvas, detections, device.detectorFrameWidth, device.detectorFrameHeight);
 }
 
 function processGallerySnapshotYolo(src: string): void {
@@ -1370,8 +1384,8 @@ function processGallerySnapshotYolo(src: string): void {
 function carouselImages(): string[] {
   const device = state.device;
   const liveImages = uniqueStrings([
-    device?.cameraDataset?.snapshot1Url,
     device?.cameraDataset?.snapshot2Url,
+    device?.cameraDataset?.snapshot1Url,
     device?.cameraThumbnailUrl,
   ]);
   return liveImages.length ? liveImages.slice(0, 2) : [FALLBACK_IMAGE_URL];
@@ -1711,7 +1725,7 @@ function closePoiSheet(): void {
 function trafficPreviewHtml(device: DeviceRecord): string {
   const poster = latestCameraSnapshot(device) || FALLBACK_IMAGE_URL;
   const label = deviceIsOnline(device) ? "LIVE" : "OFFLINE";
-  const cameraTitle = isWebRtcSignalingCamera(device) ? "WebRTC Raspberry" : cameraHostLabel(publicCameraHlsUrl(device) || publicCameraUrl(device)) || "Kamera Raspberry";
+  const cameraTitle = cameraTitleText(device) || "Kamera Raspberry";
   return `
     <button type="button" class="win-map-video-preview" data-open-camera-from-map>
       <span class="win-map-video-head">
@@ -1926,7 +1940,7 @@ function renderCameraView(): void {
 
 function cameraSurfaceHtml(device: DeviceRecord | null): string {
   const media = cameraMediaHtml(device);
-  const live = Boolean(device && (isWebRtcSignalingCamera(device) || publicCameraUrl(device) || publicCameraHlsUrl(device)));
+  const live = deviceCameraIsLive(device);
   return `
     <section class="win-camera-surface" data-camera-surface data-live-state="${live ? "online" : "offline"}">
       <div class="win-camera-frame" data-camera-frame data-ai-open="false">
@@ -2049,6 +2063,8 @@ function setupCameraSurface(): void {
       }
     }
   }
+  startBrowserYolo(frame);
+  syncPlayButton();
   syncFullscreenButtons();
 }
 
@@ -2254,7 +2270,6 @@ function startBrowserYolo(frame: HTMLElement): void {
   state.browserYoloNote = "YOLO menyiapkan frame kamera...";
   const tick = () => {
     if (state.browserYoloSourceKey !== sourceKey || !document.body.contains(frame)) return;
-    if (frame.dataset.aiOpen !== "true") return;
     void processBrowserYoloFrame(frame);
   };
   tick();
@@ -2276,6 +2291,7 @@ async function processBrowserYoloFrame(frame: HTMLElement): Promise<void> {
         : waitingNextSnapshot
           ? "YOLO menunggu snapshot kamera berikutnya..."
           : "Menunggu frame video live...";
+      frame.dataset.yoloActive = hasCachedDetections ? "true" : "false";
       clearYoloCanvas(frame);
       drawExistingCameraDetections(frame, state.device);
       updateCameraAiPanel();
@@ -2291,11 +2307,13 @@ async function processBrowserYoloFrame(frame: HTMLElement): Promise<void> {
       const canvas = frame.querySelector<HTMLCanvasElement>("[data-camera-yolo-canvas]");
       if (canvas) drawYoloDetections(canvas, result.detections, result.frameWidth, result.frameHeight);
       else clearYoloCanvas(frame);
+      frame.dataset.yoloActive = result.detections.length ? "true" : "false";
       applyBrowserYoloResult(result);
       updateCameraSummary();
       updateCameraAiPanel();
       publishBrowserYoloIfNeeded(result);
     } else {
+      frame.dataset.yoloActive = "false";
       clearYoloCanvas(frame);
       updateCameraAiPanel();
     }
@@ -2330,12 +2348,17 @@ function clearYoloCanvas(frame: HTMLElement): void {
 
 function drawExistingCameraDetections(frame: HTMLElement, device: DeviceRecord | null): void {
   const canvas = frame.querySelector<HTMLCanvasElement>("[data-camera-yolo-canvas]");
-  if (!canvas || !device?.detections?.length || !device.detectorFrameWidth || !device.detectorFrameHeight) return;
+  if (!canvas || !device?.detections?.length || !device.detectorFrameWidth || !device.detectorFrameHeight) {
+    frame.dataset.yoloActive = "false";
+    return;
+  }
   const detections = device.detections.filter((det) => detectionBoxIsUsable(det, device.detectorFrameWidth || 0, device.detectorFrameHeight || 0));
   if (!detections.length) {
+    frame.dataset.yoloActive = "false";
     clearYoloCanvas(frame);
     return;
   }
+  frame.dataset.yoloActive = "true";
   drawYoloDetections(canvas, detections, device.detectorFrameWidth, device.detectorFrameHeight);
 }
 
@@ -2520,15 +2543,7 @@ function setAiOpen(open: boolean): void {
   const panel = frame.querySelector<HTMLElement>("[data-camera-ai-panel]");
   if (panel) panel.style.transform = "";
   frame.dataset.aiOpen = open ? "true" : "false";
-  if (open) {
-    drawExistingCameraDetections(frame, state.device);
-    startBrowserYolo(frame);
-  } else {
-    window.clearInterval(state.browserYoloTimer);
-    state.browserYoloTimer = 0;
-    state.browserYoloBusy = false;
-    clearYoloCanvas(frame);
-  }
+  drawExistingCameraDetections(frame, state.device);
   updateCameraAiPanel();
 }
 
@@ -2968,13 +2983,15 @@ function cameraStatusText(device: DeviceRecord | null): string {
   if (!device) return "menunggu sinkronisasi kamera";
   const yolo = cameraYoloHeadline(device);
   if (yolo) return yolo;
-  if (deviceCameraIsLive(device)) return cameraTitleText(device);
+  if (deviceCameraIsLive(device)) return `kamera online - update ${formatAge(cameraStatusTime(device))}`;
   if (isWebRtcSignalingCamera(device)) return state.webrtc.status === "live" ? "WebRTC live" : "WebRTC Firebase signaling";
-  if (!deviceIsOnline(device)) {
-    return `Raspberry offline - terakhir ${formatAge(device.lastSeen)}${device.lastSeenText ? ` (${device.lastSeenText})` : ""}`;
-  }
+  if (!deviceIsOnline(device)) return `kamera offline - terakhir online ${formatAge(cameraStatusTime(device))}${device.lastSeenText ? ` (${device.lastSeenText})` : ""}`;
   if (device.webrtcEnabled || device.cameraMode === "webrtc") return "WebRTC Firebase signaling";
   return "URL kamera belum dikirim Raspberry";
+}
+
+function cameraStatusTime(device: DeviceRecord | null): number {
+  return device?.cameraUpdatedAt || device?.detectorUpdatedAt || device?.lastSeen || 0;
 }
 
 function aiStatusText(device: DeviceRecord | null): string {
@@ -3010,10 +3027,14 @@ function publicCameraPageUrl(device: DeviceRecord | null): string {
 }
 
 function latestCameraSnapshot(device: DeviceRecord | null): string {
-  return device?.cameraThumbnailUrl?.trim()
-    || device?.cameraDataset?.snapshot1Url?.trim()
-    || device?.cameraDataset?.snapshot2Url?.trim()
+  if (!device) return "";
+  const datasetShot = device.cameraDataset?.snapshot1Url?.trim()
+    || device.cameraDataset?.snapshot2Url?.trim()
     || "";
+  const thumbnail = device.cameraThumbnailUrl?.trim() || "";
+  const datasetAt = device.cameraDataset?.updatedAt || 0;
+  const thumbnailAt = Math.max(device.cameraUpdatedAt || 0, device.detectorUpdatedAt || 0);
+  return datasetShot && datasetAt >= thumbnailAt ? datasetShot : thumbnail || datasetShot;
 }
 
 function latestCameraAnalysisSnapshot(device: DeviceRecord | null): string {
@@ -3047,9 +3068,7 @@ function deviceCameraIsLive(device: DeviceRecord | null): boolean {
   return Boolean(
     device.cameraStatus?.toLowerCase() === "online"
     || device.cameraReady
-    || publicCameraPageUrl(device)
-    || publicCameraHlsUrl(device)
-    || publicCameraUrl(device),
+    || (isWebRtcSignalingCamera(device) && state.webrtc.status === "live"),
   );
 }
 
@@ -3417,15 +3436,6 @@ function deviceIsOnline(device: DeviceRecord | null): boolean {
   return heartbeatLive || deviceCameraIsLive(device);
 }
 
-function cameraHostLabel(url: string): string {
-  if (!url) return "";
-  try {
-    return new URL(url, window.location.href).hostname;
-  } catch {
-    return url.replace(/^https?:\/\//i, "").split("/")[0] || url;
-  }
-}
-
 function userMarkerIcon(): L.DivIcon {
   return L.divIcon({
     className: "win-user-marker",
@@ -3577,7 +3587,7 @@ function usablePublicMediaUrl(v: unknown): string | undefined {
 }
 
 function isDeviceStatus(v: unknown): v is DeviceStatus {
-  return v === "online" || v === "offline" || v === "degraded";
+  return v === "online" || v === "offline";
 }
 
 function isTrafficColor(v: unknown): v is TrafficColor {
