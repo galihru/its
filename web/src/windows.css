@@ -1713,8 +1713,6 @@ button {
 }
 
 .win-camera-surface {
-  --camera-ambient-color: rgba(45, 140, 255, 0.46);
-  --camera-ambient-soft: rgba(54, 215, 255, 0.28);
   position: relative;
   width: 100%;
   height: 100%;
@@ -1726,18 +1724,7 @@ button {
 }
 
 .win-camera-surface::before {
-  content: "";
-  position: absolute;
-  inset: -10%;
-  z-index: 0;
-  display: block;
-  pointer-events: none;
-  background:
-    radial-gradient(circle at 20% 18%, var(--camera-ambient-color), transparent 36%),
-    radial-gradient(circle at 82% 72%, var(--camera-ambient-soft), transparent 42%),
-    linear-gradient(135deg, rgba(8, 12, 22, 0.46), rgba(5, 7, 10, 0.94));
-  filter: blur(32px) saturate(1.18);
-  opacity: 0.66;
+  display: none;
 }
 
 .win-camera-frame {
@@ -1749,9 +1736,7 @@ button {
   border: 1px solid rgba(255, 255, 255, 0.11);
   border-radius: 8px;
   background: #05070a;
-  box-shadow:
-    0 26px 80px rgba(0, 0, 0, 0.42),
-    0 0 86px var(--camera-ambient-soft);
+  box-shadow: 0 26px 80px rgba(0, 0, 0, 0.42);
 }
 
 .win-camera-media {
@@ -1779,7 +1764,7 @@ button {
   height: 100%;
   border: 0;
   display: block;
-  object-fit: cover;
+  object-fit: contain;
   background: #05070a;
 }
 
@@ -1833,10 +1818,7 @@ button {
   z-index: 4;
   display: grid;
   place-items: center;
-  background:
-    linear-gradient(rgba(3, 7, 18, 0.34), rgba(3, 7, 18, 0.58)),
-    radial-gradient(circle at 50% 50%, var(--camera-ambient-soft), transparent 44%),
-    #05070a;
+  background: linear-gradient(rgba(3, 7, 18, 0.34), rgba(3, 7, 18, 0.58)), #05070a;
   background-size: cover;
   background-position: center;
   color: #fff;
@@ -1900,14 +1882,7 @@ button {
 }
 
 .win-camera-surface[data-live-state="offline"] .win-camera-frame::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  pointer-events: none;
-  background:
-    linear-gradient(0deg, rgba(5, 7, 10, 0.52), transparent 38%),
-    radial-gradient(circle at 50% 30%, transparent, rgba(5, 7, 10, 0.34));
+  content: none;
 }
 
 .win-camera-status {
@@ -1981,12 +1956,7 @@ button {
   min-width: 300px;
   overflow: auto;
   border-left: 1px solid rgba(255, 255, 255, 0.1);
-  background:
-    radial-gradient(circle at 16% 12%, var(--camera-ambient-color), transparent 34%),
-    radial-gradient(circle at 88% 82%, var(--camera-ambient-soft), transparent 40%),
-    rgba(16, 20, 27, 0.68);
-  backdrop-filter: blur(30px) saturate(1.22);
-  -webkit-backdrop-filter: blur(30px) saturate(1.22);
+  background: rgba(16, 20, 27, 0.96);
   transform: translateX(100%);
   transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1);
   will-change: transform;
@@ -2066,14 +2036,11 @@ button {
   height: 100vh;
   min-height: 100vh;
   max-height: none;
-  background:
-    radial-gradient(circle at 30% 18%, var(--camera-ambient-color), transparent 38%),
-    radial-gradient(circle at 72% 82%, var(--camera-ambient-soft), transparent 44%),
-    #05070a;
+  background: #000;
 }
 
 .win-camera-surface:fullscreen::before {
-  opacity: 0.72;
+  display: none;
 }
 
 .win-camera-surface:fullscreen .win-camera-frame {

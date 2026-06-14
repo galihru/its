@@ -7,10 +7,13 @@ import java.net.URLEncoder
 import java.nio.file.Files
 import java.nio.file.Paths
 import java.nio.file.StandardOpenOption
+import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.Base64
 import java.util.Locale
+import java.util.concurrent.TimeUnit
 
 object ItsController {
   private case class GeoLocation(
@@ -33,6 +36,17 @@ object ItsController {
   private val explicitLatitude   = envDoubleOpt("ITS_LATITUDE")
   private val explicitLongitude  = envDoubleOpt("ITS_LONGITUDE")
   private val locationMode       = env("ITS_LOCATION_MODE", "ip").toLowerCase(Locale.ROOT)
+  private val gpsEnabled         = env("ITS_GPS_ENABLED", "true").toLowerCase(Locale.ROOT) != "false"
+  private val gpsDevices         = env("ITS_GPS_DEVICES", "/dev/serial0,/dev/ttyAMA0,/dev/ttyS0,/dev/ttyUSB0")
+    .split(",")
+    .map(_.trim)
+    .filter(_.nonEmpty)
+    .toSeq
+  private val gpsBaud            = math.max(1200, envInt("ITS_GPS_BAUD", 9600))
+  private val gpsReadSeconds     = math.max(1, envInt("ITS_GPS_READ_SECONDS", 2))
+  private val gpsCacheMs         = math.max(5_000L, envInt("ITS_GPS_CACHE_SECONDS", 20).toLong * 1000L)
+  private var cachedGpsLocation: Option[(Long, GeoLocation)] = None
+  private var lastGpsAttemptAt: Long = 0L
 
   private val intervalSeconds     = math.max(1, envInt("ITS_INTERVAL_SECONDS", 15))
   private val geoRefreshMs        = math.max(5_000L, envInt("ITS_GEO_REFRESH_SECONDS", intervalSeconds).toLong * 1000L)
@@ -46,19 +60,25 @@ object ItsController {
     "ITS_FIREBASE_BASE_URL",
     "https://itstelkom-default-rtdb.asia-southeast1.firebasedatabase.app/devices"
   )
+  private val firebaseRootUrl = env("ITS_FIREBASE_ROOT_URL", firebaseRootFromDevicesUrl(firebaseUrl))
   private val firebaseAuth    = env("ITS_FIREBASE_AUTH", "")
   private var firebaseEnabled = env("ITS_FIREBASE_ENABLED", "true").toLowerCase(Locale.ROOT) != "false"
   private val publishOfflineOnShutdown = env("ITS_PUBLISH_OFFLINE_ON_SHUTDOWN", "false").toLowerCase(Locale.ROOT) == "true"
   private var cachedLocation: Option[(Long, GeoLocation)] = None
 
   private val cameraEnabled    = env("ITS_CAMERA_ENABLED", "true").toLowerCase(Locale.ROOT) != "false"
-  private val webrtcEnabled    = env("ITS_WEBRTC_ENABLED", "true").toLowerCase(Locale.ROOT) != "false"
+  private val webrtcEnabled    = env("ITS_WEBRTC_ENABLED", "false").toLowerCase(Locale.ROOT) != "false"
   private val cameraMode       = {
-    val requested = env("ITS_CAMERA_MODE", "webrtc").toLowerCase(Locale.ROOT)
-    if (requested == "webrtc" || requested == "mjpeg") requested else "webrtc"
+    val requested = env("ITS_CAMERA_MODE", "mjpeg").toLowerCase(Locale.ROOT)
+    if (requested == "webrtc" || requested == "mjpeg") requested else "mjpeg"
   }
   private val webrtcSignalPath = env("ITS_WEBRTC_SIGNAL_PATH", s"webrtc/devices/$deviceId").stripPrefix("/").stripSuffix("/")
   private val cameraPublicUrl  = resolveCameraPublicUrl()
+  private val snapshotUrl = env("ITS_CAMERA_SNAPSHOT_URL", "")
+  private val snapshotIntervalMs = math.max(10_000L, envInt("ITS_SNAPSHOT_INTERVAL_SECONDS", 10).toLong * 1000L)
+  private val snapshotMaxBytes = math.max(50_000, envInt("ITS_SNAPSHOT_MAX_BYTES", 350_000))
+  @volatile private var lastSnapshotPublishedAt: Long = 0L
+  @volatile private var snapshotSlot: Int = 0
 
   @volatile private var cameraStatus: String = if (cameraEnabled && (cameraPublicUrl.nonEmpty || webrtcEnabled)) "online" else "disabled"
   @volatile private var cameraUpdatedAt: Long = 0L
@@ -66,9 +86,10 @@ object ItsController {
 
   private val yoloConfig = YoloConfig.fromEnv(defaultCameraSource = resolveYoloCameraFallback())
   private val yoloDetector = YoloDetector.create(yoloConfig)
-  private val trafficSignal = TrafficSignalController.fromEnv(() => yoloDetector.snapshot().vehicleCount)
-
   private val httpClient = HttpClient.newHttpClient()
+  @volatile private var cachedRemoteDemandAt: Long = 0L
+  @volatile private var cachedRemoteDemandCount: Int = 0
+  private val trafficSignal = TrafficSignalController.fromEnv(() => demandVehicleCount())
   private val lastSeenFormatter = DateTimeFormatter
     .ofPattern("EEEE, dd MMMM yyyy HH:mm:ss")
     .withLocale(new Locale("id", "ID"))
@@ -110,8 +131,8 @@ object ItsController {
    * Dipanggil sekali saat startup.
    */
   private def migrateLegacyFirebaseNode(): Unit = {
-    if (!firebaseEnabled || firebaseUrl.trim.isEmpty) return
-    val nodePath = s"${firebaseUrl.stripSuffix("/")}/${deviceId}.json${authSuffixQuery()}"
+    if (!firebaseEnabled || firebaseRootUrl.trim.isEmpty) return
+    val nodePath = firebaseDeviceUrl(deviceId)
     try {
       val getReq = HttpRequest.newBuilder(URI.create(nodePath))
         .header("Accept", "application/json").GET().build()
@@ -153,10 +174,53 @@ object ItsController {
     )
     println(s"[${java.time.LocalDateTime.now()}] wrote ${path.toAbsolutePath}")
 
-    // FIX: kirim hanya deviceJson (bukan snapshotJson) ke Firebase
-    // agar struktur RTDB: devices/{deviceId} = {id, label, status, lastSeen, position, ...}
     publishFirebaseDevice(deviceJson)
+    publishSnapshotHistoryIfNeeded()
     cleanupStaleNonRaspberryNodes()
+  }
+
+  private def demandVehicleCount(): Int = {
+    val local =
+      try math.max(0, yoloDetector.snapshot().vehicleCount)
+      catch { case _: Exception => 0 }
+    math.max(local, remoteVehicleDemandCount())
+  }
+
+  private def remoteVehicleDemandCount(): Int = {
+    if (!firebaseEnabled || firebaseRootUrl.trim.isEmpty) return 0
+    val now = System.currentTimeMillis()
+    if (now - cachedRemoteDemandAt < 2500L) return cachedRemoteDemandCount
+    cachedRemoteDemandAt = now
+    try {
+      val path = s"devices/${URLEncoder.encode(deviceId, StandardCharsets.UTF_8)}/objectDetection"
+      val request = HttpRequest
+        .newBuilder(URI.create(firebasePathUrl(path)))
+        .header("Accept", "application/json")
+        .timeout(Duration.ofSeconds(3))
+        .GET()
+        .build()
+      val response = httpClient.send(request, HttpResponse.BodyHandlers.ofString())
+      if (response.statusCode() < 200 || response.statusCode() >= 300) return cachedRemoteDemandCount
+      val body = response.body()
+      val updatedAt = jsonLongField(body, "updatedAt").getOrElse(0L)
+      val total = jsonLongField(body, "total")
+        .orElse(jsonLongField(body, "vehicleCount"))
+        .getOrElse(0L)
+      cachedRemoteDemandCount =
+        if (updatedAt > 0L && now - updatedAt <= 30_000L) math.max(0, math.min(Int.MaxValue.toLong, total).toInt)
+        else 0
+      cachedRemoteDemandCount
+    } catch {
+      case _: Exception => cachedRemoteDemandCount
+    }
+  }
+
+  private def jsonLongField(json: String, key: String): Option[Long] = {
+    val pattern = ("\"" + java.util.regex.Pattern.quote(key) + "\"\\s*:\\s*(-?\\d+)").r
+    pattern.findFirstMatchIn(json).flatMap { m =>
+      try Some(m.group(1).toLong)
+      catch { case _: NumberFormatException => None }
+    }
   }
 
   /**
@@ -172,14 +236,17 @@ object ItsController {
   private def buildJsonPair(): (String, String) = {
     val lastSeen    = System.currentTimeMillis()
     val updatedAt   = lastSeen
-    val lastSeenText = lastSeenFormatter.format(Instant.ofEpochMilli(lastSeen))
     val location = currentLocation()
     val detector = yoloDetector.snapshot()
     val signal = trafficSignal.snapshot()
+    val lastSeenText = lastSeenFormatter.format(Instant.ofEpochMilli(lastSeen))
+    if (cameraEnabled && cameraPublicUrl.trim.nonEmpty && cameraStatus == "online") {
+      cameraUpdatedAt = lastSeen
+    }
     val updateStatus = updateStatusJson()
 
     // Device JSON — struktur flat yang sesuai dengan SnapshotDevice di frontend
-    val deviceJson =
+    val deviceJsonLegacy =
       s"""{
          |  "id": "${escapeJson(deviceId)}",
          |  "label": "${escapeJson(label)}",
@@ -229,6 +296,64 @@ object ItsController {
          |}""".stripMargin
 
     // Snapshot JSON — wrapper untuk file lokal (web frontend membaca ini)
+    val deviceJson =
+      s"""{
+         |  "id": "${escapeJson(deviceId)}",
+         |  "label": "${escapeJson(label)}",
+         |  "status": "${escapeJson(status)}",
+         |  "lastSeen": $lastSeen,
+         |  "updatedAt": $updatedAt,
+         |  "note": "${escapeJson(note)}",
+         |  "location": {
+         |    "lat": ${location.lat},
+         |    "lng": ${location.lng},
+         |    "label": "${escapeJson(location.label)}",
+         |    "source": "${escapeJson(location.source)}",
+         |    "accuracyM": ${location.accuracyM}
+         |  },
+         |  "camera": {
+         |    "enabled": ${cameraEnabled},
+         |    "mode": "${escapeJson(cameraMode)}",
+         |    "tunnelUrl": "${escapeJson(if (cameraEnabled) cameraPublicUrl else "")}",
+         |    "status": "${escapeJson(cameraStatus)}",
+         |    "ready": ${cameraEnabled && cameraPublicUrl.nonEmpty},
+         |    "updatedAt": ${cameraUpdatedAt},
+         |    "note": "${escapeJson(cameraError)}"
+         |  },
+         |  "traffic": {
+         |    "current": "${escapeJson(signal.color)}",
+         |    "red": ${signal.color == "red"},
+         |    "yellow": ${signal.color == "yellow"},
+         |    "green": ${signal.color == "green"},
+         |    "startedAt": ${signal.startedAt},
+         |    "durationSec": ${signal.durationSec},
+         |    "source": "${escapeJson(signal.source)}",
+         |    "gpioBackend": "${escapeJson(signal.gpioBackend)}",
+         |    "gpioReady": ${signal.gpioReady},
+         |    "gpioNote": "${escapeJson(signal.gpioNote)}"
+         |  },
+         |  "objectDetection": {
+         |    "source": "raspberry-yolo",
+         |    "status": "${escapeJson(detector.status)}",
+         |    "note": "${escapeJson(detector.note)}",
+         |    "updatedAt": ${detector.updatedAt},
+         |    "fps": ${formatDouble(detector.fps)},
+         |    "frameWidth": ${detector.frameWidth},
+         |    "frameHeight": ${detector.frameHeight},
+         |    "cameraSource": "${escapeJson(yoloConfig.cameraSource)}",
+         |    "confidence": ${formatDouble(yoloConfig.confidenceThreshold)},
+         |    "outputShape": "${escapeJson(detector.outputShape)}",
+         |    "car": ${detector.vehicleBreakdown.car},
+         |    "motorcycle": ${detector.vehicleBreakdown.motorcycle},
+         |    "truck": ${detector.vehicleBreakdown.truck},
+         |    "bus": ${detector.vehicleBreakdown.bus},
+         |    "bicycle": ${detector.vehicleBreakdown.bicycle},
+         |    "total": ${detector.vehicleBreakdown.total},
+         |    "objectCount": ${detector.objectCount},
+         |    "detections": ${detectionsJson(detector.detections)}
+         |  }
+         |}""".stripMargin
+
     val snapshotJson =
       s"""{
          |  "updatedAt": $updatedAt,
@@ -261,10 +386,9 @@ object ItsController {
    * devices sebagai Record<string, SnapshotDevice>.
    */
   private def publishFirebaseDevice(deviceJson: String): Unit = {
-    if (!firebaseEnabled || firebaseUrl.trim.isEmpty) return
+    if (!firebaseEnabled || firebaseRootUrl.trim.isEmpty) return
 
-    val devicePath = s"${firebaseUrl.stripSuffix("/")}/${deviceId}.json" +
-      authSuffix()
+    val devicePath = firebaseDeviceUrl(deviceId)
 
     try {
       val request = HttpRequest
@@ -293,11 +417,11 @@ object ItsController {
   // ─── Firebase: cleanup stale nodes ────────────────────────────
 
   private def cleanupStaleNonRaspberryNodes(): Unit = {
-    if (!firebaseEnabled || firebaseUrl.trim.isEmpty) return
+    if (!firebaseEnabled || firebaseRootUrl.trim.isEmpty) return
 
     try {
       val request = HttpRequest
-        .newBuilder(URI.create(s"${firebaseUrl.stripSuffix("/")}.json${authSuffixQuery()}"))
+        .newBuilder(URI.create(firebasePathUrl("devices")))
         .header("Accept", "application/json")
         .GET()
         .build()
@@ -320,7 +444,7 @@ object ItsController {
   }
 
   private def deleteDeviceNode(id: String): Unit = {
-    val deleteUrl = s"${firebaseUrl.stripSuffix("/")}/${id}.json${authSuffixQuery()}"
+    val deleteUrl = firebaseDeviceUrl(id)
     try {
       val request = HttpRequest
         .newBuilder(URI.create(deleteUrl))
@@ -350,6 +474,82 @@ object ItsController {
   // ─── Helpers ──────────────────────────────────────────────────
 
   /** Mengembalikan "?auth=..." atau "" */
+  private def publishSnapshotHistoryIfNeeded(): Unit = {
+    if (!firebaseEnabled || firebaseRootUrl.trim.isEmpty || snapshotUrl.trim.isEmpty) return
+    val now = System.currentTimeMillis()
+    if (now - lastSnapshotPublishedAt < snapshotIntervalMs) return
+
+    fetchSnapshotDataUrl() match {
+      case Some(dataUrl) =>
+        val nextSlot = if (snapshotSlot == 1) 2 else 1
+        val key = s"image$nextSlot"
+        val payload =
+          s"""{
+             |  "$key": "${escapeJson(dataUrl)}",
+             |  "${key}UpdatedAt": $now,
+             |  "updatedAt": $now,
+             |  "active": "$key",
+             |  "deviceId": "${escapeJson(deviceId)}",
+             |  "source": "raspberry-controller",
+             |  "cameraUrl": "${escapeJson(cameraPublicUrl)}"
+             |}""".stripMargin
+        try {
+          val request = HttpRequest
+            .newBuilder(URI.create(firebasePathUrl("snapshotHistory")))
+            .header("Content-Type", "application/json")
+            .method("PATCH", HttpRequest.BodyPublishers.ofString(payload))
+            .build()
+          val response = httpClient.send(request, HttpResponse.BodyHandlers.ofString())
+          if (response.statusCode() >= 200 && response.statusCode() < 300) {
+            snapshotSlot = nextSlot
+            lastSnapshotPublishedAt = now
+            println(s"[${java.time.LocalDateTime.now()}] published snapshotHistory/$key (${dataUrl.length} chars)")
+          } else {
+            println(s"[${java.time.LocalDateTime.now()}] snapshotHistory publish failed: HTTP ${response.statusCode()} - ${response.body().take(200)}")
+          }
+        } catch {
+          case ex: Exception =>
+            println(s"[${java.time.LocalDateTime.now()}] snapshotHistory publish error: ${ex.getMessage}")
+        }
+      case None => ()
+    }
+  }
+
+  private def fetchSnapshotDataUrl(): Option[String] = {
+    try {
+      val request = HttpRequest
+        .newBuilder(URI.create(snapshotUrl))
+        .timeout(Duration.ofSeconds(6))
+        .header("Accept", "image/*")
+        .GET()
+        .build()
+      val response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray())
+      if (response.statusCode() < 200 || response.statusCode() >= 300) return None
+      val bytes = response.body()
+      if (bytes == null || bytes.length == 0) return None
+      if (bytes.length > snapshotMaxBytes) {
+        println(s"[${java.time.LocalDateTime.now()}] snapshot skipped: ${bytes.length} bytes exceeds ITS_SNAPSHOT_MAX_BYTES=$snapshotMaxBytes")
+        return None
+      }
+      val contentType = response.headers().firstValue("Content-Type").orElse("image/jpeg").split(";")(0).trim
+      val mediaType = if (contentType.startsWith("image/")) contentType else "image/jpeg"
+      Some(s"data:$mediaType;base64,${Base64.getEncoder.encodeToString(bytes)}")
+    } catch {
+      case ex: Exception =>
+        println(s"[${java.time.LocalDateTime.now()}] snapshot fetch failed from $snapshotUrl: ${ex.getMessage}")
+        None
+    }
+  }
+
+  private def firebaseRootFromDevicesUrl(value: String): String =
+    value.trim.stripSuffix("/").stripSuffix("/devices")
+
+  private def firebasePathUrl(path: String): String =
+    s"${firebaseRootUrl.stripSuffix("/")}/${path.stripPrefix("/")}.json${authSuffixQuery()}"
+
+  private def firebaseDeviceUrl(id: String): String =
+    s"${firebaseRootUrl.stripSuffix("/")}/devices/${URLEncoder.encode(id, StandardCharsets.UTF_8)}.json${authSuffixQuery()}"
+
   private def authSuffix(): String =
     if (firebaseAuth.trim.isEmpty) ""
     else s"?auth=${URLEncoder.encode(firebaseAuth.trim, StandardCharsets.UTF_8)}"
@@ -389,13 +589,13 @@ object ItsController {
   }
 
   private def publishOfflineDevice(): Unit = {
-    if (!firebaseEnabled || firebaseUrl.trim.isEmpty) return
+    if (!firebaseEnabled || firebaseRootUrl.trim.isEmpty) return
     val lastSeen = System.currentTimeMillis()
     val lastSeenText = lastSeenFormatter.format(Instant.ofEpochMilli(lastSeen))
     val location = currentLocation()
     val detector = yoloDetector.snapshot()
     val signal = trafficSignal.snapshot()
-    val body =
+    val bodyLegacy =
       s"""{
          |  "id": "${escapeJson(deviceId)}",
          |  "label": "${escapeJson(label)}",
@@ -439,12 +639,70 @@ object ItsController {
          |    "lng": ${location.lng}
          |  }
          |}""".stripMargin
+    val body =
+      s"""{
+         |  "id": "${escapeJson(deviceId)}",
+         |  "label": "${escapeJson(label)}",
+         |  "status": "offline",
+         |  "lastSeen": $lastSeen,
+         |  "updatedAt": $lastSeen,
+         |  "note": "${escapeJson(note)}; controller berhenti",
+         |  "location": {
+         |    "lat": ${location.lat},
+         |    "lng": ${location.lng},
+         |    "label": "${escapeJson(location.label)}",
+         |    "source": "${escapeJson(location.source)}",
+         |    "accuracyM": ${location.accuracyM}
+         |  },
+         |  "camera": {
+         |    "enabled": ${cameraEnabled},
+         |    "mode": "${escapeJson(cameraMode)}",
+         |    "tunnelUrl": "${escapeJson(if (cameraEnabled) cameraPublicUrl else "")}",
+         |    "status": "offline",
+         |    "ready": false,
+         |    "updatedAt": $lastSeen,
+         |    "note": "controller offline"
+         |  },
+         |  "traffic": {
+         |    "current": "${escapeJson(signal.color)}",
+         |    "red": ${signal.color == "red"},
+         |    "yellow": ${signal.color == "yellow"},
+         |    "green": ${signal.color == "green"},
+         |    "startedAt": ${signal.startedAt},
+         |    "durationSec": ${signal.durationSec},
+         |    "source": "${escapeJson(signal.source)}",
+         |    "gpioBackend": "${escapeJson(signal.gpioBackend)}",
+         |    "gpioReady": ${signal.gpioReady},
+         |    "gpioNote": "${escapeJson(signal.gpioNote)}"
+         |  },
+         |  "objectDetection": {
+         |    "source": "raspberry-yolo",
+         |    "status": "${escapeJson(detector.status)}",
+         |    "note": "controller offline",
+         |    "updatedAt": ${detector.updatedAt},
+         |    "fps": 0,
+         |    "frameWidth": ${detector.frameWidth},
+         |    "frameHeight": ${detector.frameHeight},
+         |    "cameraSource": "${escapeJson(yoloConfig.cameraSource)}",
+         |    "confidence": ${formatDouble(yoloConfig.confidenceThreshold)},
+         |    "outputShape": "${escapeJson(detector.outputShape)}",
+         |    "car": ${detector.vehicleBreakdown.car},
+         |    "motorcycle": ${detector.vehicleBreakdown.motorcycle},
+         |    "truck": ${detector.vehicleBreakdown.truck},
+         |    "bus": ${detector.vehicleBreakdown.bus},
+         |    "bicycle": ${detector.vehicleBreakdown.bicycle},
+         |    "total": ${detector.vehicleBreakdown.total},
+         |    "objectCount": 0,
+         |    "detections": []
+         |  }
+         |}""".stripMargin
     try publishFirebaseDevice(body)
     catch { case _: Throwable => () }
   }
 
   private def currentLocation(): GeoLocation = {
     val baseLocation = manualLocation()
+      .orElse(gpsLocation())
       .orElse(firebaseLocation())
       .orElse(ipGeolocation())
       .getOrElse(GeoLocation(
@@ -465,6 +723,99 @@ object ItsController {
       lng <- explicitLongitude
       if lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180
     } yield GeoLocation(lat, lng, "env", "ITS_LATITUDE/ITS_LONGITUDE", 0)
+  }
+
+  private def gpsLocation(): Option[GeoLocation] = {
+    if (!gpsEnabled || gpsDevices.isEmpty) return None
+    val now = System.currentTimeMillis()
+    cachedGpsLocation match {
+      case Some((updatedAt, location)) if now - updatedAt < gpsCacheMs =>
+        return Some(location)
+      case _ => ()
+    }
+    if (now - lastGpsAttemptAt < gpsCacheMs) return cachedGpsLocation.map(_._2)
+    lastGpsAttemptAt = now
+
+    val fresh = gpsDevices.view.flatMap(readGpsDevice).headOption
+    fresh.foreach(location => cachedGpsLocation = Some(now -> location))
+    fresh
+  }
+
+  private def readGpsDevice(device: String): Option[GeoLocation] = {
+    val path = Paths.get(device)
+    if (!Files.exists(path)) return None
+    configureGpsDevice(device)
+    val lines = readGpsLines(device)
+    val parsed = lines.view.flatMap(line => parseNmeaLocation(line, device)).headOption
+    if (parsed.isEmpty && lines.exists(_.startsWith("$"))) {
+      println(s"[${java.time.LocalDateTime.now()}] GPS $device aktif tetapi belum fix satelit")
+    }
+    parsed
+  }
+
+  private def configureGpsDevice(device: String): Unit = {
+    try {
+      val process = new ProcessBuilder("stty", "-F", device, gpsBaud.toString, "raw", "-echo")
+        .redirectErrorStream(true)
+        .start()
+      process.waitFor(1, TimeUnit.SECONDS)
+      if (process.isAlive) process.destroyForcibly()
+    } catch {
+      case _: Exception => ()
+    }
+  }
+
+  private def readGpsLines(device: String): Seq[String] = {
+    try {
+      val process = new ProcessBuilder("timeout", s"${gpsReadSeconds}s", "cat", device)
+        .redirectErrorStream(true)
+        .start()
+      val body = new String(process.getInputStream.readAllBytes(), StandardCharsets.UTF_8)
+      process.waitFor((gpsReadSeconds + 2).toLong, TimeUnit.SECONDS)
+      if (process.isAlive) process.destroyForcibly()
+      body.split("\\r?\\n").toSeq.map(_.trim).filter(_.nonEmpty).take(120)
+    } catch {
+      case ex: Exception =>
+        println(s"[${java.time.LocalDateTime.now()}] GPS read failed from $device: ${ex.getMessage}")
+        Seq.empty
+    }
+  }
+
+  private def parseNmeaLocation(line: String, device: String): Option[GeoLocation] = {
+    val clean = line.trim
+    if (!clean.startsWith("$")) return None
+    val fields = clean.takeWhile(_ != '*').stripPrefix("$").split(",", -1)
+    val sentence = fields.headOption.getOrElse("")
+    if (sentence.endsWith("RMC") && fields.length > 6 && fields(2) == "A") {
+      for {
+        lat <- parseNmeaCoordinate(fields(3), fields(4))
+        lng <- parseNmeaCoordinate(fields(5), fields(6))
+        if lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180
+      } yield GeoLocation(lat, lng, "gps", s"GPS fix $device", 10)
+    } else if (sentence.endsWith("GGA") && fields.length > 7 && parseInt(fields(6)).exists(_ > 0)) {
+      val satellites = parseInt(fields(7)).getOrElse(0)
+      for {
+        lat <- parseNmeaCoordinate(fields(2), fields(3))
+        lng <- parseNmeaCoordinate(fields(4), fields(5))
+        if lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180
+      } yield GeoLocation(lat, lng, "gps", s"GPS ${satellites} satelit", if (satellites >= 4) 8 else 25)
+    } else {
+      None
+    }
+  }
+
+  private def parseNmeaCoordinate(value: String, hemisphere: String): Option[Double] = {
+    val hemi = hemisphere.trim.toUpperCase(Locale.ROOT)
+    if (value.trim.isEmpty || hemi.isEmpty) return None
+    val degDigits = if (hemi == "N" || hemi == "S") 2 else 3
+    if (value.length <= degDigits) return None
+    for {
+      degrees <- parseDouble(value.take(degDigits))
+      minutes <- parseDouble(value.drop(degDigits))
+    } yield {
+      val sign = if (hemi == "S" || hemi == "W") -1.0 else 1.0
+      sign * (degrees + minutes / 60.0)
+    }
   }
 
   private def ipGeolocation(): Option[GeoLocation] = {
@@ -535,8 +886,8 @@ object ItsController {
   }
 
   private def firebaseLocation(): Option[GeoLocation] = {
-    if (!firebaseEnabled || firebaseUrl.trim.isEmpty) return None
-    val nodePath = s"${firebaseUrl.stripSuffix("/")}/${deviceId}.json${authSuffixQuery()}"
+    if (!firebaseEnabled || firebaseRootUrl.trim.isEmpty) return None
+    val nodePath = firebaseDeviceUrl(deviceId)
     try {
       val request = HttpRequest
         .newBuilder(URI.create(nodePath))
@@ -662,6 +1013,10 @@ object ItsController {
 
   private def parseDouble(value: String): Option[Double] =
     try Some(value.toDouble)
+    catch { case _: NumberFormatException => None }
+
+  private def parseInt(value: String): Option[Int] =
+    try Some(value.trim.toInt)
     catch { case _: NumberFormatException => None }
 
   private def unescapeJsonString(value: String): String =

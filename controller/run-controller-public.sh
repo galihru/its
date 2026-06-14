@@ -4,11 +4,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 JAR_FILE="${ITS_CONTROLLER_JAR:-$SCRIPT_DIR/ItsController.jar}"
 . "$SCRIPT_DIR/controller-classpath.sh"
-LOCAL_PORT="${ITS_CAMERA_WEBRTC_PORT:-8889}"
+LOCAL_PORT="${ITS_CAMERA_WEBRTC_PORT:-8080}"
 CAMERA_PATH="${ITS_CAMERA_WEBRTC_PATH:-cam/}"
 CAMERA_HEALTH_PATH="${ITS_CAMERA_STREAM_HEALTH_PATH:-$CAMERA_PATH}"
 RETRY_DELAY_SECONDS="${ITS_TUNNEL_RETRY_DELAY_SECONDS:-60}"
 TUNNEL_MAX_ATTEMPTS="${ITS_TUNNEL_MAX_ATTEMPTS:-3}"
+PUBLIC_CAMERA_CHECK_SECONDS="${ITS_PUBLIC_CAMERA_CHECK_SECONDS:-30}"
+PUBLIC_CAMERA_MAX_FAILURES="${ITS_PUBLIC_CAMERA_MAX_FAILURES:-3}"
 TUNNEL_LOG="$(mktemp)"
 TUNNEL_PID=""
 PUBLIC_BASE_URL=""
@@ -142,8 +144,16 @@ wait_for_local_camera_port() {
   return 1
 }
 
-camera_mode="${ITS_CAMERA_MODE:-webrtc}"
-tunnel_enabled="${ITS_CAMERA_TUNNEL_ENABLED:-false}"
+public_camera_healthy() {
+  local url="$1"
+  if [ -z "$url" ] || ! command -v curl >/dev/null 2>&1; then
+    return 1
+  fi
+  curl -fsS --max-time 8 --range 0-1024 "$url" >/dev/null 2>&1
+}
+
+camera_mode="${ITS_CAMERA_MODE:-mjpeg}"
+tunnel_enabled="${ITS_CAMERA_TUNNEL_ENABLED:-true}"
 tunnel_provider="${ITS_CAMERA_TUNNEL_PROVIDER:-cloudflare}"
 public_camera_url="${ITS_CAMERA_WEBRTC_URL:-}"
 if [ -z "$public_camera_url" ]; then
@@ -175,13 +185,22 @@ if [ -z "$public_camera_url" ] && { [ "$camera_mode" != "webrtc" ] || [ "$tunnel
     fi
   else
     echo "Local camera stream is not reachable on port ${LOCAL_PORT}; skipping public tunnel for now." >&2
+    if [ "$tunnel_enabled" = "true" ]; then
+      echo "Tunnel mode is enabled; restarting later so camera/tunnel can recover." >&2
+      exit 1
+    fi
   fi
 fi
 
 export ITS_CAMERA_ENABLED="${ITS_CAMERA_ENABLED:-true}"
 export ITS_CAMERA_MODE="$camera_mode"
-export ITS_WEBRTC_ENABLED="${ITS_WEBRTC_ENABLED:-true}"
+if [ "$camera_mode" = "webrtc" ]; then
+  export ITS_WEBRTC_ENABLED="${ITS_WEBRTC_ENABLED:-true}"
+else
+  export ITS_WEBRTC_ENABLED="${ITS_WEBRTC_ENABLED:-false}"
+fi
 export ITS_YOLO_CAMERA_SOURCE="${ITS_YOLO_CAMERA_SOURCE:-${ITS_CAMERA_SOURCE:-${ITS_CAMERA_DEVICE:-/dev/video0}}}"
+export ITS_CAMERA_SNAPSHOT_URL="${ITS_CAMERA_SNAPSHOT_URL:-http://127.0.0.1:${LOCAL_PORT}/snapshot.jpg}"
 if [ -n "$public_camera_url" ]; then
   export ITS_CAMERA_PUBLIC_URL="$public_camera_url"
   export ITS_CAMERA_WEBRTC_URL="$public_camera_url"
@@ -193,20 +212,44 @@ fi
 echo "Camera mode: $ITS_CAMERA_MODE"
 echo "Public camera URL: ${public_camera_url:-'(firebase-webrtc-signaling)'}"
 echo "YOLO camera source: $ITS_YOLO_CAMERA_SOURCE"
+echo "Snapshot URL: $ITS_CAMERA_SNAPSHOT_URL"
 if [ -n "$public_camera_url" ] && command -v curl >/dev/null 2>&1; then
-  if ! curl -fsS --max-time 8 "$ITS_CAMERA_WEBRTC_URL" >/dev/null; then
+  if ! public_camera_healthy "$ITS_CAMERA_WEBRTC_URL"; then
     echo "Warning: public camera URL is not serving yet. Check MediaMTX/IP-camera service on 127.0.0.1:$LOCAL_PORT." >&2
+    if [ "$tunnel_enabled" = "true" ]; then
+      echo "Restarting controller to request a fresh public tunnel." >&2
+      exit 1
+    fi
   fi
 fi
 
 controller_java "$JAR_FILE" "$@" &
 JAVA_PID=$!
+LAST_PUBLIC_CHECK=0
+PUBLIC_CAMERA_FAILURES=0
 
 while kill -0 "$JAVA_PID" 2>/dev/null; do
   if [ -n "$TUNNEL_PID" ] && ! kill -0 "$TUNNEL_PID" 2>/dev/null; then
     echo "Camera tunnel stopped; stopping controller so systemd can restart it." >&2
     kill "$JAVA_PID" 2>/dev/null || true
     break
+  fi
+  if [ -n "$public_camera_url" ] && command -v curl >/dev/null 2>&1; then
+    now="$(date +%s)"
+    if [ $((now - LAST_PUBLIC_CHECK)) -ge "$PUBLIC_CAMERA_CHECK_SECONDS" ]; then
+      LAST_PUBLIC_CHECK="$now"
+      if public_camera_healthy "$public_camera_url"; then
+        PUBLIC_CAMERA_FAILURES=0
+      else
+        PUBLIC_CAMERA_FAILURES=$((PUBLIC_CAMERA_FAILURES + 1))
+        echo "Public camera health failed ${PUBLIC_CAMERA_FAILURES}/${PUBLIC_CAMERA_MAX_FAILURES}: $public_camera_url" >&2
+        if [ "$PUBLIC_CAMERA_FAILURES" -ge "$PUBLIC_CAMERA_MAX_FAILURES" ]; then
+          echo "Public camera tunnel is stale; stopping controller so systemd can obtain a new tunnel URL." >&2
+          kill "$JAVA_PID" 2>/dev/null || true
+          break
+        fi
+      fi
+    fi
   fi
   sleep 2
 done

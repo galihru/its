@@ -1,0 +1,29 @@
+{
+  "rules": {
+    ".read": true,
+    ".write": false,
+    "devices": {
+      "$deviceId": {
+        ".read": true,
+        ".write": true
+      }
+    },
+    "snapshotHistory": {
+      ".read": true,
+      ".write": true,
+      ".validate": "newData.hasChildren(['updatedAt', 'active', 'deviceId']) || newData.hasChildren(['image1']) || newData.hasChildren(['image2'])"
+    },
+    "linkDynamics": {
+      ".read": true,
+      ".write": true
+    },
+    "dynamicLinks": {
+      ".read": true,
+      ".write": true
+    },
+    "webrtc": {
+      ".read": true,
+      ".write": true
+    }
+  }
+}

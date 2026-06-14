@@ -402,7 +402,8 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
-      webSecurity: true,
+      webSecurity: false,
+      allowRunningInsecureContent: true,
     },
   });
 
@@ -468,6 +469,20 @@ app.whenReady().then(() => {
   });
   session.defaultSession.setPermissionCheckHandler((_webContents, permission) => {
     return permission === "geolocation" || permission === "media" || permission === "notifications";
+  });
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    const responseHeaders = { ...(details.responseHeaders || {}) };
+    for (const key of Object.keys(responseHeaders)) {
+      const lower = key.toLowerCase();
+      if (lower === "x-frame-options") delete responseHeaders[key];
+      if (lower === "content-security-policy" || lower === "content-security-policy-report-only") {
+        const values = responseHeaders[key];
+        responseHeaders[key] = Array.isArray(values)
+          ? values.filter((value) => !/frame-ancestors/i.test(value))
+          : values;
+      }
+    }
+    callback({ responseHeaders });
   });
 
   ipcMain.handle("its:get-current-position", readWindowsLocation);

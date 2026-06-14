@@ -26,8 +26,19 @@ const POI_ASSET_MODULES = import.meta.glob("./poi/*.{png,jpg,jpeg,webp,avif}", {
   import: "default",
 }) as Record<string, string>;
 
+const PROFILE_ASSET_MODULES = import.meta.glob("./profil/*.{png,jpg,jpeg,webp,avif}", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
 function poiAssetUrl(fileName: string): string {
   return Object.entries(POI_ASSET_MODULES).find(([path]) => path.endsWith(`/${fileName}`))?.[1] || ITS_APP_ICON;
+}
+
+function profileAssetUrl(index: number): string {
+  return Object.entries(PROFILE_ASSET_MODULES)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .at(index)?.[1] || ITS_APP_ICON;
 }
 
 function escapeMapServiceHtml(v: string): string {
@@ -46,8 +57,25 @@ const FREE_MAP_SERVICE_STACK = [
   ["Esri World Imagery", "Mode satelit memakai tile publik tanpa API key di kode aplikasi. Jika ingin 100% self-hosted, ganti sumber ini dengan server imagery milik sendiri.", "https://www.esri.com/en-us/legal/terms/full-master-agreement"],
 ] as const;
 
+const AI_SERVICE_STACK = [
+  ["YOLO ONNX", "Deteksi objek kendaraan dan objek COCO pada video/snapshot. Di website berjalan melalui ONNX Runtime Web; di Raspberry berjalan lewat OpenCV DNN.", "https://github.com/ultralytics/ultralytics"],
+  ["ONNX Runtime Web", "Runtime inference model ONNX di browser untuk overlay YOLO dan hitung kendaraan realtime.", "https://onnxruntime.ai/docs/"],
+  ["OpenCV DNN", "Runtime inference YOLO di Raspberry Pi untuk controller native, LED traffic, dan telemetry RTDB.", "https://opencv.org/license/"],
+  ["Transformers.js / Hugging Face", "Dipakai untuk fitur vision peta eksperimental yang membaca segmentasi visual saat mode CV peta diaktifkan.", "https://huggingface.co/docs/transformers.js"],
+] as const;
+
 function mapServiceStackHtml(): string {
   return FREE_MAP_SERVICE_STACK.map(([name, description, url]) => `
+    <article>
+      <strong>${escapeMapServiceHtml(name)}</strong>
+      <p>${escapeMapServiceHtml(description)}</p>
+      <a href="${escapeMapServiceHtml(url)}" target="_blank" rel="noopener">${escapeMapServiceHtml(url.replace(/^https?:\/\//, ""))}</a>
+    </article>
+  `).join("");
+}
+
+function aiServiceStackHtml(): string {
+  return AI_SERVICE_STACK.map(([name, description, url]) => `
     <article>
       <strong>${escapeMapServiceHtml(name)}</strong>
       <p>${escapeMapServiceHtml(description)}</p>
@@ -98,6 +126,24 @@ type TrafficCameraDataset = {
   updatedAt?: number;
   source?: string;
   path?: string;
+};
+type SnapshotHistoryItem = {
+  id: string;
+  imageUrl: string;
+  capturedAt: number;
+  deviceId: string;
+  locationText: string;
+  frameWidth: number;
+  frameHeight: number;
+  detections: YoloDetection[];
+  analyzed?: boolean;
+};
+type ProfileMember = {
+  name: string;
+  prodi: string;
+  posisi: string;
+  tugas: string;
+  photoUrl: string;
 };
 type ControllerUpdateInfo = {
   status?: "running" | "complete" | "error";
@@ -327,7 +373,7 @@ type ItsDesktopBridge = {
 
 const DEFAULT_CONFIG: Required<AppConfig> = {
   snapshotUrl: "./data/its-state.json",
-  refreshMs: 5000,
+  refreshMs: 10000,
 };
 
 // DEFAULT_CENTER — fallback jika tidak ada device. Akan di-override saat snapshot dimuat.
@@ -335,7 +381,10 @@ const DEFAULT_CONFIG: Required<AppConfig> = {
 const DEFAULT_CENTER: L.LatLngExpression = [-6.180487, 106.90368];
 const DEFAULT_ZOOM = 17;
 const OFFLINE_AFTER_MS = 60_000;
-const BROWSER_YOLO_FRESH_MS = 90_000;
+const CAMERA_STATUS_FRESH_MS = 75_000;
+const CAMERA_SNAPSHOT_FRESH_MS = 120_000;
+const BROWSER_YOLO_INTERVAL_MS = 10_000;
+const ENABLE_AUTO_MAP_VISION = false;
 const FIREBASE_DEVICES_URL =
   "https://itstelkom-default-rtdb.asia-southeast1.firebasedatabase.app/devices.json";
 const FIREBASE_ROOT_URL = FIREBASE_DEVICES_URL.replace(/\/devices\.json$/, "");
@@ -359,6 +408,39 @@ const VISION_FEATURE_CACHE_STORAGE_KEY = "its-map-vision-features:v2";
 const VISION_FEATURE_CACHE_LIMIT = 54;
 const VISION_FEATURE_CACHE_MAX_AGE = 1000 * 60 * 60 * 24 * 45;
 const LAST_DEVICE_POSITIONS_STORAGE_KEY = "its-web-device-positions:v1";
+const SNAPSHOT_HISTORY_STORAGE_KEY = "its-map-snapshot-history:v1";
+const SNAPSHOT_HISTORY_LIMIT = 36;
+const PROFILE_MEMBER_COUNT = 4;
+const PROFILE_MEMBERS: ProfileMember[] = [
+  {
+    name: "Hanifa Septhi Larasati",
+    prodi: "Belum diisi",
+    posisi: "Pencipta aplikasi",
+    tugas: "Merancang konsep, alur aplikasi, dan validasi fitur ITS Maps.",
+    photoUrl: profileAssetUrl(0),
+  },
+  {
+    name: "Nama anggota 2",
+    prodi: "Belum diisi",
+    posisi: "Belum diisi",
+    tugas: "Belum diisi",
+    photoUrl: profileAssetUrl(1),
+  },
+  {
+    name: "Nama anggota 3",
+    prodi: "Belum diisi",
+    posisi: "Belum diisi",
+    tugas: "Belum diisi",
+    photoUrl: profileAssetUrl(2),
+  },
+  {
+    name: "Nama anggota 4",
+    prodi: "Belum diisi",
+    posisi: "Belum diisi",
+    tugas: "Belum diisi",
+    photoUrl: profileAssetUrl(3),
+  },
+];
 
 // ─── DOM bootstrap ──────────────────────────────────────────────
 
@@ -742,13 +824,17 @@ if (staticRoute) {
     device: null as DeviceRecord | null,
     devices: [] as DeviceRecord[],
     knownDevicePositions: loadKnownDevicePositions(),
+    snapshotHistoryItems: [] as SnapshotHistoryItem[],
     snapshotCache: new Map<string, TrafficCameraDataset>(),
+    snapshotHistoryYoloBusy: false,
+    lastSnapshotHistoryWriteErrorAt: 0,
     splashReady: false,
     refreshTimer: 0,
     refreshBusy: false,
     hlsScriptPromise: null as Promise<void> | null,
     hlsInstances: new WeakMap<HTMLVideoElement, any>(),
     videoYoloTimer: 0,
+    videoYoloHost: null as HTMLElement | null,
     videoYoloBusy: false,
     videoYoloStatus: "idle" as BrowserYoloStatus,
     videoYoloNote: "",
@@ -811,7 +897,11 @@ if (staticRoute) {
   // ─── Tile layers ────────────────────────────────────────────────
 
   const CARTO_TILE_URL = "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
-  const CARTO_ATTRIBUTION = '<button type="button" class="map-license-link" data-map-license>Lisensi Peta</button>';
+  const CARTO_ATTRIBUTION = [
+    '<button type="button" class="map-license-link" data-map-license>Lisensi Peta</button>',
+    '<span class="map-license-separator" aria-hidden="true">|</span>',
+    '<button type="button" class="map-license-link" data-ai-license>Lisensi AI</button>',
+  ].join(" ");
 
   const streetLayer = L.tileLayer(CARTO_TILE_URL, {
     maxZoom: 20,
@@ -984,7 +1074,7 @@ if (staticRoute) {
     cemetery: { icon: "Cem", color: "#64748b" },
     transport: { icon: "Bus", color: "#0284c7" },
     monument: { icon: "Mon", color: "#a16207" },
-    other: { icon: "POI", color: "#475569" },
+    other: { icon: "•", color: "#475569" },
   };
 
   const POI_SPRITES: Partial<Record<PoiKind, { image: string; x: number; y: number }>> = {
@@ -1054,6 +1144,8 @@ if (staticRoute) {
     const visual = poiVisual(poi.kind);
     const sprite = POI_SPRITES[poi.kind];
     const width = Math.max(size + 16, 24 + visual.icon.length * 5);
+    const hitWidth = Math.max(44, width);
+    const hitHeight = Math.max(44, size + 10);
     const spriteHtml = sprite
       ? `<span class="poi-marker-sprite" style="--poi-sprite:url('${escapeHtml(sprite.image)}'); --poi-sprite-x:${sprite.x}%; --poi-sprite-y:${sprite.y}%;"></span>`
       : "";
@@ -1063,8 +1155,8 @@ if (staticRoute) {
     ${spriteHtml}
     <span class="poi-marker-glyph">${escapeHtml(visual.icon)}</span>
   </div>`,
-      iconSize: [width, size + 10],
-      iconAnchor: [Math.round(width / 2), Math.round((size + 10) / 2)],
+      iconSize: [hitWidth, hitHeight],
+      iconAnchor: [Math.round(hitWidth / 2), Math.round(hitHeight / 2)],
     });
   }
 
@@ -1744,7 +1836,7 @@ if (staticRoute) {
 
       const keep = new Set<string>();
       const iconSize = poiMarkerSizeByZoom();
-      finalPois.forEach((poi) => {
+      finalPois.filter((poi) => poi.kind !== "other").forEach((poi) => {
         keep.add(poi.id);
         state.poiData.set(poi.id, poi);
         const existing = state.poiMarkers.get(poi.id);
@@ -1761,6 +1853,7 @@ if (staticRoute) {
           const el = marker.getElement() as HTMLElement | null;
           if (el) el.style.display = '';
           state.poiMarkers.set(poi.id, marker);
+          setMarkerA11y(marker, `${poi.title}, kategori ${poi.kind}. Buka detail lokasi.`);
           return;
         }
         existing.setLatLng([poi.lat, poi.lng]);
@@ -1769,6 +1862,7 @@ if (staticRoute) {
         existing.on("click", () => handlePoiClick(poi));
         const el2 = existing.getElement() as HTMLElement | null;
         if (el2) el2.style.display = '';
+        setMarkerA11y(existing, `${poi.title}, kategori ${poi.kind}. Buka detail lokasi.`);
       });
 
       // Remove stale POI markers
@@ -2193,34 +2287,6 @@ if (staticRoute) {
     };
   }
 
-  function makeRoadArrowIcon(bearing: number, road: RoadGuideRecord): L.DivIcon {
-    const cls = roadRenderClass(road);
-    return L.divIcon({
-      className: "road-guide-arrow-icon",
-      html: `<span class="road-guide-arrow road-guide-${cls} road-guide-${road.roadType}" style="--road-bearing:${bearing}deg"></span>`,
-      iconSize: [18, 18],
-      iconAnchor: [9, 9],
-    });
-  }
-
-  function makeRoadTypeIcon(road: RoadGuideRecord): L.DivIcon {
-    const label = road.roadType === "expressway"
-      ? "TOL"
-      : road.roadType === "avenue"
-        ? "AVE"
-        : road.roadType === "foot"
-          ? "WALK"
-          : road.roadType === "service"
-            ? "SRV"
-            : "JLN";
-    return L.divIcon({
-      className: "road-guide-type-icon",
-      html: `<span class="road-guide-type road-type-${road.roadType}">${label}</span>`,
-      iconSize: [1, 1],
-      iconAnchor: [0, 0],
-    });
-  }
-
   function makeRoundaboutIcon(road: RoadGuideRecord): L.DivIcon {
     const label = road.name || road.ref || "Bundaran";
     return L.divIcon({
@@ -2241,16 +2307,6 @@ if (staticRoute) {
     });
   }
 
-  function makeRoadNameIcon(name: string, bearing: number): L.DivIcon {
-    const readableBearing = bearing > 90 && bearing < 270 ? bearing + 180 : bearing;
-    return L.divIcon({
-      className: "road-guide-name-icon",
-      html: `<span style="--road-label-bearing:${readableBearing}deg">${escapeHtml(name)}</span>`,
-      iconSize: [1, 1],
-      iconAnchor: [0, 0],
-    });
-  }
-
   function makeWaterNameIcon(name: string, bearing: number): L.DivIcon {
     const readableBearing = bearing > 90 && bearing < 270 ? bearing + 180 : bearing;
     return L.divIcon({
@@ -2259,21 +2315,6 @@ if (staticRoute) {
       iconSize: [1, 1],
       iconAnchor: [0, 0],
     });
-  }
-
-  function roadGuideSamplePoints(points: L.LatLng[], maxCount: number): { latlng: L.LatLng; bearing: number }[] {
-    if (points.length < 2 || maxCount <= 0) return [];
-    const samples: { latlng: L.LatLng; bearing: number }[] = [];
-    const step = Math.max(1, Math.floor((points.length - 1) / Math.max(1, maxCount)));
-    for (let i = step; i < points.length - 1 && samples.length < maxCount; i += step) {
-      const a = points[i - 1];
-      const b = points[i];
-      samples.push({
-        latlng: L.latLng((a.lat + b.lat) / 2, (a.lng + b.lng) / 2),
-        bearing: computeBearing(a.lat, a.lng, b.lat, b.lng),
-      });
-    }
-    return samples;
   }
 
   async function fetchRoadGuidesForBounds(bounds: L.LatLngBounds): Promise<RoadGuideBundle> {
@@ -2464,7 +2505,7 @@ if (staticRoute) {
         return weight[ca] - weight[cb];
       })
       .slice(0, limit)
-      .forEach((road, index) => {
+      .forEach((road) => {
         const cls = roadRenderClass(road);
         if (road.isRoundabout && isClosedGuideRing(road.points)) {
           L.polygon(road.points, roadRoundaboutGreenStyle()).addTo(state.roadGuideLayer as L.LayerGroup);
@@ -2496,33 +2537,8 @@ if (staticRoute) {
         if (road.roadType === "avenue" || road.roadType === "expressway") {
           L.polyline(road.points, roadLaneDividerStyle(road)).addTo(state.roadGuideLayer as L.LayerGroup);
         }
-        const mid = roadGuideMidpoint(road.points);
-        if (!mid) return;
-        const shouldShowArrow = road.oneway || cls === "major" || index % 2 === 0;
-        if (shouldShowArrow) {
-          const arrowCount = road.roadType === "avenue" || road.roadType === "expressway" ? 3 : road.oneway ? 2 : 1;
-          roadGuideSamplePoints(road.points, arrowCount).forEach((sample) => {
-            L.marker(sample.latlng, {
-              icon: makeRoadArrowIcon(sample.bearing, road),
-              interactive: false,
-              zIndexOffset: 112,
-            }).addTo(state.roadGuideLayer as L.LayerGroup);
-          });
-        }
-        if (road.name && zoom >= 16 && index % (zoom >= 18 ? 2 : 4) === 0) {
-          L.marker(mid.latlng, {
-            icon: makeRoadNameIcon(road.name, mid.bearing),
-            interactive: false,
-            zIndexOffset: 109,
-          }).addTo(state.roadGuideLayer as L.LayerGroup);
-        }
-        if (zoom >= 17 && road.roadType !== "foot" && index % (zoom >= 18 ? 3 : 5) === 0) {
-          L.marker(mid.latlng, {
-            icon: makeRoadTypeIcon(road),
-            interactive: false,
-            zIndexOffset: 108,
-          }).addTo(state.roadGuideLayer as L.LayerGroup);
-        }
+        // Basemap text already follows road geometry. Keep our guide layer visual-only
+        // so artificial AVE/JLN labels and arrows do not drift over buildings.
       });
 
     guide.crossings.slice(0, zoom >= 17 ? 80 : 38).forEach((crossing) => {
@@ -2922,6 +2938,10 @@ if (staticRoute) {
 
   async function refreshVisionLayer(force = false): Promise<void> {
     if (!state.visionLayer) state.visionLayer = L.layerGroup().addTo(map);
+    if (!ENABLE_AUTO_MAP_VISION) {
+      state.visionLayer.clearLayers();
+      return;
+    }
     if (state.baseMode !== "street" || map.getZoom() < VISION_MIN_ZOOM) {
       state.visionLayer.clearLayers();
       return;
@@ -3017,7 +3037,7 @@ if (staticRoute) {
 
     if (!state.overpassLayer) state.overpassLayer = L.layerGroup().addTo(map);
     state.overpassLayer.clearLayers();
-    finalPois.forEach((poi) => {
+    finalPois.filter((poi) => poi.kind !== "other").forEach((poi) => {
       const marker = L.marker([poi.lat, poi.lng], {
         icon: makePoiIcon(poi, poiMarkerSizeByZoom()),
         interactive: true,
@@ -3031,6 +3051,7 @@ if (staticRoute) {
       // track poi data/marker so other features can use them
       state.poiData.set(poi.id, poi);
       state.poiMarkers.set(poi.id, marker);
+      setMarkerA11y(marker, `${poi.title}, kategori ${poi.kind}. Buka detail lokasi.`);
     });
 
     updateTabletCategoryView();
@@ -3182,6 +3203,89 @@ if (staticRoute) {
     }
   }
 
+  function saveSnapshotHistoryItems(): void {
+    try {
+      localStorage.removeItem(SNAPSHOT_HISTORY_STORAGE_KEY);
+    } catch {
+      state.snapshotHistoryItems = state.snapshotHistoryItems.slice(0, Math.max(8, Math.floor(SNAPSHOT_HISTORY_LIMIT / 2)));
+    }
+  }
+
+  function clearSnapshotHistoryItems(): void {
+    state.snapshotHistoryItems = [];
+    state.snapshotHistoryYoloBusy = false;
+    saveSnapshotHistoryItems();
+  }
+
+  function snapshotHistoryLocationText(device: DeviceRecord | null): string {
+    if (!device) return "Lokasi Raspberry belum tersedia";
+    const named = device.roadName || device.roadHint || "";
+    if (named && !/mencari satelit|gps aktif|belum tersedia/i.test(named)) return named;
+    if (isValidCoordinate(device.position.lat, device.position.lng)) {
+      return `${device.position.lat.toFixed(6)}, ${device.position.lng.toFixed(6)}`;
+    }
+    return "Lokasi Raspberry belum tersedia";
+  }
+
+  function snapshotHistoryTimeText(value: number): string {
+    if (!value) return "-";
+    const date = new Date(value);
+    const time = new Intl.DateTimeFormat("id-ID", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Jakarta" }).format(date);
+    const day = new Intl.DateTimeFormat("id-ID", { day: "2-digit", month: "short", year: "numeric", timeZone: "Asia/Jakarta" }).format(date);
+    return `${time} WIB - ${day}`;
+  }
+
+  function appendSnapshotHistoryFromRaw(raw: unknown, device: DeviceRecord | null): boolean {
+    const record = objectRecord(raw);
+    const active = stringValue(record.active);
+    const source = stringValue(record.source);
+    if (source && /browser-yolo/i.test(source)) return false;
+    const keys = active && stringValue(record[active])
+      ? [active]
+      : Object.keys(record).filter((key) => /^image\d+$/i.test(key) && stringValue(record[key]));
+    if (!keys.length) return false;
+
+    let changed = false;
+    const deviceId = stringValue(record.deviceId) || device?.id || "raspberry-its";
+    keys.forEach((key) => {
+      const imageUrl = stringValue(record[key]);
+      if (!imageUrl || !isUsableSnapshotImageUrl(imageUrl)) return;
+      const capturedAt = normalizeEpoch(
+        finiteNumber(record[`${key}UpdatedAt`])
+        ?? finiteNumber(record[`${key}CapturedAt`])
+        ?? finiteNumber(record.updatedAt)
+        ?? Date.now(),
+      ) || Date.now();
+      const imageHash = hashString(`${imageUrl.slice(0, 4096)}:${imageUrl.length}`);
+      const id = `${deviceId}:${key}:${imageHash}`;
+      if (state.snapshotHistoryItems.some((item) => item.id === id)) return;
+      const item: SnapshotHistoryItem = {
+        id,
+        imageUrl,
+        capturedAt,
+        deviceId,
+        locationText: snapshotHistoryLocationText(device),
+        frameWidth: 0,
+        frameHeight: 0,
+        detections: [],
+        analyzed: false,
+      };
+      state.snapshotHistoryItems = [item, ...state.snapshotHistoryItems].slice(0, SNAPSHOT_HISTORY_LIMIT);
+      changed = true;
+    });
+    if (changed) saveSnapshotHistoryItems();
+    return changed;
+  }
+
+  function isUsableSnapshotImageUrl(value: string): boolean {
+    const url = value.trim();
+    if (!url) return false;
+    if (/^data:image\/(?:jpeg|jpg|png|webp);base64,/i.test(url)) return url.length > 1200;
+    if (/^blob:/i.test(url)) return true;
+    if (/^https?:\/\//i.test(url)) return isLikelyImageUrl(url) || /\/snapshot(?:\?|$)|\/image(?:\?|$)|\/frame(?:\?|$)/i.test(url);
+    return false;
+  }
+
   function normalizeCameraDataset(raw: unknown): TrafficCameraDataset | undefined {
     if (!raw || typeof raw !== "object") return undefined;
     const record = raw as Record<string, unknown>;
@@ -3206,6 +3310,21 @@ if (staticRoute) {
       if (!merged.path && dataset.path) merged.path = dataset.path;
     });
     return merged.snapshot1Url || merged.snapshot2Url || merged.updatedAt ? merged : undefined;
+  }
+
+  function normalizeSnapshotHistoryDataset(raw: unknown): TrafficCameraDataset | undefined {
+    const record = objectRecord(raw);
+    const image1 = stringValue(record.image1);
+    const image2 = stringValue(record.image2);
+    const updatedAt = normalizeEpoch(
+      finiteNumber(record.updatedAt)
+      ?? finiteNumber(record.image1UpdatedAt)
+      ?? finiteNumber(record.image2UpdatedAt)
+      ?? 0,
+    );
+    return image1 || image2 || updatedAt
+      ? { snapshot1Url: image1, snapshot2Url: image2, updatedAt, source: "snapshotHistory", path: "snapshotHistory" }
+      : undefined;
   }
 
   function normalizeUpdateInfo(rawRecord: Record<string, unknown>): ControllerUpdateInfo | undefined {
@@ -3308,6 +3427,33 @@ if (staticRoute) {
   function normalizeEpoch(v: number): number {
     if (!Number.isFinite(v) || v <= 0) return 0;
     return v < 1e11 ? v * 1000 : v;
+  }
+  function isFreshEpoch(v: number, maxAgeMs = CAMERA_STATUS_FRESH_MS): boolean {
+    const ts = normalizeEpoch(v);
+    return ts > 0 && Date.now() - ts <= maxAgeMs;
+  }
+  function deviceHeartbeatIsFresh(device: DeviceRecord | null): boolean {
+    return Boolean(device?.lastSeen && isFreshEpoch(device.lastSeen, OFFLINE_AFTER_MS));
+  }
+  function cameraTelemetryIsFresh(device: DeviceRecord | null): boolean {
+    if (!device) return false;
+    return [device.cameraUpdatedAt, device.detectorUpdatedAt, device.cameraDataset?.updatedAt]
+      .some((value) => isFreshEpoch(value || 0, CAMERA_STATUS_FRESH_MS));
+  }
+  function snapshotIsFresh(device: DeviceRecord | null, updatedAt?: number): boolean {
+    if (!device) return false;
+    if (!updatedAt) return deviceHeartbeatIsFresh(device);
+    return isFreshEpoch(updatedAt, CAMERA_SNAPSHOT_FRESH_MS);
+  }
+  function cacheBustMediaUrl(url: string, updatedAt?: number): string {
+    if (!url || /^data:/i.test(url) || /^blob:/i.test(url) || !updatedAt) return url;
+    try {
+      const parsed = new URL(url, window.location.href);
+      parsed.searchParams.set("its_t", String(Math.round(normalizeEpoch(updatedAt) || updatedAt)));
+      return parsed.toString();
+    } catch {
+      return url;
+    }
   }
   function formatTime(v: number): string {
     if (v <= 0) return "-";
@@ -3521,12 +3667,25 @@ if (staticRoute) {
   // tidak membungkus ulang dalam Snapshot sehingga tidak ada double-wrapping.
   function normalizeOneDevice(raw: SnapshotDevice): DeviceRecord | null {
     const rawRecord = raw as Record<string, unknown>;
+    const locationRecord = objectRecord(rawRecord.location);
+    const positionRecord = objectRecord(rawRecord.position);
+    const cameraRecord = objectRecord(rawRecord.camera);
+    const trafficRecord = objectRecord(rawRecord.traffic);
+    const objectDetectionRecord = objectRecord(rawRecord.objectDetection);
     const rawId = typeof rawRecord.id === "string" ? rawRecord.id.trim() : "";
     const id = raw.id?.trim() || rawId || "raspberry-its";
-    let lat = typeof raw.position?.lat === "number" ? raw.position.lat
-      : typeof raw.position?.y === "number" ? raw.position.y : null;
-    let lng = typeof raw.position?.lng === "number" ? raw.position.lng
-      : typeof raw.position?.x === "number" ? raw.position.x : null;
+    let lat = finiteNumber(locationRecord.lat)
+      ?? finiteNumber(locationRecord.y)
+      ?? finiteNumber(positionRecord.lat)
+      ?? finiteNumber(positionRecord.y)
+      ?? null;
+    let lng = finiteNumber(locationRecord.lng)
+      ?? finiteNumber(locationRecord.long)
+      ?? finiteNumber(locationRecord.lon)
+      ?? finiteNumber(locationRecord.x)
+      ?? finiteNumber(positionRecord.lng)
+      ?? finiteNumber(positionRecord.x)
+      ?? null;
     if (lat === null || lng === null) return null;
     if (!isValidCoordinate(lat, lng)) {
       const known = state.knownDevicePositions[id];
@@ -3537,24 +3696,63 @@ if (staticRoute) {
     }
     const safeLat = lat ?? (DEFAULT_CENTER as [number, number])[0];
     const safeLng = lng ?? (DEFAULT_CENTER as [number, number])[1];
-    const rawCameraMode = rawRecord.cameraMode;
-    const cameraUrl = raw.cameraUrl?.trim() || undefined;
-    const cameraHlsUrl = typeof rawRecord.cameraHlsUrl === "string" ? rawRecord.cameraHlsUrl.trim() || undefined : undefined;
-    const webrtcUrl = typeof rawRecord.webrtcUrl === "string" ? rawRecord.webrtcUrl.trim() || undefined : undefined;
-    const cameraStatus = typeof rawRecord.cameraStatus === "string" ? rawRecord.cameraStatus.trim() || undefined : undefined;
-    const cameraReady = typeof rawRecord.cameraReady === "boolean" ? rawRecord.cameraReady : undefined;
-    const lastSeen = normalizeEpoch(typeof raw.lastSeen === "number" ? raw.lastSeen : 0);
+    const rawCameraMode = stringValue(cameraRecord.mode) || rawRecord.cameraMode;
+    const cameraUrl = stringValue(cameraRecord.tunnelUrl)
+      || stringValue(cameraRecord.pageUrl)
+      || stringValue(cameraRecord.url)
+      || raw.cameraUrl?.trim()
+      || undefined;
+    const cameraHlsUrl = stringValue(cameraRecord.hlsUrl)
+      || (typeof rawRecord.cameraHlsUrl === "string" ? rawRecord.cameraHlsUrl.trim() || undefined : undefined);
+    const webrtcUrl = stringValue(cameraRecord.webrtcUrl)
+      || (typeof rawRecord.webrtcUrl === "string" ? rawRecord.webrtcUrl.trim() || undefined : undefined);
+    const cameraStatus = stringValue(cameraRecord.status)
+      || (typeof rawRecord.cameraStatus === "string" ? rawRecord.cameraStatus.trim() || undefined : undefined);
+    const cameraReady = typeof cameraRecord.ready === "boolean"
+      ? cameraRecord.ready
+      : typeof rawRecord.cameraReady === "boolean" ? rawRecord.cameraReady : undefined;
+    const cameraUpdatedAt = normalizeEpoch(finiteNumber(cameraRecord.updatedAt) ?? finiteNumber(rawRecord.cameraUpdatedAt) ?? finiteNumber(rawRecord.updatedAt) ?? 0);
+    const detectorUpdatedAt = normalizeEpoch(finiteNumber(objectDetectionRecord.updatedAt) ?? finiteNumber(rawRecord.detectorUpdatedAt) ?? 0);
+    const lastSeen = normalizeEpoch(finiteNumber(rawRecord.lastSeen) ?? finiteNumber(rawRecord.updatedAt) ?? 0);
     const rawStatus = isDeviceStatus(raw.status) ? raw.status : "offline";
     const controllerHeartbeatLive = rawStatus === "online" && lastSeen > 0 && Date.now() - lastSeen <= OFFLINE_AFTER_MS;
-    const cameraLooksLive = cameraStatus?.toLowerCase() === "online" || Boolean(cameraReady);
-    const status: DeviceStatus = controllerHeartbeatLive || cameraLooksLive ? "online" : "offline";
+    const status: DeviceStatus = controllerHeartbeatLive ? "online" : "offline";
     const cameraMode = isCameraMode(rawCameraMode)
       ? rawCameraMode
       : cameraUrl || webrtcUrl
         ? "mjpeg"
         : undefined;
-    const trafficDuration = finiteNumber(rawRecord.trafficDuration)
-      ?? finiteNumber(rawRecord.trafficDurationSec);
+    const nestedTrafficUpdatedAt = normalizeEpoch(
+      finiteNumber(trafficRecord.updatedAt)
+      ?? finiteNumber(trafficRecord.startedAt)
+      ?? 0,
+    );
+    const flatTrafficUpdatedAt = normalizeEpoch(
+      finiteNumber(rawRecord.trafficUpdatedAt)
+      ?? finiteNumber(rawRecord.trafficStartedAt)
+      ?? finiteNumber(rawRecord.detectorUpdatedAt)
+      ?? 0,
+    );
+    const useNestedTraffic = nestedTrafficUpdatedAt > 0
+      && (flatTrafficUpdatedAt <= 0 || nestedTrafficUpdatedAt >= flatTrafficUpdatedAt);
+    const nestedTrafficColor = stringValue(trafficRecord.current)
+      || (trafficRecord.red === true ? "red" : trafficRecord.yellow === true ? "yellow" : trafficRecord.green === true ? "green" : "");
+    const flatTrafficColor = typeof rawRecord.trafficColor === "string" ? rawRecord.trafficColor : "";
+    const trafficColorValue = useNestedTraffic
+      ? nestedTrafficColor || flatTrafficColor
+      : flatTrafficColor || nestedTrafficColor;
+    const trafficDuration = useNestedTraffic
+      ? finiteNumber(trafficRecord.durationSec)
+      ?? finiteNumber(trafficRecord.duration)
+      ?? finiteNumber(rawRecord.trafficDuration)
+      ?? finiteNumber(rawRecord.trafficDurationSec)
+      : finiteNumber(rawRecord.trafficDuration)
+      ?? finiteNumber(rawRecord.trafficDurationSec)
+      ?? finiteNumber(trafficRecord.durationSec)
+      ?? finiteNumber(trafficRecord.duration);
+    const trafficStartedAt = useNestedTraffic
+      ? finiteNumber(trafficRecord.startedAt) ?? finiteNumber(rawRecord.trafficStartedAt)
+      : finiteNumber(rawRecord.trafficStartedAt) ?? finiteNumber(trafficRecord.startedAt);
     const detectorFrameWidth = finiteNumber(rawRecord.detectorFrameWidth);
     const detectorFrameHeight = finiteNumber(rawRecord.detectorFrameHeight);
     const rawDetections = normalizeDetections(rawRecord.detections);
@@ -3568,12 +3766,13 @@ if (staticRoute) {
     const invalidBrowserYoloPayload = /browser-yolo/i.test(yoloSource)
       && rawDetections.length > 0
       && detections.length === 0;
-    const vehicleBreakdown = invalidBrowserYoloPayload ? undefined : normalizeVehicleBreakdown(rawRecord.vehicleBreakdown);
+    const vehicleBreakdown = invalidBrowserYoloPayload ? undefined : normalizeVehicleBreakdown(objectDetectionRecord) || normalizeVehicleBreakdown(rawRecord.vehicleBreakdown);
     const vehicleCount = invalidBrowserYoloPayload
       ? 0
-      : finiteNumber(rawRecord.vehicleCount)
-        ?? finiteNumber(rawRecord.vehicles)
-        ?? vehicleBreakdown?.total;
+      : finiteNumber(objectDetectionRecord.total)
+      ?? finiteNumber(rawRecord.vehicleCount)
+      ?? finiteNumber(rawRecord.vehicles)
+      ?? vehicleBreakdown?.total;
     return {
       id,
       label: raw.label?.trim() || "Raspberry Pi 5 Controller",
@@ -3584,23 +3783,23 @@ if (staticRoute) {
       cameraHlsUrl,
       cameraThumbnailUrl: typeof rawRecord.cameraThumbnailUrl === "string" ? rawRecord.cameraThumbnailUrl.trim() || undefined : undefined,
       cameraStatus,
-      cameraUpdatedAt: finiteNumber(rawRecord.cameraUpdatedAt),
+      cameraUpdatedAt,
       cameraDataset: normalizeCameraDataset(rawRecord.cameraDataset),
       cameraMode,
       webrtcEnabled: typeof rawRecord.webrtcEnabled === "boolean" ? rawRecord.webrtcEnabled : undefined,
       webrtcPath: typeof rawRecord.webrtcPath === "string" ? rawRecord.webrtcPath.trim() || undefined : undefined,
       webrtcUrl,
       cameraReady,
-      roadName: raw.roadName?.trim() || undefined,
+      roadName: raw.roadName?.trim() || stringValue(locationRecord.label) || undefined,
       roadHint: raw.roadHint?.trim() || undefined,
-      trafficColor: isTrafficColor(rawRecord.trafficColor) ? rawRecord.trafficColor : undefined,
+      trafficColor: isTrafficColor(trafficColorValue) ? trafficColorValue : undefined,
       trafficDuration,
-      trafficStartedAt: finiteNumber(rawRecord.trafficStartedAt),
+      trafficStartedAt,
       vehicleCount,
       vehicleBreakdown,
-      detectorStatus: typeof rawRecord.detectorStatus === "string" ? rawRecord.detectorStatus.trim() || undefined : undefined,
+      detectorStatus: stringValue(objectDetectionRecord.source) || (typeof rawRecord.detectorStatus === "string" ? rawRecord.detectorStatus.trim() || undefined : undefined),
       detectorNote: typeof rawRecord.detectorNote === "string" ? rawRecord.detectorNote.trim() || undefined : undefined,
-      detectorUpdatedAt: finiteNumber(rawRecord.detectorUpdatedAt),
+      detectorUpdatedAt,
       detectorFps: finiteNumber(rawRecord.detectorFps),
       detectorFrameWidth,
       detectorFrameHeight,
@@ -3609,7 +3808,7 @@ if (staticRoute) {
       detectorOutputShape: typeof rawRecord.detectorOutputShape === "string" ? rawRecord.detectorOutputShape.trim() || undefined : undefined,
       objectCount: invalidBrowserYoloPayload
         ? 0
-        : Math.max(0, Math.round(finiteNumber(rawRecord.objectCount) ?? detections.length)),
+        : Math.max(0, Math.round(finiteNumber(objectDetectionRecord.objectCount) ?? finiteNumber(objectDetectionRecord.total) ?? finiteNumber(rawRecord.objectCount) ?? detections.length)),
       detections,
       trafficSource: typeof rawRecord.trafficSource === "string" ? rawRecord.trafficSource.trim() || undefined : undefined,
       gpioBackend: typeof rawRecord.gpioBackend === "string" ? rawRecord.gpioBackend.trim() || undefined : undefined,
@@ -3696,6 +3895,15 @@ if (staticRoute) {
   ${bulb(16, 24, state.color === "yellow", active)}
   ${bulb(16, 37, state.color === "green", active)}
 </svg>`;
+  }
+
+  function setMarkerA11y(marker: L.Marker | null | undefined, label: string): void {
+    const el = marker?.getElement?.() as HTMLElement | null;
+    if (!el) return;
+    el.setAttribute("role", "button");
+    el.setAttribute("aria-label", label);
+    el.setAttribute("title", label);
+    el.tabIndex = 0;
   }
 
   function renderDeviceModal(device: DeviceRecord, traffic: TrafficState): string {
@@ -3887,11 +4095,13 @@ if (staticRoute) {
   function ensureMarker(device: DeviceRecord): void {
     const traffic = trafficStateForDevice(device);
     const size = markerSizeByZoom();
+    const hitWidth = Math.max(44, size);
+    const hitHeight = Math.max(44, Math.round(size * 1.5));
     const icon = L.divIcon({
       className: "traffic-light-marker-icon",
       html: makeTrafficLightSvg(traffic, size),
-      iconSize: [size, Math.round(size * 1.5)],
-      iconAnchor: markerAnchorBySize(size),
+      iconSize: [hitWidth, hitHeight],
+      iconAnchor: [Math.round(hitWidth / 2), hitHeight],
       popupAnchor: [0, -Math.round(size * 1.2)],
     });
     const existing = state.markers.get(device.id);
@@ -3902,9 +4112,11 @@ if (staticRoute) {
       const m = L.marker(latlng, {
         icon,
         interactive: true,
+        title: `${device.label} - buka detail traffic light`,
+        alt: `${device.label} traffic light`,
         zIndexOffset: 1000,
         riseOnHover: true,
-      }).addTo(map);
+      } as L.MarkerOptions & { alt?: string }).addTo(map);
       m.on("click", () => {
         state.device = device;
         renderCameraTile();
@@ -3912,6 +4124,7 @@ if (staticRoute) {
       });
       state.markers.set(device.id, m);
       state.prevPositionById.set(device.id, latlng);
+      setMarkerA11y(m, `${device.label}, traffic light ${traffic.color}, ${traffic.duration} detik. Buka detail perangkat.`);
       return;
     }
 
@@ -3935,6 +4148,7 @@ if (staticRoute) {
         el.style.pointerEvents = "auto";
       }
     } catch { /* ignore DOM access errors */ }
+    setMarkerA11y(existing, `${device.label}, traffic light ${traffic.color}, ${traffic.duration} detik. Buka detail perangkat.`);
 
     state.prevPositionById.set(device.id, latlng);
 
@@ -3951,13 +4165,16 @@ if (staticRoute) {
     for (const device of state.devices) {
       const marker = state.markers.get(device.id);
       if (!marker) continue;
+      const hitWidth = Math.max(44, deviceSize);
+      const hitHeight = Math.max(44, Math.round(deviceSize * 1.5));
       marker.setIcon(L.divIcon({
         className: "traffic-light-marker-icon",
         html: makeTrafficLightSvg(trafficStateForDevice(device), deviceSize),
-        iconSize: [deviceSize, Math.round(deviceSize * 1.5)],
-        iconAnchor: markerAnchorBySize(deviceSize),
+        iconSize: [hitWidth, hitHeight],
+        iconAnchor: [Math.round(hitWidth / 2), hitHeight],
         popupAnchor: [0, -Math.round(deviceSize * 1.2)],
       }));
+      setMarkerA11y(marker, `${device.label}, traffic light ${trafficStateForDevice(device).color}. Buka detail perangkat.`);
     }
 
     const poiSize = poiMarkerSizeByZoom();
@@ -3965,6 +4182,7 @@ if (staticRoute) {
       const marker = state.poiMarkers.get(id);
       if (!marker) continue;
       marker.setIcon(makePoiIcon(poi, poiSize));
+      setMarkerA11y(marker, `${poi.title}, kategori ${poi.kind}. Buka detail lokasi.`);
     }
 
     // Rescale MapLibre POI layer text size
@@ -4395,6 +4613,20 @@ if (staticRoute) {
     return hlsPageUrl(publicCameraHlsUrl(device));
   }
 
+  function publicCameraSnapshotUrl(device: DeviceRecord | null): string {
+    const pageUrl = publicCameraPageUrl(device) || publicCameraUrl(device);
+    if (!pageUrl) return "";
+    if (isLikelyImageUrl(pageUrl)) return pageUrl;
+    try {
+      const parsed = new URL(pageUrl, window.location.href);
+      parsed.pathname = "/snapshot.jpg";
+      parsed.search = "";
+      return parsed.toString();
+    } catch {
+      return "";
+    }
+  }
+
   function latestCameraSnapshot(device: DeviceRecord | null): string {
     if (!device) return "";
     const datasetShot = device.cameraDataset?.snapshot1Url?.trim()
@@ -4403,19 +4635,26 @@ if (staticRoute) {
     const thumbnail = device.cameraThumbnailUrl?.trim() || "";
     const datasetAt = device.cameraDataset?.updatedAt || 0;
     const thumbnailAt = Math.max(device.cameraUpdatedAt || 0, device.detectorUpdatedAt || 0);
-    return datasetShot && datasetAt >= thumbnailAt ? datasetShot : thumbnail || datasetShot;
+    const freshDataset = datasetShot && snapshotIsFresh(device, datasetAt);
+    const freshThumbnail = thumbnail && snapshotIsFresh(device, thumbnailAt);
+    const selected = freshDataset && datasetAt >= thumbnailAt ? datasetShot : freshThumbnail ? thumbnail : freshDataset ? datasetShot : "";
+    return cacheBustMediaUrl(selected, freshDataset && selected === datasetShot ? datasetAt : thumbnailAt);
   }
 
   function latestCameraAnalysisSnapshot(device: DeviceRecord | null): string {
+    if (!device) return "";
     const dataset = device?.cameraDataset;
+    const datasetAt = dataset?.updatedAt || 0;
+    if (!snapshotIsFresh(device, datasetAt)) return "";
     if (dataset?.source === "browser-yolo" && dataset.snapshot2Url?.trim()) {
-      return dataset.snapshot2Url.trim();
+      return cacheBustMediaUrl(dataset.snapshot2Url.trim(), datasetAt);
     }
     const hasBrowserYoloDetections = /browser-yolo/i.test(device?.trafficSource || "")
       && Boolean(device?.detections?.length);
-    return dataset?.snapshot2Url?.trim()
+    const selected = dataset?.snapshot2Url?.trim()
       || dataset?.snapshot1Url?.trim()
       || (hasBrowserYoloDetections ? "" : device?.cameraThumbnailUrl?.trim() || "");
+    return cacheBustMediaUrl(selected, datasetAt || device.cameraUpdatedAt || device.detectorUpdatedAt);
   }
 
   function cameraTitleText(device: DeviceRecord | null): string {
@@ -4433,6 +4672,7 @@ if (staticRoute) {
 
   function cameraYoloHeadline(device: DeviceRecord | null): string {
     if (!device) return "";
+    if (!device.detectorUpdatedAt || !isFreshEpoch(device.detectorUpdatedAt, CAMERA_STATUS_FRESH_MS)) return "";
     const fps = device.detectorFps && device.detectorFps > 0 ? `${device.detectorFps.toFixed(1)} FPS` : "";
     const objectCount = Math.max(0, Math.round(device.objectCount || 0));
     const vehicleCount = Math.max(0, Math.round(device.vehicleCount || device.vehicleBreakdown?.total || 0));
@@ -4441,22 +4681,24 @@ if (staticRoute) {
   }
 
   function cameraStatusTime(device: DeviceRecord | null): number {
-    return device?.cameraUpdatedAt || device?.detectorUpdatedAt || device?.lastSeen || 0;
+    return Math.max(device?.cameraUpdatedAt || 0, device?.detectorUpdatedAt || 0, device?.lastSeen || 0);
   }
 
   function deviceCameraIsLive(device: DeviceRecord | null): boolean {
     if (!device) return false;
+    const freshCamera = cameraTelemetryIsFresh(device);
+    const hasPublicMedia = Boolean(publicCameraPageUrl(device) || publicCameraHlsUrl(device));
     return Boolean(
-      device.cameraStatus?.toLowerCase() === "online"
-      || device.cameraReady
+      (hasPublicMedia && (device.cameraStatus?.toLowerCase() === "online" || device.cameraReady))
+      ||
+      (freshCamera && (device.cameraStatus?.toLowerCase() === "online" || device.cameraReady || hasPublicMedia))
       || (isWebRtcSignalingCamera(device) && state.webrtc.status === "live"),
     );
   }
 
   function deviceIsOnline(device: DeviceRecord | null): boolean {
     if (!device) return false;
-    const heartbeatLive = device.status === "online" && device.lastSeen > 0 && Date.now() - device.lastSeen <= OFFLINE_AFTER_MS;
-    return heartbeatLive || deviceCameraIsLive(device);
+    return device.status === "online" && deviceHeartbeatIsFresh(device);
   }
 
   function effectiveDeviceStatus(device: DeviceRecord | null): DeviceStatus {
@@ -4476,7 +4718,6 @@ if (staticRoute) {
       const url = new URL(value, window.location.href);
       if (/\/index\.m3u8$/i.test(url.pathname)) {
         url.pathname = url.pathname.replace(/index\.m3u8$/i, "");
-        url.search = "";
         return url.toString();
       }
     } catch {
@@ -4837,12 +5078,6 @@ if (staticRoute) {
   }
 
   function renderCameraSurface(device: DeviceRecord | null, imageClass: string, frameClass: string): string {
-    const url = publicCameraPageUrl(device);
-    if (url) {
-      return isLikelyImageUrl(url)
-        ? `<img class="${imageClass}" src="${escapeHtml(url)}" alt="Camera preview" crossorigin="anonymous">`
-        : `<iframe class="${frameClass}" src="${escapeHtml(cameraEmbedUrl(url))}" allow="autoplay; camera; microphone; fullscreen" referrerpolicy="no-referrer" loading="lazy"></iframe>`;
-    }
     const hlsUrl = publicCameraHlsUrl(device);
     if (hlsUrl) {
       const poster = latestCameraSnapshot(device);
@@ -4851,9 +5086,15 @@ if (staticRoute) {
       const pageAttr = pageUrl ? ` data-page-src="${escapeHtml(cameraEmbedUrl(pageUrl))}"` : "";
       return `<div class="hls-video-wrap">
       <video class="${imageClass} hls-video" data-hls-video data-device-id="${escapeHtml(device?.id || "")}" data-src="${escapeHtml(hlsUrl)}"${pageAttr} autoplay playsinline muted preload="auto" crossorigin="anonymous" disablepictureinpicture${posterAttr}></video>
-      <iframe class="${frameClass} hls-fallback-frame" data-hls-iframe hidden src="about:blank" allow="autoplay; camera; microphone; fullscreen" referrerpolicy="no-referrer" loading="lazy"></iframe>
+      <iframe class="${frameClass} hls-fallback-frame" data-hls-iframe hidden src="about:blank" allow="autoplay; camera; microphone; fullscreen; encrypted-media; picture-in-picture" allowfullscreen referrerpolicy="no-referrer"></iframe>
       <div class="hls-video-message" data-hls-message hidden></div>
     </div>`;
+    }
+    const url = publicCameraPageUrl(device);
+    if (url) {
+      return isLikelyImageUrl(url)
+        ? `<img class="${imageClass}" src="${escapeHtml(url)}" alt="Camera preview" crossorigin="anonymous">`
+        : `<iframe class="${frameClass}" src="${escapeHtml(cameraEmbedUrl(url))}" allow="autoplay; camera; microphone; fullscreen; encrypted-media; picture-in-picture" allowfullscreen referrerpolicy="no-referrer"></iframe>`;
     }
     if (device && isWebRtcSignalingCamera(device)) return renderWebRtcSurface(device, imageClass);
     return "";
@@ -4868,25 +5109,30 @@ if (staticRoute) {
     if (!src) return;
     const playlist = hlsPlaylistUrl(src);
     if (!playlist) return;
+    video.muted = true;
+    video.autoplay = true;
+    video.playsInline = true;
+    video.preload = "auto";
     if (video.dataset.hlsReady === "true") {
-      void video.play().catch(() => undefined);
+      playHlsVideo(video);
       return;
     }
     video.dataset.hlsReady = "true";
     const hide = () => hideHlsMessage(video);
+    video.addEventListener("loadedmetadata", hide);
     video.addEventListener("loadeddata", hide);
     video.addEventListener("canplay", hide);
     video.addEventListener("playing", hide);
     video.addEventListener("play", () => syncCustomVideoButtons(document));
     video.addEventListener("pause", () => syncCustomVideoButtons(document));
     video.addEventListener("error", () => {
-      showHlsMessage(video, "HLS live belum tersedia, mencoba ulang...");
+      showHlsMessage(video, "HLS live sedang disambungkan ulang...");
       scheduleHlsRetry(video, playlist);
     });
 
-    if (video.canPlayType("application/vnd.apple.mpegurl")) {
+    if (shouldUseNativeHls(video)) {
       video.src = playlist;
-      void video.play().catch(() => undefined);
+      playHlsVideo(video);
       return;
     }
 
@@ -4894,32 +5140,69 @@ if (staticRoute) {
       const Hls = (window as any).Hls;
       if (!Hls?.isSupported?.()) {
         video.src = playlist;
-        void video.play().catch(() => undefined);
+        playHlsVideo(video);
         return;
       }
       const hls = new Hls({
-        lowLatencyMode: true,
-        liveSyncDurationCount: 2,
-        liveMaxLatencyDurationCount: 5,
+        lowLatencyMode: false,
+        capLevelToPlayerSize: true,
+        backBufferLength: 12,
+        maxBufferLength: 18,
+        liveSyncDurationCount: 3,
+        liveMaxLatencyDurationCount: 8,
+        manifestLoadingMaxRetry: 4,
+        levelLoadingMaxRetry: 4,
+        fragLoadingMaxRetry: 4,
       });
       state.hlsInstances.set(video, hls);
-      hls.loadSource(playlist);
       hls.attachMedia(video);
+      hls.on?.(Hls.Events.MEDIA_ATTACHED, () => {
+        hls.loadSource(playlist);
+      });
+      hls.on?.(Hls.Events.MANIFEST_PARSED, () => {
+        video.dataset.hlsFatalCount = "0";
+        playHlsVideo(video);
+      });
+      hls.on?.(Hls.Events.LEVEL_LOADED, hide);
+      hls.on?.(Hls.Events.FRAG_BUFFERED, hide);
       hls.on?.(Hls.Events.ERROR, (_event: unknown, data: { fatal?: boolean; type?: string }) => {
         if (!data?.fatal) return;
-        showHlsMessage(video, "HLS live belum tersedia, mencoba ulang...");
+        const fatalCount = Number(video.dataset.hlsFatalCount || 0) + 1;
+        video.dataset.hlsFatalCount = String(fatalCount);
+        showHlsMessage(video, "HLS live sedang disambungkan ulang...", fatalCount >= 5);
         if (data.type === Hls.ErrorTypes?.NETWORK_ERROR) {
           try { hls.startLoad?.(); } catch { /* retry below */ }
+        } else if (data.type === Hls.ErrorTypes?.MEDIA_ERROR) {
+          try { hls.recoverMediaError?.(); } catch { /* retry below */ }
         }
-        scheduleHlsRetry(video, playlist);
+        scheduleHlsRetry(video, cacheBustMediaUrl(playlist, Date.now()));
       });
-      void video.play().catch(() => undefined);
+      playHlsVideo(video);
     }).catch((err) => {
       console.warn("[ITS] HLS script failed:", err);
       video.src = playlist;
       showHlsMessage(video, "hls.js tidak tersedia, mencoba native HLS...");
-      void video.play().catch(() => undefined);
+      playHlsVideo(video);
     });
+  }
+
+  function playHlsVideo(video: HTMLVideoElement): void {
+    void video.play().then(() => {
+      hideHlsMessage(video);
+      syncCustomVideoButtons(document);
+    }).catch(() => {
+      showHlsMessage(video, "Ketuk tombol play jika browser menahan autoplay.");
+      syncCustomVideoButtons(document);
+    });
+  }
+
+  function shouldUseNativeHls(video: HTMLVideoElement): boolean {
+    const canPlay = video.canPlayType("application/vnd.apple.mpegurl");
+    if (!canPlay) return false;
+    const ua = navigator.userAgent;
+    const isAppleNative = /\b(Safari|iPhone|iPad|iPod)\b/i.test(ua)
+      && !/\b(Chrome|Chromium|CriOS|Edg|OPR|Firefox|FxiOS)\b/i.test(ua);
+    return isAppleNative;
   }
 
   function scheduleHlsRetry(video: HTMLVideoElement, playlist: string): void {
@@ -4928,7 +5211,12 @@ if (staticRoute) {
     const timer = window.setTimeout(() => {
       const hls = state.hlsInstances.get(video);
       try {
-        if (hls?.startLoad) hls.startLoad();
+        if (hls?.loadSource) {
+          hls.stopLoad?.();
+          hls.loadSource(playlist);
+          hls.startLoad?.(-1);
+        }
+        else if (hls?.startLoad) hls.startLoad(-1);
         else {
           video.src = playlist;
           video.load();
@@ -4941,12 +5229,12 @@ if (staticRoute) {
     video.dataset.hlsRetryTimer = String(timer);
   }
 
-  function showHlsMessage(video: HTMLVideoElement, message: string): void {
+  function showHlsMessage(video: HTMLVideoElement, message: string, revealFallback = false): void {
     const wrap = video.closest<HTMLElement>(".hls-video-wrap");
     const messageEl = wrap?.querySelector<HTMLElement>("[data-hls-message]");
     const iframe = wrap?.querySelector<HTMLIFrameElement>("[data-hls-iframe]");
     const pageUrl = cameraEmbedUrl(usablePublicMediaUrl(video.dataset.pageSrc) || hlsPageUrl(video.dataset.src || ""));
-    if (iframe && pageUrl) {
+    if (revealFallback && iframe && pageUrl) {
       if (iframe.src !== pageUrl) iframe.src = pageUrl;
       iframe.hidden = false;
       video.classList.add("hls-fallback-hidden");
@@ -5009,6 +5297,45 @@ if (staticRoute) {
     </svg>`;
   }
 
+  function fullscreenExitSvg(): string {
+    return `<svg viewBox="0 0 16 16" fill="none" width="15" height="15" aria-hidden="true">
+      <path d="M6 1.5V6H1.5M14.5 6H10V1.5M10 14.5V10h4.5M1.5 10H6v4.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+    </svg>`;
+  }
+
+  function cameraAiIconSvg(): string {
+    return `<svg viewBox="0 0 28 28" fill="none" width="24" height="24" aria-hidden="true">
+      <path d="M5 10.5h3.1l1.6-2.2h5.2l1.6 2.2H20a3 3 0 0 1 3 3V19a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3v-5.5a3 3 0 0 1 3-3Z" fill="currentColor" opacity=".96"/>
+      <circle cx="12.5" cy="16.2" r="4.1" fill="#fff" opacity=".92"/>
+      <circle cx="12.5" cy="16.2" r="2.2" fill="#0f172a" opacity=".72"/>
+      <path d="M22.2 3.2l.8 2.1 2.1.8-2.1.8-.8 2.1-.8-2.1-2.1-.8 2.1-.8.8-2.1Z" fill="#38bdf8"/>
+      <path d="M18.2 5.2l.45 1.1 1.1.45-1.1.45-.45 1.1-.45-1.1-1.1-.45 1.1-.45.45-1.1Z" fill="#facc15"/>
+    </svg>`;
+  }
+
+  function cameraPlainIconSvg(): string {
+    return `<svg viewBox="0 0 24 24" fill="none" width="24" height="24" aria-hidden="true">
+      <path d="M4 8.5h3.1l1.55-2h6.7l1.55 2H20a2 2 0 0 1 2 2v6.8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-6.8a2 2 0 0 1 2-2Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+      <circle cx="12" cy="14" r="3.3" stroke="currentColor" stroke-width="1.8"/>
+    </svg>`;
+  }
+
+  function cameraImageIconSvg(): string {
+    return `<svg viewBox="0 0 24 24" fill="none" width="24" height="24" aria-hidden="true">
+      <rect x="4" y="5" width="16" height="14" rx="2" stroke="currentColor" stroke-width="1.8"/>
+      <circle cx="9" cy="10" r="1.5" fill="currentColor"/>
+      <path d="M6.8 16.2l3.1-3.1 2.5 2.2 2.1-2.1 2.7 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>`;
+  }
+
+  function clockIconSvg(): string {
+    return `<svg viewBox="0 0 16 16" fill="none" width="14" height="14" aria-hidden="true"><circle cx="8" cy="8" r="5.6" stroke="currentColor" stroke-width="1.5"/><path d="M8 4.8v3.5l2.2 1.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
+  }
+
+  function pinIconSvg(): string {
+    return `<svg viewBox="0 0 16 16" fill="none" width="14" height="14" aria-hidden="true"><path d="M8 14s4.5-4 4.5-7.2A4.4 4.4 0 0 0 8 2.4a4.4 4.4 0 0 0-4.5 4.4C3.5 10 8 14 8 14Z" stroke="currentColor" stroke-width="1.45"/><circle cx="8" cy="6.8" r="1.6" stroke="currentColor" stroke-width="1.45"/></svg>`;
+  }
+
   function customVideoRoot(button: HTMLElement): ParentNode {
     return button.closest(".video-fullscreen-stage, .m-its-camera-box, .camera-card, .custom-video-card") || document;
   }
@@ -5024,42 +5351,55 @@ if (staticRoute) {
   }
 
   function applyVideoAmbientFromSnapshot(host: HTMLElement, device: DeviceRecord | null): void {
+    const liveVideo = Array.from(host.querySelectorAll<HTMLVideoElement>("video"))
+      .find((video) => !video.classList.contains("hls-fallback-hidden")
+        && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA
+        && video.videoWidth > 0
+        && video.videoHeight > 0);
+    if (liveVideo && applyVideoAmbientFromSource(host, liveVideo)) return;
+
     const src = latestCameraSnapshot(device);
     if (!src) return;
     const image = new Image();
     image.crossOrigin = "anonymous";
     image.onload = () => {
-      try {
-        const canvas = document.createElement("canvas");
-        canvas.width = 36;
-        canvas.height = 20;
-        const ctx = canvas.getContext("2d", { willReadFrequently: true });
-        if (!ctx) return;
-        ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-        const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-        let r = 0, g = 0, b = 0, count = 0;
-        let br = 0, bg = 0, bb = 0, bright = 0;
-        for (let i = 0; i < data.length; i += 16) {
-          const alpha = data[i + 3] / 255;
-          if (alpha < 0.12) continue;
-          const cr = data[i];
-          const cg = data[i + 1];
-          const cb = data[i + 2];
-          const luminance = cr * 0.2126 + cg * 0.7152 + cb * 0.0722;
-          if (luminance < 14) continue;
-          r += cr; g += cg; b += cb; count += 1;
-          if (luminance > bright) {
-            bright = luminance; br = cr; bg = cg; bb = cb;
-          }
-        }
-        if (!count) return;
-        host.style.setProperty("--video-ambient-a", `rgb(${Math.round(r / count)}, ${Math.round(g / count)}, ${Math.round(b / count)})`);
-        host.style.setProperty("--video-ambient-b", `rgb(${br}, ${bg}, ${bb})`);
-      } catch {
-        // Cross-origin images can reject canvas sampling; keep the fallback ambient color.
-      }
+      applyVideoAmbientFromSource(host, image);
     };
     image.src = src;
+  }
+
+  function applyVideoAmbientFromSource(host: HTMLElement, source: CanvasImageSource): boolean {
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = 36;
+      canvas.height = 20;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (!ctx) return false;
+      ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+      const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      let r = 0, g = 0, b = 0, count = 0;
+      let br = 0, bg = 0, bb = 0, bright = 0;
+      for (let i = 0; i < data.length; i += 16) {
+        const alpha = data[i + 3] / 255;
+        if (alpha < 0.12) continue;
+        const cr = data[i];
+        const cg = data[i + 1];
+        const cb = data[i + 2];
+        const luminance = cr * 0.2126 + cg * 0.7152 + cb * 0.0722;
+        if (luminance < 14) continue;
+        r += cr; g += cg; b += cb; count += 1;
+        if (luminance > bright) {
+          bright = luminance; br = cr; bg = cg; bb = cb;
+        }
+      }
+      if (!count) return false;
+      host.style.setProperty("--video-ambient-a", `rgb(${Math.round(r / count)}, ${Math.round(g / count)}, ${Math.round(b / count)})`);
+      host.style.setProperty("--video-ambient-b", `rgb(${br}, ${bg}, ${bb})`);
+      return true;
+    } catch {
+      // Cross-origin frames can reject canvas sampling; keep the fallback ambient color.
+      return false;
+    }
   }
 
   function setIframePlayback(root: ParentNode, iframe: HTMLIFrameElement, playing: boolean): void {
@@ -5134,8 +5474,8 @@ if (staticRoute) {
     state.cameraPreview.innerHTML = !webrtc && url && !hlsUrl && isLikelyImageUrl(url)
       ? `<img class="camera-thumb-img" src="${escapeHtml(url)}" alt="Camera preview">`
       : device && (webrtc || url || hlsUrl)
-        ? `<div class="camera-live-badge"><span data-webrtc-dot data-status="${state.webrtc.status}"></span>LIVE</div>`
-        : "";
+        ? `<span class="camera-ai-icon">${cameraPlainIconSvg()}</span><div class="camera-live-badge"><span data-webrtc-dot data-status="${state.webrtc.status}"></span>LIVE</div>`
+        : `<span class="camera-ai-icon">${cameraPlainIconSvg()}</span>`;
     syncCameraViews(device);
   }
 
@@ -5264,7 +5604,7 @@ if (staticRoute) {
       <div class="custom-video-status">${escapeHtml(statusText || "Menunggu frame video live...")}</div>
       <div class="custom-video-live"><span></span>${cameraLive ? "LIVE" : "OFFLINE"}</div>
       ${cameraSurface}
-      <canvas class="camera-yolo-canvas" data-video-yolo-canvas aria-hidden="true"></canvas>
+      <canvas class="camera-yolo-canvas" data-video-yolo-canvas data-yolo-fit="contain" aria-hidden="true"></canvas>
       <div class="camera-popup-controls">
         <button type="button" data-custom-video-play aria-label="Putar video">${playSvg()}</button>
         <button type="button" data-popup-fullscreen aria-label="Fullscreen">${fullscreenSvg()}</button>
@@ -5302,10 +5642,11 @@ if (staticRoute) {
     const statusText = videoSurfaceStatusText(activeDevice);
     const titleText = cameraTitleText(activeDevice);
     const descriptionText = cameraDescriptionText(activeDevice);
+    const initialStatusLine = statusText || "AI YOLO siap memproses video";
     const cameraLive = deviceCameraIsLive(activeDevice);
     const overlay = document.createElement("div");
     overlay.id = "video-fullscreen-modal";
-    overlay.className = "video-fullscreen";
+    overlay.className = "video-fullscreen video-fullscreen-landscape";
     overlay.style.setProperty("--video-ambient-a", ambient);
     overlay.innerHTML = `
   <div class="video-fullscreen-shell">
@@ -5313,19 +5654,26 @@ if (staticRoute) {
       <div class="video-fullscreen-ambient" aria-hidden="true"></div>
       <div class="video-fullscreen-surface" data-video-surface>
         ${surface || `<div class="video-fullscreen-empty">Kamera realtime belum tersedia</div>`}
-        <canvas class="video-yolo-canvas" data-video-yolo-canvas aria-hidden="true"></canvas>
+        <canvas class="video-yolo-canvas" data-video-yolo-canvas data-yolo-fit="cover" aria-hidden="true"></canvas>
       </div>
       <button type="button" class="video-fullscreen-status video-fullscreen-title" data-video-title-toggle aria-expanded="false">
         <span class="webrtc-dot" data-status="${state.webrtc.status}"></span>
-        <strong>${escapeHtml(titleText || "Video Realtime")}</strong>
+        <span class="video-fullscreen-title-copy">
+          <strong data-video-title-text>${escapeHtml(titleText || "Video Realtime")}</strong>
+          <span data-video-title-message aria-live="polite">${escapeHtml(initialStatusLine)}</span>
+        </span>
       </button>
-      <div class="video-fullscreen-description" data-video-description hidden>${escapeHtml(descriptionText)}</div>
+      <div class="video-fullscreen-description" data-video-description hidden>
+        <strong>${escapeHtml(titleText || "Video Realtime")}</strong>
+        <p data-video-description-copy>${escapeHtml(descriptionText)}</p>
+        <p data-video-status-detail>${escapeHtml(initialStatusLine)}</p>
+      </div>
       <div class="video-fullscreen-live" data-live-state="${cameraLive ? "online" : "offline"}"><span></span>${cameraLive ? "LIVE" : "OFFLINE"}</div>
-      <div class="video-fullscreen-caption" data-video-yolo-note>${escapeHtml(statusText || "AI YOLO siap memproses video")}</div>
+      <div class="video-fullscreen-caption" data-video-yolo-note hidden>${escapeHtml(initialStatusLine)}</div>
       <button type="button" class="video-fullscreen-play" data-custom-video-play aria-label="Putar video">${playSvg()}</button>
       <div class="video-fullscreen-controls">
         <button type="button" class="video-fullscreen-ai" data-video-ai>AI</button>
-        <button type="button" class="video-fullscreen-close" data-video-close aria-label="Keluar fullscreen">${fullscreenSvg()}</button>
+        <button type="button" class="video-fullscreen-close" data-video-close aria-label="Keluar fullscreen">${fullscreenExitSvg()}</button>
       </div>
     </section>
     <aside class="video-ai-panel" aria-label="AI kendaraan">
@@ -5342,13 +5690,20 @@ if (staticRoute) {
   </div>
 `;
     document.body.appendChild(overlay);
+    const fullscreenRequest = overlay.requestFullscreen?.();
+    if (fullscreenRequest?.catch) void fullscreenRequest.catch(() => undefined);
     mapRoot.classList.add("hidden");
     document.getElementById("m-bottom-nav")?.classList.add("hidden");
 
     let scale = 1;
+    let ambientTimer = 0;
     const pointers = new Map<number, PointerEvent>();
     let startDistance = 0;
     let startScale = 1;
+    let swipeStartX = 0;
+    let swipeStartY = 0;
+    let swipeCloseX = 0;
+    let swipingClose = false;
     const surfaceEl = overlay.querySelector<HTMLElement>("[data-video-surface]");
     const shellEl = overlay.querySelector<HTMLElement>(".video-fullscreen-shell");
     const aiPanel = overlay.querySelector<HTMLElement>(".video-ai-panel");
@@ -5362,8 +5717,13 @@ if (staticRoute) {
     };
     const closeVideo = () => {
       overlay.classList.remove("open", "ai-open");
+      window.clearInterval(ambientTimer);
       stopVideoBrowserYolo();
       stopHlsVideos(overlay);
+      if (document.fullscreenElement === overlay) {
+        const fullscreenExit = document.exitFullscreen?.();
+        if (fullscreenExit?.catch) void fullscreenExit.catch(() => undefined);
+      }
       try { (screen.orientation as any)?.unlock?.(); } catch { /* orientation lock is optional */ }
       mapRoot.classList.remove("hidden");
       document.getElementById("m-bottom-nav")?.classList.remove("hidden");
@@ -5390,6 +5750,10 @@ if (staticRoute) {
     surfaceEl?.addEventListener("pointerdown", (event) => {
       pointers.set(event.pointerId, event);
       surfaceEl.setPointerCapture?.(event.pointerId);
+      swipeStartX = event.clientX;
+      swipeStartY = event.clientY;
+      swipeCloseX = 0;
+      swipingClose = false;
       if (pointers.size === 2) {
         const [a, b] = [...pointers.values()];
         startDistance = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
@@ -5404,9 +5768,29 @@ if (staticRoute) {
         const [a, b] = [...pointers.values()];
         const nextDistance = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
         setScale(startScale * (nextDistance / startDistance));
+      } else if (pointers.size === 1) {
+        const dx = Math.max(0, event.clientX - swipeStartX);
+        const dy = Math.abs(event.clientY - swipeStartY);
+        if (dx > 10 && dx > dy * 1.35) {
+          event.preventDefault();
+          swipingClose = true;
+          swipeCloseX = dx;
+          overlay.style.setProperty("--video-swipe-x", `${Math.min(180, dx)}px`);
+          overlay.style.setProperty("--video-swipe-opacity", `${(1 - clamp(dx / 220, 0, 0.42)).toFixed(3)}`);
+        }
       }
     });
-    const clearPointer = (event: PointerEvent) => pointers.delete(event.pointerId);
+    const clearPointer = (event: PointerEvent) => {
+      pointers.delete(event.pointerId);
+      if (swipingClose && swipeCloseX > 96) {
+        closeVideo();
+        return;
+      }
+      swipingClose = false;
+      swipeCloseX = 0;
+      overlay.style.setProperty("--video-swipe-x", "0px");
+      overlay.style.setProperty("--video-swipe-opacity", "1");
+    };
     surfaceEl?.addEventListener("pointerup", clearPointer);
     surfaceEl?.addEventListener("pointercancel", clearPointer);
 
@@ -5432,6 +5816,7 @@ if (staticRoute) {
     attachWebRtcStream();
     setupHlsVideos(overlay);
     applyVideoAmbientFromSnapshot(overlay, activeDevice);
+    ambientTimer = window.setInterval(() => applyVideoAmbientFromSnapshot(overlay, activeDevice), 2200);
     startVideoBrowserYolo(overlay, activeDevice);
     syncCustomVideoButtons(overlay);
     const orientationLock = (screen.orientation as any)?.lock?.("landscape");
@@ -5440,10 +5825,21 @@ if (staticRoute) {
   }
 
   function startVideoBrowserYolo(overlay: HTMLElement, device: DeviceRecord | null): void {
+    const nextDeviceId = device?.id || state.device?.id || "";
+    if (
+      state.videoYoloTimer
+      && state.videoYoloHost === overlay
+      && state.videoYoloDeviceId === nextDeviceId
+      && overlay.isConnected
+    ) {
+      void processVideoYoloFrame(overlay);
+      return;
+    }
     stopVideoBrowserYolo();
-    state.videoYoloDeviceId = device?.id || state.device?.id || "";
+    state.videoYoloHost = overlay;
+    state.videoYoloDeviceId = nextDeviceId;
     state.videoYoloStatus = "loading";
-    state.videoYoloNote = "YOLO menyiapkan frame kamera...";
+    state.videoYoloNote = "YOLO menyiapkan frame video live...";
     state.videoYoloLastSourceKey = "";
     state.videoYoloLastSnapshotAt = 0;
     const tick = () => {
@@ -5454,12 +5850,13 @@ if (staticRoute) {
       void processVideoYoloFrame(overlay);
     };
     tick();
-    state.videoYoloTimer = window.setInterval(tick, 4500);
+    state.videoYoloTimer = window.setInterval(tick, BROWSER_YOLO_INTERVAL_MS);
   }
 
   function stopVideoBrowserYolo(): void {
     window.clearInterval(state.videoYoloTimer);
     state.videoYoloTimer = 0;
+    state.videoYoloHost = null;
     state.videoYoloBusy = false;
     state.videoYoloStatus = "idle";
     state.videoYoloNote = "";
@@ -5477,7 +5874,7 @@ if (staticRoute) {
         const cached = deviceForVideoYolo();
         const hasCachedDetections = Boolean(cached?.detections?.length && cached.detectorFrameWidth && cached.detectorFrameHeight);
         const snapshot = latestCameraAnalysisSnapshot(cached);
-        const waitingNextSnapshot = Boolean(snapshot && state.videoYoloLastSourceKey.startsWith("snapshot:") && Date.now() - state.videoYoloLastSnapshotAt < 15000);
+        const waitingNextSnapshot = Boolean(snapshot && state.videoYoloLastSourceKey.startsWith("snapshot:") && Date.now() - state.videoYoloLastSnapshotAt < BROWSER_YOLO_INTERVAL_MS);
         state.videoYoloStatus = hasCachedDetections || waitingNextSnapshot ? "online" : "no-frame";
         state.videoYoloNote = hasCachedDetections
           ? "AI memakai hasil snapshot terakhir..."
@@ -5523,15 +5920,21 @@ if (staticRoute) {
     if (video) return { source: video, drawOverlay: true, key: `video:${video.currentSrc || video.dataset.src || ""}:${Math.floor(video.currentTime * 2)}` };
     const image = overlay.querySelector<HTMLImageElement>(".video-fullscreen-surface img, .camera-card img, img.camera-image");
     if (image?.complete && image.naturalWidth && image.naturalHeight) return { source: image, drawOverlay: true, key: `image:${image.currentSrc || image.src}` };
-    const snapshot = latestCameraAnalysisSnapshot(deviceForVideoYolo());
-    const snapshotKey = snapshot ? `snapshot:${snapshot.slice(0, 96)}:${snapshot.length}` : "";
-    if (snapshotKey && state.videoYoloLastSourceKey === snapshotKey && Date.now() - state.videoYoloLastSnapshotAt < 15000) return null;
-    if (snapshotKey) {
+    const device = deviceForVideoYolo();
+    const snapshots = [
+      latestCameraAnalysisSnapshot(device),
+      latestCameraSnapshot(device),
+    ].filter((value, index, list) => value && list.indexOf(value) === index);
+    for (const snapshot of snapshots) {
+      const snapshotKey = `snapshot:${snapshot.slice(0, 96)}:${snapshot.length}`;
+      if (state.videoYoloLastSourceKey === snapshotKey && Date.now() - state.videoYoloLastSnapshotAt < BROWSER_YOLO_INTERVAL_MS) continue;
+      const source = await loadImageSource(snapshot);
+      if (!source) continue;
       state.videoYoloLastSourceKey = snapshotKey;
       state.videoYoloLastSnapshotAt = Date.now();
+      return { source, drawOverlay: false, key: snapshotKey };
     }
-    const source = snapshot ? await loadImageSource(snapshot) : null;
-    return source ? { source, drawOverlay: false, key: snapshotKey } : null;
+    return null;
   }
 
   function clearVideoYoloCanvas(overlay: HTMLElement): void {
@@ -5567,13 +5970,11 @@ if (staticRoute) {
   function cameraSourceForBrowserYolo(device: DeviceRecord): string {
     return isWebRtcSignalingCamera(device)
       ? webRtcSignalPath(device)
-      : publicCameraHlsUrl(device) || publicCameraUrl(device) || latestCameraSnapshot(device) || "browser-frame";
+      : publicCameraSnapshotUrl(device) || publicCameraHlsUrl(device) || publicCameraUrl(device) || latestCameraSnapshot(device) || "browser-frame";
   }
 
   function applyVideoYoloResult(device: DeviceRecord, result: BrowserYoloResult): void {
     const detections = result.detections.map(toWebYoloDetection);
-    const trafficLevel = result.vehicleCount >= 11 ? "padat" : result.vehicleCount >= 6 ? "sedang" : "lancar";
-    const trafficColor: TrafficColor = trafficLevel === "padat" ? "red" : trafficLevel === "sedang" ? "yellow" : "green";
     const snapshotDataset: TrafficCameraDataset | undefined = result.annotatedThumbnailUrl || result.rawThumbnailUrl
       ? {
         snapshot1Url: result.annotatedThumbnailUrl || result.rawThumbnailUrl,
@@ -5599,8 +6000,7 @@ if (staticRoute) {
       vehicleCount: result.vehicleCount,
       objectCount: result.objectCount,
       detections,
-      trafficColor,
-      trafficSource: `adaptive-browser-yolo-${trafficLevel}`,
+      trafficSource: "browser-yolo-vehicle-count",
     };
     state.devices = state.devices.map((item) => item.id === updated.id ? updated : item);
     if (!state.devices.some((item) => item.id === updated.id)) state.devices.push(updated);
@@ -5621,14 +6021,14 @@ if (staticRoute) {
   }
 
   function publishVideoYoloIfNeeded(device: DeviceRecord, result: BrowserYoloResult): void {
-    if (Date.now() - state.videoYoloLastPublishAt < 12000) return;
+    if (Date.now() - state.videoYoloLastPublishAt < BROWSER_YOLO_INTERVAL_MS) return;
     state.videoYoloLastPublishAt = Date.now();
     const cameraUrl = cameraSourceForBrowserYolo(device);
     void publishBrowserYoloResult(FIREBASE_ROOT_URL, device.id, browserViewerId(), cameraUrl, result)
       .catch((err) => {
         console.warn("[ITS] browser YOLO publish failed:", err);
-        state.videoYoloStatus = "error";
-        state.videoYoloNote = err instanceof Error ? err.message : "Publish YOLO gagal";
+        state.lastSnapshotHistoryWriteErrorAt = Date.now();
+        state.videoYoloNote = "YOLO lokal aktif; RTDB objectDetection menolak write.";
         const overlay = document.getElementById("video-fullscreen-modal");
         if (overlay) updateVideoAiPanel(overlay);
       });
@@ -5641,12 +6041,32 @@ if (staticRoute) {
     const statsHost = root.querySelector<HTMLElement>("[data-video-ai-stats]");
     if (statsHost) statsHost.innerHTML = renderVehicleStatsGrid(device, device ? trafficStateForDevice(device) : null, "video-ai-stats");
     const caption = root.querySelector<HTMLElement>(".video-fullscreen-caption");
-    if (caption) caption.textContent = state.videoYoloNote || webRtcStatusText();
+    const message = state.videoYoloNote || videoSurfaceStatusText(device) || webRtcStatusText();
+    if (caption) caption.textContent = message;
+    const detail = root.querySelector<HTMLElement>("[data-video-status-detail]");
+    if (detail) detail.textContent = message;
+    const title = root.querySelector<HTMLElement>("[data-video-title-toggle]");
+    const titleMessage = root.querySelector<HTMLElement>("[data-video-title-message]");
+    const titleText = root.querySelector<HTMLElement>("[data-video-title-text]");
+    const showStatusInTitle = Boolean(
+      message
+      && (
+        state.videoYoloStatus === "loading"
+        || state.videoYoloStatus === "no-frame"
+        || state.videoYoloStatus === "error"
+        || Date.now() - state.lastSnapshotHistoryWriteErrorAt < 30_000
+      ),
+    );
+    if (titleMessage) titleMessage.textContent = message;
+    if (titleText && device) titleText.textContent = cameraTitleText(device);
+    title?.classList.toggle("status-carousel", showStatusInTitle);
   }
 
   function videoAiStatusText(device: DeviceRecord | null): string {
     if (state.videoYoloStatus === "loading") return state.videoYoloNote || "YOLO ONNX memuat model...";
-    if (state.videoYoloStatus === "no-frame") return state.videoYoloNote || "Menunggu frame video live";
+    if (state.videoYoloStatus === "no-frame") {
+      return state.videoYoloNote || "Menunggu frame video live";
+    }
     if (state.videoYoloStatus === "error") return state.videoYoloNote || "YOLO ONNX gagal";
     if (state.videoYoloStatus === "online") {
       const fps = device?.detectorFps && device.detectorFps > 0 ? ` - ${device.detectorFps.toFixed(1)} FPS` : "";
@@ -5952,7 +6372,7 @@ if (staticRoute) {
     <button type="button" class="toolbar-btn toolbar-zoom" data-action="zoom-out" title="Zoom out">−</button>
     <div class="toolbar-divider"></div>
     <button type="button" class="toolbar-camera" data-action="camera" title="Camera preview">
-      <div class="camera-thumb-wrap"></div>
+      <div class="camera-thumb-wrap">${cameraPlainIconSvg()}</div>
       <span class="camera-tile-label"></span>
     </button>
   ` : `
@@ -5980,7 +6400,7 @@ if (staticRoute) {
     <button type="button" class="toolbar-btn toolbar-zoom" data-action="zoom-out" title="Zoom out">−</button>
     <div class="toolbar-divider"></div>
     <button type="button" class="toolbar-camera" data-action="camera" title="Camera preview">
-      <div class="camera-thumb-wrap"></div>
+      <div class="camera-thumb-wrap">${cameraPlainIconSvg()}</div>
       <span class="camera-tile-label"></span>
     </button>
   `;
@@ -6023,8 +6443,12 @@ if (staticRoute) {
           else if (action === "home") goHome();
           else if (action === "camera") {
             if (isMobile()) {
-              switchMobileTab("its");
-              focusITSVideoSection();
+              if (!document.getElementById("m-ai-history-sheet")) openAiHistorySheet("dock");
+              else snapAiHistorySheet("dock");
+              document.querySelectorAll(".m-nav-tab").forEach((button) => button.classList.remove("active"));
+              document.querySelector<HTMLButtonElement>('.m-nav-tab[data-tab="its"]')?.classList.add("active");
+              mobileState.activeTab = "its";
+              openITSSheet({ overlay: true });
             } else {
               openCameraPreview();
             }
@@ -6145,69 +6569,32 @@ if (staticRoute) {
   }
 
   async function hydrateFirebaseTelemetry(devices: DeviceRecord[]): Promise<DeviceRecord[]> {
+    const snapshotHistory = await firebaseGetPath<unknown>("snapshotHistory").catch(() => null);
+    const activeDevice = devices[0] ?? state.device;
+    const appended = document.body.classList.contains("ai-history-sheet-open")
+      && !document.body.classList.contains("ai-history-sheet-dock")
+      ? appendSnapshotHistoryFromRaw(snapshotHistory, activeDevice)
+      : false;
+    if (appended) renderAiHistorySheetContent();
     return Promise.all(devices.map(async (device) => {
       try {
-        const [traffic, yolo] = await Promise.all([
-          firebaseGetPath<unknown>(`trafficObjectDetectionDataset/devices/${device.id}`).catch(() => null),
-          firebaseGetPath<unknown>(`browserYolo/devices/${device.id}`).catch(() => null),
-        ]);
-        return mergeDeviceTelemetry(device, traffic, yolo);
+        return mergeDeviceTelemetry(device, snapshotHistory);
       } catch {
         return device;
       }
     }));
   }
 
-  function mergeDeviceTelemetry(device: DeviceRecord, trafficRaw: unknown, yoloRaw: unknown): DeviceRecord {
-    const traffic = objectRecord(trafficRaw);
-    const yolo = objectRecord(yoloRaw);
-    const yoloUpdatedAt = normalizeEpoch(finiteNumber(yolo.updatedAt) ?? finiteNumber(yolo.thumbnailUpdatedAt) ?? 0);
-    const trafficUpdatedAt = normalizeEpoch(finiteNumber(traffic.updatedAt) ?? 0);
-    const yoloFresh = yoloUpdatedAt > 0 && Date.now() - yoloUpdatedAt <= BROWSER_YOLO_FRESH_MS;
-    const yoloDataset = yoloFresh ? normalizeCameraDataset(objectRecord(yolo.cameraDataset)) : undefined;
-    const trafficDataset = normalizeCameraDataset(traffic);
-    const mergedDataset = mergeCameraDataset(yoloDataset, trafficDataset, device.cameraDataset);
-    const yoloFrameWidth = yoloFresh ? finiteNumber(yolo.frameWidth) : undefined;
-    const yoloFrameHeight = yoloFresh ? finiteNumber(yolo.frameHeight) : undefined;
-    const yoloDetections = yoloFresh ? normalizeDetections(yolo.detections) : [];
-    const yoloValidDetections = yoloFrameWidth && yoloFrameHeight
-      ? yoloDetections.filter((det) => detectionBoxIsUsable(det, yoloFrameWidth, yoloFrameHeight))
-      : yoloDetections;
-    const yoloPayloadValid = !yoloFresh || !yoloDetections.length || yoloValidDetections.length > 0;
-    const yoloBreakdown = yoloFresh && yoloPayloadValid ? normalizeVehicleBreakdown(yolo.vehicleBreakdown) : undefined;
-    const trafficBreakdown = normalizeVehicleBreakdown(traffic.vehicleBreakdown);
-    const yoloCameraUrl = yoloFresh ? usablePublicMediaUrl(stringValue(yolo.cameraUrl)) : "";
-    const trafficCameraUrl = usablePublicMediaUrl(stringValue(traffic.cameraUrl));
-    const yoloThumbnail = yoloFresh ? stringValue(yolo.thumbnailUrl) : "";
-    const trafficThumbnail = stringValue(traffic.thumbnailUrl);
-    const yoloStatus = yoloFresh ? stringValue(yolo.status) : "";
-    const trafficDetectorStatus = stringValue(traffic.detectorStatus);
+  function mergeDeviceTelemetry(device: DeviceRecord, snapshotRaw: unknown): DeviceRecord {
+    const snapshotDataset = normalizeSnapshotHistoryDataset(snapshotRaw);
+    const snapshotFresh = Boolean(snapshotDataset?.updatedAt && Date.now() - snapshotDataset.updatedAt <= CAMERA_SNAPSHOT_FRESH_MS);
+    const mergedDataset = mergeCameraDataset(snapshotFresh ? snapshotDataset : undefined, device.cameraDataset);
 
     return {
       ...device,
-      cameraUrl: device.cameraUrl || yoloCameraUrl || trafficCameraUrl,
-      cameraThumbnailUrl: yoloThumbnail || trafficThumbnail || mergedDataset?.snapshot1Url || mergedDataset?.snapshot2Url || device.cameraThumbnailUrl,
+      cameraThumbnailUrl: snapshotFresh ? mergedDataset?.snapshot1Url || mergedDataset?.snapshot2Url || device.cameraThumbnailUrl : device.cameraThumbnailUrl,
       cameraDataset: mergedDataset,
-      cameraUpdatedAt: Math.max(device.cameraUpdatedAt || 0, yoloUpdatedAt, trafficUpdatedAt) || device.cameraUpdatedAt,
-      detectorStatus: yoloStatus || trafficDetectorStatus || device.detectorStatus,
-      detectorNote: (yoloFresh ? stringValue(yolo.note) : "") || stringValue(traffic.detectorNote) || device.detectorNote,
-      detectorUpdatedAt: Math.max(device.detectorUpdatedAt || 0, yoloFresh ? yoloUpdatedAt : 0, trafficUpdatedAt) || device.detectorUpdatedAt,
-      detectorFps: (yoloFresh ? finiteNumber(yolo.fps) : undefined) ?? device.detectorFps,
-      detectorFrameWidth: yoloFrameWidth ?? finiteNumber(traffic.detectorFrameWidth) ?? device.detectorFrameWidth,
-      detectorFrameHeight: yoloFrameHeight ?? finiteNumber(traffic.detectorFrameHeight) ?? device.detectorFrameHeight,
-      vehicleBreakdown: yoloBreakdown || trafficBreakdown || device.vehicleBreakdown,
-      vehicleCount: (yoloFresh && yoloPayloadValid ? finiteNumber(yolo.vehicleCount) : undefined)
-        ?? finiteNumber(traffic.vehicleCount)
-        ?? device.vehicleCount,
-      objectCount: Math.max(
-        device.objectCount || 0,
-        Math.round(yoloFresh && yoloPayloadValid ? finiteNumber(yolo.objectCount) ?? 0 : 0),
-        Math.round(finiteNumber(traffic.objectCount) ?? 0),
-      ),
-      detections: yoloFresh ? yoloValidDetections : device.detections,
-      trafficColor: isTrafficColor(traffic.trafficColor) ? traffic.trafficColor : device.trafficColor,
-      trafficDuration: finiteNumber(traffic.trafficDurationSec) ?? finiteNumber(traffic.trafficDuration) ?? device.trafficDuration,
-      trafficSource: (yoloFresh ? stringValue(yolo.source) : "") || stringValue(traffic.source) || device.trafficSource,
+      cameraUpdatedAt: Math.max(device.cameraUpdatedAt || 0, snapshotFresh ? snapshotDataset?.updatedAt || 0 : 0) || device.cameraUpdatedAt,
     };
   }
 
@@ -6552,11 +6939,345 @@ if (staticRoute) {
 
     if (tab === "peta") {
       closeITSSheet();
+      openAiHistorySheet("dock");
     } else if (tab === "its") {
-      openITSSheet();
+      document.getElementById("m-profil-sheet")?.remove();
+      const hasHistorySheet = Boolean(document.getElementById("m-ai-history-sheet"));
+      if (hasHistorySheet) snapAiHistorySheet("dock");
+      openITSSheet({ overlay: hasHistorySheet });
     } else if (tab === "profil") {
       closeITSSheet();
+      if (document.getElementById("m-ai-history-sheet")) snapAiHistorySheet("dock");
       openProfilSheet();
+    }
+  }
+
+  type AiHistorySnap = "closed" | "dock" | "peek" | "full";
+  let aiHistoryActiveTab: "history" | "about" = "history";
+
+  const AI_HISTORY_SNAP = {
+    dock: () => 56,
+    peek: () => Math.round((window.innerHeight - 64) * 0.72),
+    full: () => Math.round(window.innerHeight - 64),
+  };
+
+  function setAiHistorySheetProgress(heightPx: number): void {
+    const dock = AI_HISTORY_SNAP.dock();
+    const peek = AI_HISTORY_SNAP.peek();
+    const full = AI_HISTORY_SNAP.full();
+    const reveal = clamp((heightPx - dock) / Math.max(1, peek - dock), 0, 1);
+    const fullProgress = clamp(heightPx / Math.max(1, full), 0, 1);
+    const root = document.documentElement;
+    root.style.setProperty("--ai-history-progress", reveal.toFixed(3));
+    root.style.setProperty("--ai-history-full-progress", fullProgress.toFixed(3));
+    root.style.setProperty("--ai-history-bg-alpha", reveal.toFixed(3));
+    root.style.setProperty("--ai-history-content-alpha", clamp(reveal * 1.24 - 0.12, 0, 1).toFixed(3));
+    root.style.setProperty("--ai-history-shadow-alpha", (0.18 * reveal).toFixed(3));
+  }
+
+  function openAiHistorySheet(startSnap: Exclude<AiHistorySnap, "closed"> = "peek"): void {
+    if (!isMobile()) {
+      openCameraPreview();
+      return;
+    }
+    closeITSSheet();
+    document.getElementById("m-profil-sheet")?.remove();
+    let sheet = document.getElementById("m-ai-history-sheet");
+    if (!sheet) {
+      sheet = createAiHistorySheet();
+      document.getElementById("app")?.appendChild(sheet);
+    }
+    document.body.classList.add("ai-history-sheet-open");
+    document.querySelectorAll(".m-nav-tab").forEach((button) => button.classList.remove("active"));
+    document.querySelector<HTMLButtonElement>('.m-nav-tab[data-tab="peta"]')?.classList.add("active");
+    mobileState.activeTab = "peta";
+    renderAiHistorySheetContent();
+    snapAiHistorySheet(startSnap);
+  }
+
+  function closeAiHistorySheet(updateMap = true): void {
+    const sheet = document.getElementById("m-ai-history-sheet");
+    if (!sheet) return;
+    sheet.style.transition = "transform 0.3s cubic-bezier(0.32,0.72,0,1)";
+    sheet.style.transform = `translateY(${window.innerHeight}px)`;
+    document.body.classList.remove("ai-history-sheet-open", "ai-history-sheet-full", "ai-history-sheet-dock");
+    setAiHistorySheetProgress(0);
+    clearSnapshotHistoryItems();
+    if (updateMap) setMapHeight(0);
+    window.setTimeout(() => sheet.remove(), 320);
+  }
+
+  function snapAiHistorySheet(snap: Exclude<AiHistorySnap, "closed">): void {
+    const sheet = document.getElementById("m-ai-history-sheet");
+    if (!sheet) return;
+    const height = snap === "dock" ? AI_HISTORY_SNAP.dock() : snap === "peek" ? AI_HISTORY_SNAP.peek() : AI_HISTORY_SNAP.full();
+    const y = window.innerHeight - 64 - height;
+    sheet.style.transition = "transform 0.34s cubic-bezier(0.32,0.72,0,1)";
+    sheet.style.transform = `translateY(${Math.max(0, y)}px)`;
+    document.body.classList.toggle("ai-history-sheet-full", snap === "full");
+    document.body.classList.toggle("ai-history-sheet-dock", snap === "dock");
+    setAiHistorySheetProgress(height);
+    setMapHeight(snap === "dock" ? 0 : height);
+    if (snap !== "dock") void refreshAiHistorySnapshot();
+  }
+
+  function createAiHistorySheet(): HTMLElement {
+    const sheet = document.createElement("section");
+    sheet.id = "m-ai-history-sheet";
+    sheet.setAttribute("aria-label", "Riwayat snapshot AI");
+    sheet.innerHTML = `
+  <div class="m-ai-history-handle-zone" data-swipe-handle>
+    <div class="m-ai-history-handle"></div>
+  </div>
+  <div class="m-ai-history-tabs" role="tablist" aria-label="Panel riwayat AI">
+    <button type="button" id="m-ai-history-tab-history" class="active" role="tab" aria-selected="true" aria-controls="m-ai-history-panel" data-ai-history-tab="history">Riwayat</button>
+    <button type="button" id="m-ai-history-tab-about" role="tab" aria-selected="false" aria-controls="m-ai-history-panel" data-ai-history-tab="about">Tentang</button>
+  </div>
+  <div id="m-ai-history-panel" class="m-ai-history-content" role="tabpanel" aria-labelledby="m-ai-history-tab-history" data-ai-history-content></div>
+`;
+
+    let startY = 0;
+    let startTranslate = 0;
+    let pointerId = -1;
+    let dragging = false;
+
+    sheet.addEventListener("pointerdown", (event) => {
+      const target = event.target as HTMLElement | null;
+      if (!target?.closest("[data-swipe-handle], .m-ai-history-tabs")) return;
+      startY = event.clientY;
+      startTranslate = new DOMMatrix(getComputedStyle(sheet).transform).m42;
+      pointerId = event.pointerId;
+      dragging = true;
+      sheet.style.transition = "none";
+      sheet.setPointerCapture?.(event.pointerId);
+      document.body.classList.add("ai-history-sheet-dragging");
+    });
+
+    sheet.addEventListener("pointermove", (event) => {
+      if (!dragging || event.pointerId !== pointerId) return;
+      event.preventDefault();
+      const rawY = startTranslate + event.clientY - startY;
+      const minY = 0;
+      const maxY = window.innerHeight - 64 - AI_HISTORY_SNAP.dock();
+      const y = clamp(rawY, minY, maxY);
+      sheet.style.transform = `translateY(${y}px)`;
+      const height = window.innerHeight - 64 - y;
+      document.body.classList.toggle("ai-history-sheet-dock", height <= AI_HISTORY_SNAP.dock() + 3);
+      document.body.classList.toggle("ai-history-sheet-full", height >= AI_HISTORY_SNAP.full() - 3);
+      setAiHistorySheetProgress(height);
+      setMapHeight(height <= AI_HISTORY_SNAP.dock() ? 0 : Math.max(0, height), true);
+    });
+
+    const finish = (event: PointerEvent) => {
+      if (!dragging || event.pointerId !== pointerId) return;
+      dragging = false;
+      pointerId = -1;
+      document.body.classList.remove("ai-history-sheet-dragging");
+      const y = new DOMMatrix(getComputedStyle(sheet).transform).m42;
+      const height = window.innerHeight - 64 - y;
+      const dock = AI_HISTORY_SNAP.dock();
+      const peek = AI_HISTORY_SNAP.peek();
+      const full = AI_HISTORY_SNAP.full();
+      if (height < lerp(dock, peek, 0.5)) {
+        snapAiHistorySheet("dock");
+      } else if (height < lerp(peek, full, 0.62)) {
+        snapAiHistorySheet("peek");
+      } else {
+        snapAiHistorySheet("full");
+      }
+    };
+
+    sheet.addEventListener("pointerup", finish);
+    sheet.addEventListener("pointercancel", finish);
+    sheet.querySelectorAll<HTMLButtonElement>("[data-ai-history-tab]").forEach((button) => {
+      button.addEventListener("click", () => {
+        aiHistoryActiveTab = button.dataset.aiHistoryTab === "about" ? "about" : "history";
+        renderAiHistorySheetContent();
+      });
+    });
+    sheet.style.transform = `translateY(${window.innerHeight}px)`;
+    return sheet;
+  }
+
+  async function refreshAiHistorySnapshot(): Promise<void> {
+    if (!document.getElementById("m-ai-history-sheet")) return;
+    if (document.body.classList.contains("ai-history-sheet-dock")) return;
+    const raw = await firebaseGetPath<unknown>("snapshotHistory").catch(() => null);
+    if (appendSnapshotHistoryFromRaw(raw, state.device)) renderAiHistorySheetContent();
+  }
+
+  function renderAiHistorySheetContent(): void {
+    const sheet = document.getElementById("m-ai-history-sheet");
+    const host = sheet?.querySelector<HTMLElement>("[data-ai-history-content]");
+    if (!sheet || !host) return;
+    sheet.querySelectorAll<HTMLButtonElement>("[data-ai-history-tab]").forEach((button) => {
+      const active = button.dataset.aiHistoryTab === aiHistoryActiveTab;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-selected", String(active));
+      button.tabIndex = active ? 0 : -1;
+    });
+    host.setAttribute("aria-labelledby", aiHistoryActiveTab === "about" ? "m-ai-history-tab-about" : "m-ai-history-tab-history");
+    if (aiHistoryActiveTab === "about") {
+      host.innerHTML = renderAiAboutProfiles(PROFILE_MEMBER_COUNT);
+      return;
+    }
+
+    if (!state.snapshotHistoryItems.length) {
+      host.innerHTML = `
+    <div class="m-ai-history-empty">
+      ${cameraAiIconSvg()}
+      <strong>Riwayat snapshot kosong</strong>
+      <span>Menunggu snapshot 10 detik berikutnya dari Raspberry.</span>
+    </div>
+  `;
+      return;
+    }
+
+    host.innerHTML = `
+  <div class="m-ai-history-list">
+    ${state.snapshotHistoryItems.map((item) => renderAiHistoryItem(item)).join("")}
+  </div>
+`;
+    bindAiHistoryImageStates(host);
+    drawAiHistoryCanvases(host);
+    void analyzeVisibleHistorySnapshots(host);
+  }
+
+  function renderAiAboutProfiles(memberCount: number): string {
+    const members = Array.from({ length: Math.max(1, memberCount) }, (_, index) => {
+      return PROFILE_MEMBERS[index] || {
+        name: `Nama anggota ${index + 1}`,
+        prodi: "Belum diisi",
+        posisi: "Belum diisi",
+        tugas: "Belum diisi",
+        photoUrl: profileAssetUrl(index),
+      };
+    });
+    return `
+  <section class="m-ai-about-section" data-jumlah-profil="${members.length}">
+    ${members.map((member, index) => `
+      <table class="m-ai-about-table">
+        <tbody>
+          <tr>
+            <td class="m-profile-photo-cell" rowspan="4">
+              <div class="m-profile-photo">
+                <img src="${escapeHtml(member.photoUrl)}" alt="Foto ${escapeHtml(member.name)}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.removeAttribute('hidden')">
+                <span hidden>${escapeHtml(profileInitials(member.name || `P${index + 1}`))}</span>
+              </div>
+            </td>
+            <th scope="row">Nama</th>
+            <td>${escapeHtml(member.name)}</td>
+          </tr>
+          <tr>
+            <th scope="row">Prodi</th>
+            <td>${escapeHtml(member.prodi)}</td>
+          </tr>
+          <tr>
+            <th scope="row">Posisi</th>
+            <td>${escapeHtml(member.posisi)}</td>
+          </tr>
+          <tr>
+            <th scope="row">Tugas</th>
+            <td>${escapeHtml(member.tugas)}</td>
+          </tr>
+        </tbody>
+      </table>
+    `).join("")}
+  </section>
+`;
+  }
+
+  function profileInitials(name: string): string {
+    return name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() || "")
+      .join("") || "ITS";
+  }
+
+  function renderAiHistoryItem(item: SnapshotHistoryItem): string {
+    return `
+  <article class="m-ai-history-card" data-history-id="${escapeHtml(item.id)}">
+    <div class="m-ai-history-media">
+      <img src="${escapeHtml(item.imageUrl)}" alt="Snapshot kamera ${escapeHtml(item.deviceId)}" loading="lazy" crossorigin="anonymous">
+      <canvas data-history-yolo-canvas data-history-id="${escapeHtml(item.id)}" data-yolo-fit="contain" aria-hidden="true"></canvas>
+      <div class="m-ai-history-broken">${cameraImageIconSvg()}<span>Snapshot belum terbaca dari Raspberry</span></div>
+      ${!item.analyzed ? `<div class="m-ai-history-wait">${cameraImageIconSvg()}<span>Menunggu gambar</span></div>` : ""}
+    </div>
+    <div class="m-ai-history-meta">
+      <span>${clockIconSvg()}${escapeHtml(snapshotHistoryTimeText(item.capturedAt))}</span>
+      <span>${pinIconSvg()}${escapeHtml(item.locationText)}</span>
+      ${item.analyzed ? `<span>${cameraAiIconSvg()}${item.detections.length ? `${item.detections.length} objek terdeteksi` : "AI selesai, belum ada objek"}</span>` : ""}
+    </div>
+  </article>
+`;
+  }
+
+  function bindAiHistoryImageStates(root: ParentNode): void {
+    root.querySelectorAll<HTMLImageElement>(".m-ai-history-media img").forEach((image) => {
+      const media = image.closest<HTMLElement>(".m-ai-history-media");
+      if (!media) return;
+      const markLoaded = () => media.classList.add("image-loaded");
+      const markError = () => media.classList.add("image-error");
+      image.addEventListener("load", markLoaded, { once: true });
+      image.addEventListener("error", markError, { once: true });
+      if (image.complete) {
+        if (image.naturalWidth && image.naturalHeight) markLoaded();
+        else markError();
+      }
+    });
+  }
+
+  function drawAiHistoryCanvases(root: ParentNode): void {
+    root.querySelectorAll<HTMLCanvasElement>("[data-history-yolo-canvas]").forEach((canvas) => {
+      const item = state.snapshotHistoryItems.find((entry) => entry.id === canvas.dataset.historyId);
+      if (!item?.detections.length || !item.frameWidth || !item.frameHeight) return;
+      drawYoloDetections(canvas, item.detections, item.frameWidth, item.frameHeight);
+    });
+  }
+
+  function cssSelectorValue(value: string): string {
+    const escaper = window.CSS?.escape;
+    if (typeof escaper === "function") return escaper(value);
+    return value.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
+  }
+
+  async function analyzeVisibleHistorySnapshots(root: ParentNode): Promise<void> {
+    if (state.snapshotHistoryYoloBusy) return;
+    const next = state.snapshotHistoryItems.find((item) => !item.analyzed);
+    if (!next) return;
+    const card = root.querySelector<HTMLElement>(`.m-ai-history-card[data-history-id="${cssSelectorValue(next.id)}"]`);
+    if (card?.querySelector(".m-ai-history-media")?.classList.contains("image-error")) return;
+    const image = card?.querySelector<HTMLImageElement>("img");
+    if (!image) return;
+    state.snapshotHistoryYoloBusy = true;
+    try {
+      if (!image.complete) {
+        await new Promise<void>((resolve) => {
+          image.onload = () => resolve();
+          image.onerror = () => resolve();
+        });
+      }
+      if (!image.naturalWidth || !image.naturalHeight) return;
+      const result = await runBrowserYolo(image);
+      state.snapshotHistoryItems = state.snapshotHistoryItems.map((item) => item.id === next.id
+        ? {
+          ...item,
+          analyzed: true,
+          frameWidth: result.frameWidth || image.naturalWidth,
+          frameHeight: result.frameHeight || image.naturalHeight,
+          detections: result.detections.map(toWebYoloDetection),
+        }
+        : item);
+      saveSnapshotHistoryItems();
+      renderAiHistorySheetContent();
+    } catch (err) {
+      console.warn("[ITS] snapshot history YOLO failed:", err);
+      state.snapshotHistoryItems = state.snapshotHistoryItems.map((item) => item.id === next.id ? { ...item, analyzed: true } : item);
+      saveSnapshotHistoryItems();
+    } finally {
+      state.snapshotHistoryYoloBusy = false;
     }
   }
 
@@ -6759,6 +7480,7 @@ if (staticRoute) {
 
   // FIX 1: hapus itsSheetDragY yang tidak pernah dipakai
   let itsCurrentSnap: "closed" | "peek" | "full" = "closed";
+  let itsSheetOverlayMode = false;
 
   function getMapEl(): HTMLElement | null {
     return document.getElementById("map");
@@ -6786,13 +7508,23 @@ if (staticRoute) {
     root.style.setProperty("--m-camera-opacity", `${(1 - progress).toFixed(3)}`);
     root.style.setProperty("--m-camera-y", `${Math.round(12 * progress)}px`);
     root.style.setProperty("--m-camera-scale", `${(1 - progress * 0.04).toFixed(3)}`);
+    root.style.setProperty("--m-nav-bottom", `${Math.round(lerp(22, 0, progress))}px`);
+    root.style.setProperty("--m-nav-left", `${lerp(50, 0, progress).toFixed(2)}%`);
+    root.style.setProperty("--m-nav-width", `${lerp(80, 100, progress).toFixed(2)}vw`);
+    root.style.setProperty("--m-nav-max-width", `${Math.round(lerp(520, window.innerWidth, progress))}px`);
+    root.style.setProperty("--m-nav-transform-x", `${lerp(-50, 0, progress).toFixed(2)}%`);
+    root.style.setProperty("--m-nav-radius", `${Math.round(lerp(18, 0, progress))}px`);
   }
 
   function setMapHeight(heightPx: number, immediate = false): void {
     const mapEl = getMapEl();
     if (!mapEl) return;
     const total = window.innerHeight - 64;
-    const mapH = Math.max(60, total - heightPx);
+    const mapH = heightPx <= 0
+      ? window.innerHeight
+      : heightPx >= total - 2
+        ? 0
+        : Math.max(0, total - heightPx);
     const progress = isMobile() ? clamp(heightPx / Math.max(1, ITS_SNAP.peek()), 0, 1) : 0;
     document.documentElement.style.setProperty("--its-sheet-height", `${Math.max(0, heightPx)}px`);
     document.documentElement.style.setProperty("--m-map-inset", `${Math.round(8 * progress)}px`);
@@ -6804,24 +7536,33 @@ if (staticRoute) {
     map.invalidateSize();
   }
 
-  function openITSSheet(): void {
+  function openITSSheet(options: { overlay?: boolean } = {}): void {
     let sheet = document.getElementById("m-its-sheet");
     if (!sheet) {
       sheet = createITSSheet();
       document.getElementById("app")!.appendChild(sheet);
     }
+    itsSheetOverlayMode = Boolean(options.overlay);
     document.body.classList.add("its-sheet-open");
+    document.body.classList.toggle("its-sheet-overlay-history", itsSheetOverlayMode);
     renderITSSheetContent();
     snapITSSheet("peek");
   }
 
   function closeITSSheet(): void {
+    const sheet = document.getElementById("m-its-sheet");
+    if (sheet && state.videoYoloHost && sheet.contains(state.videoYoloHost)) {
+      stopVideoBrowserYolo();
+    }
     snapITSSheet("closed");
     document.body.classList.remove("its-sheet-open");
-    setMobileToolbarSheetOffset(0);
+    document.body.classList.remove("its-sheet-overlay-history");
+    const wasOverlay = itsSheetOverlayMode;
+    itsSheetOverlayMode = false;
+    if (!wasOverlay) setMobileToolbarSheetOffset(0);
     setTimeout(() => {
       const mapEl = getMapEl();
-      if (mapEl) {
+      if (mapEl && !wasOverlay) {
         mapEl.style.height = "";
         map.invalidateSize();
       }
@@ -6838,8 +7579,11 @@ if (staticRoute) {
 
     sheet.style.transition = "transform 0.34s cubic-bezier(0.32,0.72,0,1)";
     sheet.style.transform = `translateY(${window.innerHeight - h - 64}px)`;
-
-    setMapHeight(h);
+    if (itsSheetOverlayMode) {
+      document.documentElement.style.setProperty("--its-sheet-height", `${h}px`);
+    } else {
+      setMapHeight(h);
+    }
   }
 
   function createITSSheet(): HTMLElement {
@@ -6870,7 +7614,11 @@ if (staticRoute) {
       const clampedY = Math.max(minY, Math.min(maxY, rawY));
       sheet.style.transform = `translateY(${clampedY}px)`;
       const sheetH = window.innerHeight - 64 - clampedY;
-      setMapHeight(Math.max(0, sheetH), true);
+      if (itsSheetOverlayMode) {
+        document.documentElement.style.setProperty("--its-sheet-height", `${Math.max(0, sheetH)}px`);
+      } else {
+        setMapHeight(Math.max(0, sheetH), true);
+      }
     }, { passive: false });
 
     sheet.addEventListener("touchend", () => {
@@ -6915,15 +7663,6 @@ if (staticRoute) {
     return sheet;
   }
 
-  function focusITSVideoSection(): void {
-    if (!isMobile()) return;
-    const target = document.getElementById("m-its-video");
-    if (!target) return;
-    requestAnimationFrame(() => {
-      target.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-  }
-
   function renderITSSheetContent(): void {
     const scroll = document.getElementById("m-its-scroll");
     if (!scroll) return;
@@ -6937,6 +7676,7 @@ if (staticRoute) {
       red: "#ef4444", yellow: "#facc15", green: "#22c55e",
     };
     const bulbColor = traffic ? colorMap[traffic.color] : "#9ca3af";
+    scroll.dataset.cameraKey = cameraRenderKey(device);
 
     scroll.innerHTML = `
   <div class="m-its-section" id="m-its-video">
@@ -6950,6 +7690,7 @@ if (staticRoute) {
              <span>Belum ada kamera</span>
            </div>`}
       ${cameraSurface ? renderDetectionOverlay(device) : ""}
+      ${cameraSurface ? `<canvas class="m-camera-yolo-canvas" data-video-yolo-canvas data-yolo-fit="cover" aria-hidden="true"></canvas>` : ""}
       ${cameraSurface ? `<button class="m-camera-play" data-custom-video-play aria-label="Putar video">${playSvg()}</button>` : ""}
       <button class="m-camera-fullscreen" aria-label="Fullscreen">
         <svg viewBox="0 0 16 16" fill="none" width="14" height="14">
@@ -7004,6 +7745,7 @@ if (staticRoute) {
     setupHlsVideos(scroll);
     syncCameraViews(device);
     attachWebRtcStream();
+    if (cameraSurface) startVideoBrowserYolo(scroll, device);
     requestAnimationFrame(() => drawTrafficChart());
     scroll.querySelector<HTMLButtonElement>(".m-camera-play")?.addEventListener("click", (event) => {
       toggleCustomVideoPlayback(customVideoRoot(event.currentTarget as HTMLElement));
@@ -7022,6 +7764,15 @@ if (staticRoute) {
         }, 200);
       });
     });
+  }
+
+  function cameraRenderKey(device: DeviceRecord | null): string {
+    if (!device) return "none";
+    const source = publicCameraHlsUrl(device)
+      || publicCameraPageUrl(device)
+      || (isWebRtcSignalingCamera(device) ? webRtcSignalPath(device) : "")
+      || "none";
+    return `${device.id}:${source}`;
   }
 
   function drawTrafficChart(): void {
@@ -7205,17 +7956,27 @@ if (staticRoute) {
     }
 
     repositionLeafletControls();
+    window.setTimeout(() => {
+      if (mobileState.activeTab === "peta" && !document.getElementById("m-ai-history-sheet")) {
+        openAiHistorySheet("dock");
+      }
+    }, 420);
 
     // FIX 6: hapus const _orig yang tidak dipakai
     setInterval(() => {
-      if (mobileState.activeTab === "its" && document.getElementById("m-its-scroll")) {
+      const scroll = document.getElementById("m-its-scroll");
+      if (mobileState.activeTab === "its" && scroll && scroll.dataset.cameraKey !== cameraRenderKey(state.device)) {
         renderITSSheetContent();
+      } else if (mobileState.activeTab === "its" && scroll) {
+        syncCustomVideoButtons(scroll);
+        updateVideoAiPanel(scroll);
       }
     }, 4000);
 
     window.addEventListener("resize", () => {
       if (itsCurrentSnap !== "closed") snapITSSheet(itsCurrentSnap);
     });
+    window.addEventListener("pagehide", () => closeAiHistorySheet(false));
 
     map.invalidateSize();
   }
@@ -7366,6 +8127,11 @@ document.addEventListener("click", (event) => {
     event.stopPropagation();
     itsShowMapLicenseModal();
   }
+  if (target?.closest("[data-ai-license]")) {
+    event.preventDefault();
+    event.stopPropagation();
+    itsShowAiLicenseModal();
+  }
 });
 
 function itsShowMapLicenseModal(): void {
@@ -7388,6 +8154,55 @@ function itsShowMapLicenseModal(): void {
       </header>
       <div class="map-license-list">
         ${mapServiceStackHtml()}
+      </div>
+    </section>
+  `;
+  document.body.appendChild(modal);
+  let closeLicenseModal: () => void = () => undefined;
+  const keyHandler = (keyEvent: KeyboardEvent) => {
+    if (keyEvent.key === "Escape") closeLicenseModal();
+  };
+  closeLicenseModal = () => {
+    window.removeEventListener("keydown", keyHandler);
+    modal.classList.remove("open");
+    document.body.classList.remove("map-license-panel-open");
+    clearPromptSidePanelWidth();
+    window.setTimeout(() => modal.remove(), 220);
+  };
+  modal.addEventListener("click", (clickEvent) => {
+    if (clickEvent.target === modal) closeLicenseModal();
+  });
+  modal.querySelector<HTMLButtonElement>("[data-license-close]")?.addEventListener("click", closeLicenseModal);
+  const sheet = modal.querySelector<HTMLElement>(".map-license-sheet");
+  if (sheet) setupPromptSheetSwipe(sheet, closeLicenseModal);
+  window.addEventListener("keydown", keyHandler);
+  window.setTimeout(() => {
+    modal.classList.add("open");
+    document.body.classList.add("map-license-panel-open");
+    setPromptSidePanelWidthFromSheet(sheet);
+  }, 20);
+}
+
+function itsShowAiLicenseModal(): void {
+  if (document.getElementById("ai-license-modal")) return;
+  closeFloatingMapPanels();
+  const modal = document.createElement("div");
+  modal.id = "ai-license-modal";
+  modal.className = "map-license-modal ai-license-modal";
+  modal.innerHTML = `
+    <section class="map-license-sheet" role="dialog" aria-modal="true" aria-labelledby="ai-license-title">
+      <div class="map-license-grip" data-swipe-handle aria-hidden="true"></div>
+      <header class="map-license-head">
+        <div>
+          <span>ITS Maps</span>
+          <h2 id="ai-license-title">Lisensi AI</h2>
+        </div>
+        <button type="button" aria-label="Tutup Lisensi AI" title="Tutup" data-license-close>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+      </header>
+      <div class="map-license-list">
+        ${aiServiceStackHtml()}
       </div>
     </section>
   `;
@@ -7443,6 +8258,37 @@ type AppDownloadInfo = {
   shortDescription: string;
   longDescription: string;
 };
+type DynamicAppLinks = Partial<Record<AppDownloadPlatform, string>>;
+
+let itsDynamicAppLinks: DynamicAppLinks = {};
+let itsDynamicAppLinksPromise: Promise<void> | null = null;
+
+function safeDynamicDownloadUrl(value: unknown): string {
+  const url = typeof value === "string" ? value.trim() : "";
+  if (!url) return "";
+  if (/^https?:\/\//i.test(url) || url.startsWith("/")) return url;
+  return "";
+}
+
+async function refreshDynamicAppLinks(force = false): Promise<void> {
+  if (itsDynamicAppLinksPromise && !force) return itsDynamicAppLinksPromise;
+  itsDynamicAppLinksPromise = (async () => {
+    try {
+      const res = await fetch(`${FIREBASE_ROOT_URL}/linkDynamics.json`, { cache: "no-store" });
+      if (!res.ok) return;
+      const data = await res.json() as Record<string, unknown> | null;
+      if (!data || typeof data !== "object") return;
+      itsDynamicAppLinks = {
+        android: safeDynamicDownloadUrl(data.android),
+        ios: safeDynamicDownloadUrl(data.ios),
+        windows: safeDynamicDownloadUrl(data.windows),
+      };
+    } catch {
+      // Keep bundled fallback links when RTDB is unreachable.
+    }
+  })();
+  return itsDynamicAppLinksPromise;
+}
 
 function appScreenshotUrls(folder: "windows" | "mobile"): string[] {
   const prefix = `./ss/${folder}/`;
@@ -7468,7 +8314,7 @@ function getAppDownloadInfo(): AppDownloadInfo {
       platformName: "Android",
       extension: ".apk",
       fileName: ITS_ANDROID_INSTALL_NAME,
-      url: ITS_ANDROID_INSTALL_URL,
+      url: itsDynamicAppLinks.android || ITS_ANDROID_INSTALL_URL,
       previewFolder: "mobile",
       shortDescription: "Aplikasi Android ITS Maps untuk peta realtime, kamera, notifikasi, dan kontrol Raspberry Pi.",
       longDescription: "ITS Maps Android membawa peta realtime berbasis data OSM, lokasi user, kamera Raspberry Pi, notifikasi publik, dan ringkasan data lalu lintas ke layar sentuh. Build APK dipakai untuk instalasi manual di perangkat Android.",
@@ -7480,7 +8326,7 @@ function getAppDownloadInfo(): AppDownloadInfo {
       platformName: "iOS",
       extension: ".app",
       fileName: "ITS-Maps-iOS.app",
-      url: ITS_IOS_INSTALL_URL,
+      url: itsDynamicAppLinks.ios || ITS_IOS_INSTALL_URL,
       previewFolder: "mobile",
       shortDescription: "Mode iOS ITS Maps memakai pengalaman app-like dengan Safari/PWA dan tampilan mobile.",
       longDescription: "ITS Maps di iOS berjalan sebagai pengalaman web app yang dapat dipasang dari Safari. Fitur peta, notifikasi yang didukung browser, preview kamera, dan dokumentasi tetap mengikuti tampilan mobile yang sama.",
@@ -7491,7 +8337,7 @@ function getAppDownloadInfo(): AppDownloadInfo {
     platformName: "Windows",
     extension: ".exe",
     fileName: ITS_WINDOWS_INSTALL_NAME,
-    url: ITS_WINDOWS_INSTALL_URL,
+    url: itsDynamicAppLinks.windows || ITS_WINDOWS_INSTALL_URL,
     previewFolder: "windows",
     shortDescription: "Installer Windows ITS Maps dengan peta Carto, data OSM, kamera realtime, notifikasi desktop, dan pembaruan aplikasi.",
     longDescription: "ITS Maps adalah aplikasi desktop Electron untuk memantau Raspberry Pi, peta realtime, kamera, grafik lalu lintas, history, update otomatis, dokumentasi, dan panel What's New. Installer custom menyiapkan aplikasi native dan asset GitHub Release dipakai untuk pembaruan.",
@@ -7556,6 +8402,7 @@ function itsDownloadApp(info: AppDownloadInfo): void {
 
 function itsCreateWindowsDownloadButton(): void {
   if (document.getElementById("windows-download-app")) return;
+  void refreshDynamicAppLinks();
   const info = getAppDownloadInfo();
   const previews = appPreviewImages(info);
   const host = document.createElement("div");
@@ -7577,12 +8424,13 @@ function itsCreateWindowsDownloadButton(): void {
       <img class="windows-download-hover-preview" src="${previews[0] || "/screenshots/desktop-map.png"}" alt="">
     </div>
   `;
-  host.querySelector<HTMLButtonElement>(".windows-download-trigger")?.addEventListener("click", itsShowWindowsDownloadModal);
+  host.querySelector<HTMLButtonElement>(".windows-download-trigger")?.addEventListener("click", () => void itsShowWindowsDownloadModal());
   document.body.appendChild(host);
 }
 
-function itsShowWindowsDownloadModal(): void {
+async function itsShowWindowsDownloadModal(): Promise<void> {
   if (document.getElementById("windows-download-modal")) return;
+  await refreshDynamicAppLinks(true);
   closeFloatingMapPanels();
   const licenseModal = document.getElementById("map-license-modal");
   if (licenseModal) licenseModal.remove();

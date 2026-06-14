@@ -29,6 +29,9 @@
     "vite": "^8.0.1"
   },
   "dependencies": {
+    "@capacitor/android": "^6.2.1",
+    "@capacitor/app": "^6.0.3",
+    "@capacitor/core": "^6.2.1",
     "@huggingface/transformers": "^4.2.0",
     "leaflet": "^1.9.4",
     "leaflet-rotate": "^0.2.8",

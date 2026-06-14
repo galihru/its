@@ -162,6 +162,9 @@ export async function runBrowserYolo(source: ImageSource): Promise<BrowserYoloRe
   if (!frame) {
     return emptyResult("no-frame", "Frame kamera belum tersedia", modelUrl);
   }
+  if (!imageHasVisibleContent(frame.imageData)) {
+    return emptyResult("no-frame", "Frame video terlalu gelap atau belum valid", modelUrl);
+  }
   try {
     const ort = await loadOrtModule();
     const session = await loadYoloSession(modelUrl);
@@ -214,98 +217,31 @@ export async function loadImageSource(src: string): Promise<HTMLImageElement | n
 export async function publishBrowserYoloResult(
   firebaseRootUrl: string,
   deviceId: string,
-  viewerId: string,
+  _viewerId: string,
   cameraUrl: string,
   result: BrowserYoloResult,
 ): Promise<void> {
   if (!firebaseRootUrl || !deviceId || result.status !== "online") return;
-  const trafficLevel = result.vehicleCount >= 11 ? "padat" : result.vehicleCount >= 6 ? "sedang" : "lancar";
-  const trafficColor = trafficLevel === "padat" ? "red" : trafficLevel === "sedang" ? "yellow" : "green";
-  const compactDetections = result.detections.map((det) => ({
-    label: det.label,
-    confidence: Number(det.confidence.toFixed(4)),
-    vehicle: Boolean(det.vehicle),
-    x: Math.round(det.x),
-    y: Math.round(det.y),
-    width: Math.round(det.width),
-    height: Math.round(det.height),
-  }));
-  const datasetPath = `trafficObjectDetectionDataset/devices/${deviceId}`;
-  const datasetPayload = {
-    deviceId,
-    source: "browser-yolo",
-    format: "image/jpeg",
-    updatedAt: result.updatedAt,
-    cameraUrl,
-    snapshot1Url: result.annotatedThumbnailUrl || result.rawThumbnailUrl || "",
-    snapshot2Url: result.rawThumbnailUrl || result.annotatedThumbnailUrl || "",
-    vehicleCount: result.vehicleCount,
-    vehicleBreakdown: result.vehicleBreakdown,
-    objectCount: result.objectCount,
-    detections: compactDetections,
-    detectorStatus: result.status,
-    detectorFrameWidth: result.frameWidth,
-    detectorFrameHeight: result.frameHeight,
-    trafficLevel,
-    trafficColor,
-  };
-  const browserPayload = {
-    source: "browser-yolo",
-    status: result.status,
-    note: result.note,
-    updatedAt: result.updatedAt,
-    thumbnailUpdatedAt: result.updatedAt,
-    fps: result.fps,
-    frameWidth: result.frameWidth,
-    frameHeight: result.frameHeight,
-    objectCount: result.objectCount,
-    vehicleCount: result.vehicleCount,
-    vehicleBreakdown: result.vehicleBreakdown,
-    detections: compactDetections,
-    cameraUrl,
-    modelUrl: result.modelUrl,
-    outputShape: result.outputShape,
-    thumbnailUrl: result.annotatedThumbnailUrl || result.rawThumbnailUrl || "",
-    viewerId,
-    trafficLevel,
-    trafficColor,
-    cameraDataset: {
-      path: datasetPath,
-      source: "browser-yolo",
-      updatedAt: result.updatedAt,
-      snapshot1Url: result.annotatedThumbnailUrl || result.rawThumbnailUrl || "",
-      snapshot2Url: result.rawThumbnailUrl || result.annotatedThumbnailUrl || "",
-    },
-  };
   const devicePatch = {
-    detectorStatus: result.status,
-    detectorNote: result.note,
-    detectorUpdatedAt: result.updatedAt,
-    detectorFps: result.fps,
-    detectorFrameWidth: result.frameWidth,
-    detectorFrameHeight: result.frameHeight,
-    detectorCameraSource: cameraUrl || "browser-frame",
-    detectorConfidence: YOLO_CONFIDENCE,
-    detectorOutputShape: result.outputShape,
-    objectCount: result.objectCount,
-    vehicleCount: result.vehicleCount,
-    vehicleBreakdown: result.vehicleBreakdown,
-    detections: compactDetections,
-    cameraThumbnailUrl: result.annotatedThumbnailUrl || result.rawThumbnailUrl || "",
-    cameraDataset: {
-      path: datasetPath,
+    objectDetection: {
       source: "browser-yolo",
       updatedAt: result.updatedAt,
-      snapshot1Url: result.annotatedThumbnailUrl || result.rawThumbnailUrl || "",
-      snapshot2Url: result.rawThumbnailUrl || result.annotatedThumbnailUrl || "",
+      car: result.vehicleBreakdown.car,
+      motorcycle: result.vehicleBreakdown.motorcycle,
+      bus: result.vehicleBreakdown.bus,
+      truck: result.vehicleBreakdown.truck,
+      bicycle: result.vehicleBreakdown.bicycle,
+      total: result.vehicleBreakdown.total,
+      objectCount: result.objectCount,
+      fps: result.fps,
+      frameWidth: result.frameWidth,
+      frameHeight: result.frameHeight,
+      modelUrl: result.modelUrl,
+      outputShape: result.outputShape,
+      cameraUrl,
     },
-    trafficSource: `adaptive-browser-yolo-${trafficLevel}`,
   };
-  await Promise.all([
-    firebasePatch(firebaseRootUrl, `browserYolo/devices/${deviceId}`, browserPayload),
-    firebasePatch(firebaseRootUrl, datasetPath, datasetPayload),
-    firebasePatch(firebaseRootUrl, `devices/${deviceId}`, devicePatch),
-  ]);
+  await firebasePatch(firebaseRootUrl, `devices/${deviceId}`, devicePatch);
 }
 
 function emptyResult(status: BrowserYoloResult["status"], note: string, modelUrl: string): BrowserYoloResult {
@@ -371,6 +307,29 @@ function captureImageSource(source: ImageSource): { canvas: HTMLCanvasElement; i
   ctx.drawImage(source, 0, 0, width, height);
   const imageData = ctx.getImageData(0, 0, width, height);
   return { canvas, imageData, width, height };
+}
+
+function imageHasVisibleContent(image: ImageData): boolean {
+  const data = image.data;
+  let visible = 0;
+  let bright = 0;
+  let luminanceSum = 0;
+  let samples = 0;
+  const total = Math.max(1, image.width * image.height);
+  const step = Math.max(4, Math.floor(data.length / 18_000 / 4) * 4);
+  for (let i = 0; i < data.length; i += step) {
+    const alpha = data[i + 3] / 255;
+    if (alpha < 0.1) continue;
+    const luminance = data[i] * 0.2126 + data[i + 1] * 0.7152 + data[i + 2] * 0.0722;
+    luminanceSum += luminance;
+    samples += 1;
+    if (luminance > 22) visible += step / 4;
+    if (luminance > 92) bright += step / 4;
+  }
+  const visibleRatio = visible / total;
+  const brightRatio = bright / total;
+  const averageLuminance = samples ? luminanceSum / samples : 0;
+  return (averageLuminance > 18 && visibleRatio > 0.055) || brightRatio > 0.035;
 }
 
 function imageDataToTensor(ort: OrtModule, image: ImageData): import("onnxruntime-web").Tensor {

@@ -206,15 +206,15 @@ type AccentTheme = "classic" | "bloom" | "agave" | "rose";
 
 const DEFAULT_CONFIG: Required<AppConfig> = {
   snapshotUrl: "./data/its-state.json",
-  refreshMs: 5000,
+  refreshMs: 10000,
 };
 const FIREBASE_DEVICES_URL =
   "https://itstelkom-default-rtdb.asia-southeast1.firebasedatabase.app/devices.json";
 const FIREBASE_ROOT_URL = FIREBASE_DEVICES_URL.replace(/\/devices\.json$/, "");
-const FIREBASE_TRAFFIC_DATASET_ROOT = `${FIREBASE_ROOT_URL}/trafficObjectDetectionDataset/devices`;
-const FIREBASE_BROWSER_YOLO_ROOT = `${FIREBASE_ROOT_URL}/browserYolo/devices`;
 const OFFLINE_AFTER_MS = 60_000;
-const BROWSER_YOLO_FRESH_MS = 90_000;
+const CAMERA_STATUS_FRESH_MS = 75_000;
+const CAMERA_SNAPSHOT_FRESH_MS = 120_000;
+const BROWSER_YOLO_INTERVAL_MS = 10_000;
 const WEBRTC_SIGNAL_ROOT = "webrtc/devices";
 const WEBRTC_POLL_MS = 700;
 const WEBRTC_HEARTBEAT_MS = 5_000;
@@ -259,7 +259,7 @@ const state = {
   mapPitch: 0,
   userLocation: loadLastUserLocation(),
   knownDevicePositions: loadKnownDevicePositions(),
-  geolocationState: "menunggu izin lokasi" as string,
+  geolocationState: "lokasi belum diminta" as string,
   locationPromptOpen: false,
   clientId: clientId(),
   history: loadTrafficHistory(),
@@ -334,8 +334,6 @@ function boot(): void {
   initMaps();
   bindStaticActions();
   bindUpdateBridge();
-  showLocationPromptIfNeeded();
-  startUserLocation();
   startCarousel();
   renderAll();
   void refreshData();
@@ -554,7 +552,7 @@ function bindStaticActions(): void {
   });
 
   document.querySelector<HTMLButtonElement>("[data-request-location]")?.addEventListener("click", () => {
-    requestUserLocation();
+    startUserLocation();
   });
 
   document.querySelectorAll<HTMLButtonElement>("[data-map-zoom]").forEach((button) => {
@@ -566,7 +564,7 @@ function bindStaticActions(): void {
   });
 
   document.querySelector<HTMLButtonElement>("[data-map-locate]")?.addEventListener("click", () => {
-    requestUserLocation();
+    startUserLocation();
     focusFullMap("user");
   });
 
@@ -644,7 +642,7 @@ function openPanel(panel: AppPanel): void {
     state.updateStatus = result || state.updateStatus;
     openPanel("settings");
   });
-  host.querySelector<HTMLButtonElement>("[data-request-location]")?.addEventListener("click", requestUserLocation);
+  host.querySelector<HTMLButtonElement>("[data-request-location]")?.addEventListener("click", startUserLocation);
   host.querySelectorAll<HTMLButtonElement>("[data-open-panel]").forEach((button) => {
     button.addEventListener("click", () => openPanel(button.dataset.openPanel as AppPanel));
   });
@@ -1041,44 +1039,11 @@ function hideAppSplash(message = "Data siap"): void {
 }
 
 async function enrichDevices(devices: DeviceRecord[]): Promise<DeviceRecord[]> {
+  const snapshotHistory = await readFirebaseFields(`${FIREBASE_ROOT_URL}/snapshotHistory`, ["image1", "image2", "updatedAt", "active", "deviceId"])
+    .catch(() => ({} as Record<string, unknown>));
   return Promise.all(devices.map(async (device) => {
-    const id = encodeURIComponent(device.id);
-    const telemetry = await fetchDeviceTelemetry(id).catch(() => ({ traffic: null, yolo: null }));
-    return mergeDeviceTelemetry(device, telemetry.traffic, telemetry.yolo);
+    return mergeDeviceTelemetry(device, snapshotHistory);
   }));
-}
-
-async function fetchDeviceTelemetry(id: string): Promise<{ traffic: unknown; yolo: unknown }> {
-  const trafficFields = [
-    "updatedAt", "source", "vehicleCount", "cameraUrl", "detectorStatus",
-    "trafficDurationSec", "trafficColor", "detectorFrameHeight", "detectorFrameWidth",
-    "vehicleBreakdown", "locationLabel", "position",
-  ];
-  const yoloFields = [
-    "updatedAt", "thumbnailUpdatedAt", "source", "vehicleCount", "cameraUrl", "fps",
-    "status", "note", "frameWidth", "frameHeight", "objectCount", "vehicleBreakdown",
-    "thumbnailUrl", "cameraDataset", "detections", "outputShape", "trafficLevel", "trafficColor",
-  ];
-  const [trafficEntries, yoloEntries] = await Promise.all([
-    readFirebaseFields(`${FIREBASE_TRAFFIC_DATASET_ROOT}/${id}`, trafficFields),
-    readFirebaseFields(`${FIREBASE_BROWSER_YOLO_ROOT}/${id}`, yoloFields),
-  ]);
-  const traffic = trafficEntries as Record<string, unknown>;
-  const yolo = yoloEntries as Record<string, unknown>;
-  const trafficUpdatedAt = normalizeEpoch(finiteNumber(traffic.updatedAt) ?? 0);
-  const cached = state.snapshotCache.get(id);
-  if (trafficUpdatedAt && cached?.updatedAt === trafficUpdatedAt) {
-    traffic.snapshot1Url = cached.snapshot1Url;
-    traffic.snapshot2Url = cached.snapshot2Url;
-  } else if (trafficUpdatedAt) {
-    const snapshots = await readFirebaseFields(`${FIREBASE_TRAFFIC_DATASET_ROOT}/${id}`, ["snapshot1Url", "snapshot2Url"])
-      .catch(() => ({} as Record<string, unknown>));
-    traffic.snapshot1Url = stringValue(snapshots.snapshot1Url);
-    traffic.snapshot2Url = stringValue(snapshots.snapshot2Url);
-    const dataset = normalizeCameraDataset(traffic);
-    if (dataset) state.snapshotCache.set(id, dataset);
-  }
-  return { traffic, yolo };
 }
 
 async function readFirebaseFields(baseUrl: string, fields: string[]): Promise<Record<string, unknown>> {
@@ -1089,57 +1054,16 @@ async function readFirebaseFields(baseUrl: string, fields: string[]): Promise<Re
   return Object.fromEntries(pairs.filter(([, value]) => value !== undefined));
 }
 
-function mergeDeviceTelemetry(device: DeviceRecord, trafficRaw: unknown, yoloRaw: unknown): DeviceRecord {
-  const traffic = objectRecord(trafficRaw);
-  const yolo = objectRecord(yoloRaw);
-  const trafficDataset = normalizeCameraDataset(traffic);
-  const yoloDataset = normalizeCameraDataset(objectRecord(yolo.cameraDataset));
-  const yoloUpdatedAt = normalizeEpoch(finiteNumber(yolo.updatedAt) ?? finiteNumber(yolo.thumbnailUpdatedAt) ?? 0);
-  const trafficUpdatedAt = normalizeEpoch(finiteNumber(traffic.updatedAt) ?? 0);
-  const yoloFresh = yoloUpdatedAt > 0 && Date.now() - yoloUpdatedAt <= BROWSER_YOLO_FRESH_MS;
-  const mergedDataset = mergeCameraDataset(yoloFresh ? yoloDataset : undefined, trafficDataset, device.cameraDataset);
-  const yoloFrameWidth = yoloFresh ? finiteNumber(yolo.frameWidth) : undefined;
-  const yoloFrameHeight = yoloFresh ? finiteNumber(yolo.frameHeight) : undefined;
-  const yoloDetections = yoloFresh ? normalizeDetections(yolo.detections) : [];
-  const yoloValidDetections = yoloFrameWidth && yoloFrameHeight
-    ? yoloDetections.filter((det) => detectionBoxIsUsable(det, yoloFrameWidth, yoloFrameHeight))
-    : yoloDetections;
-  const yoloPayloadValid = !yoloFresh || !yoloDetections.length || yoloValidDetections.length > 0;
-  const yoloBreakdown = yoloFresh && yoloPayloadValid ? normalizeVehicleBreakdown(yolo.vehicleBreakdown) : undefined;
-  const trafficBreakdown = normalizeVehicleBreakdown(traffic.vehicleBreakdown);
-  const yoloCameraUrl = yoloFresh ? usablePublicMediaUrl(stringValue(yolo.cameraUrl)) : "";
-  const trafficCameraUrl = usablePublicMediaUrl(stringValue(traffic.cameraUrl));
-  const yoloThumbnail = yoloFresh ? stringValue(yolo.thumbnailUrl) : "";
-  const trafficThumbnail = stringValue(traffic.thumbnailUrl);
-  const yoloStatus = yoloFresh ? stringValue(yolo.status) : "";
-  const trafficDetectorStatus = stringValue(traffic.detectorStatus);
+function mergeDeviceTelemetry(device: DeviceRecord, snapshotRaw: unknown): DeviceRecord {
+  const snapshotDataset = normalizeSnapshotHistoryDataset(snapshotRaw);
+  const snapshotFresh = Boolean(snapshotDataset?.updatedAt && Date.now() - snapshotDataset.updatedAt <= CAMERA_SNAPSHOT_FRESH_MS);
+  const mergedDataset = mergeCameraDataset(snapshotFresh ? snapshotDataset : undefined, device.cameraDataset);
 
   return {
     ...device,
-    cameraUrl: device.cameraUrl || yoloCameraUrl || trafficCameraUrl,
-    cameraThumbnailUrl: yoloThumbnail || trafficThumbnail || mergedDataset?.snapshot1Url || mergedDataset?.snapshot2Url || device.cameraThumbnailUrl,
+    cameraThumbnailUrl: snapshotFresh ? mergedDataset?.snapshot1Url || mergedDataset?.snapshot2Url || device.cameraThumbnailUrl : device.cameraThumbnailUrl,
     cameraDataset: mergedDataset,
-    cameraUpdatedAt: Math.max(device.cameraUpdatedAt || 0, yoloUpdatedAt, trafficUpdatedAt) || device.cameraUpdatedAt,
-    detectorStatus: yoloStatus || trafficDetectorStatus || device.detectorStatus,
-    detectorNote: (yoloFresh ? stringValue(yolo.note) : "") || stringValue(traffic.detectorNote) || device.detectorNote,
-    detectorUpdatedAt: Math.max(device.detectorUpdatedAt || 0, yoloFresh ? yoloUpdatedAt : 0, trafficUpdatedAt) || device.detectorUpdatedAt,
-    detectorFps: (yoloFresh ? finiteNumber(yolo.fps) : undefined) ?? device.detectorFps,
-    detectorFrameWidth: yoloFrameWidth ?? finiteNumber(traffic.detectorFrameWidth) ?? device.detectorFrameWidth,
-    detectorFrameHeight: yoloFrameHeight ?? finiteNumber(traffic.detectorFrameHeight) ?? device.detectorFrameHeight,
-    vehicleBreakdown: yoloBreakdown || trafficBreakdown || device.vehicleBreakdown,
-    vehicleCount: (yoloFresh && yoloPayloadValid ? finiteNumber(yolo.vehicleCount) : undefined)
-      ?? finiteNumber(traffic.vehicleCount)
-      ?? device.vehicleCount,
-    objectCount: Math.max(
-      device.objectCount || 0,
-      Math.round(yoloFresh && yoloPayloadValid ? finiteNumber(yolo.objectCount) ?? 0 : 0),
-      Math.round(finiteNumber(traffic.objectCount) ?? 0),
-    ),
-    detections: yoloFresh ? yoloValidDetections : device.detections,
-    trafficColor: isTrafficColor(traffic.trafficColor) ? traffic.trafficColor : device.trafficColor,
-    trafficLevel: yoloFresh && isTrafficLevel(yolo.trafficLevel) ? yolo.trafficLevel : device.trafficLevel,
-    trafficDuration: finiteNumber(traffic.trafficDurationSec) ?? finiteNumber(traffic.trafficDuration) ?? device.trafficDuration,
-    trafficSource: (yoloFresh ? stringValue(yolo.source) : "") || stringValue(traffic.source) || device.trafficSource,
+    cameraUpdatedAt: Math.max(device.cameraUpdatedAt || 0, snapshotFresh ? snapshotDataset?.updatedAt || 0 : 0) || device.cameraUpdatedAt,
   };
 }
 
@@ -1154,6 +1078,21 @@ function mergeCameraDataset(...datasets: Array<TrafficCameraDataset | undefined>
     if (!merged.path && dataset.path) merged.path = dataset.path;
   });
   return merged.snapshot1Url || merged.snapshot2Url || merged.updatedAt ? merged : undefined;
+}
+
+function normalizeSnapshotHistoryDataset(raw: unknown): TrafficCameraDataset | undefined {
+  const record = objectRecord(raw);
+  const image1 = stringValue(record.image1);
+  const image2 = stringValue(record.image2);
+  const updatedAt = normalizeEpoch(
+    finiteNumber(record.updatedAt)
+    ?? finiteNumber(record.image1UpdatedAt)
+    ?? finiteNumber(record.image2UpdatedAt)
+    ?? 0,
+  );
+  return image1 || image2 || updatedAt
+    ? { snapshot1Url: image1, snapshot2Url: image2, updatedAt, source: "snapshotHistory", path: "snapshotHistory" }
+    : undefined;
 }
 
 async function fetchDesktopClients(): Promise<DesktopClientRecord[]> {
@@ -1203,9 +1142,13 @@ function normalizeDeviceEntry(key: string, raw: SnapshotDevice): DeviceRecord[] 
 
 function normalizeOneDevice(raw: SnapshotDevice): DeviceRecord | null {
   const record = raw as Record<string, unknown>;
-  const position = record.position as Record<string, unknown> | undefined;
-  let lat = finiteNumber(position?.lat) ?? finiteNumber(position?.y);
-  let lng = finiteNumber(position?.lng) ?? finiteNumber(position?.x);
+  const location = objectRecord(record.location);
+  const position = objectRecord(record.position);
+  const camera = objectRecord(record.camera);
+  const traffic = objectRecord(record.traffic);
+  const objectDetection = objectRecord(record.objectDetection);
+  let lat = finiteNumber(location.lat) ?? finiteNumber(location.y) ?? finiteNumber(position.lat) ?? finiteNumber(position.y);
+  let lng = finiteNumber(location.lng) ?? finiteNumber(location.long) ?? finiteNumber(location.lon) ?? finiteNumber(location.x) ?? finiteNumber(position.lng) ?? finiteNumber(position.x);
   if (lat === undefined || lng === undefined) return null;
   const id = stringValue(record.id) || raw.id || "raspberry-its";
   if (!isValidCoordinate(lat, lng)) {
@@ -1216,16 +1159,17 @@ function normalizeOneDevice(raw: SnapshotDevice): DeviceRecord | null {
     saveKnownDevicePosition(id, lat, lng);
   }
 
-  const cameraUrl = stringValue(record.cameraUrl);
-  const cameraHlsUrl = stringValue(record.cameraHlsUrl) || stringValue(record.hlsUrl);
-  const webrtcUrl = stringValue(record.webrtcUrl);
-  const cameraStatus = stringValue(record.cameraStatus);
-  const cameraReady = typeof record.cameraReady === "boolean" ? record.cameraReady : undefined;
-  const lastSeen = normalizeEpoch(finiteNumber(raw.lastSeen) ?? 0);
+  const cameraUrl = stringValue(camera.tunnelUrl) || stringValue(camera.pageUrl) || stringValue(camera.url) || stringValue(record.cameraUrl);
+  const cameraHlsUrl = stringValue(camera.hlsUrl) || stringValue(record.cameraHlsUrl) || stringValue(record.hlsUrl);
+  const webrtcUrl = stringValue(camera.webrtcUrl) || stringValue(record.webrtcUrl);
+  const cameraStatus = stringValue(camera.status) || stringValue(record.cameraStatus);
+  const cameraReady = typeof camera.ready === "boolean" ? camera.ready : typeof record.cameraReady === "boolean" ? record.cameraReady : undefined;
+  const cameraUpdatedAt = normalizeEpoch(finiteNumber(camera.updatedAt) ?? finiteNumber(record.cameraUpdatedAt) ?? finiteNumber(record.updatedAt) ?? 0);
+  const detectorUpdatedAt = normalizeEpoch(finiteNumber(objectDetection.updatedAt) ?? finiteNumber(record.detectorUpdatedAt) ?? 0);
+  const lastSeen = normalizeEpoch(finiteNumber(raw.lastSeen) ?? finiteNumber(record.updatedAt) ?? 0);
   const rawStatus = isDeviceStatus(record.status) ? record.status : "offline";
   const controllerHeartbeatLive = rawStatus === "online" && lastSeen > 0 && Date.now() - lastSeen <= OFFLINE_AFTER_MS;
-  const cameraLooksLive = (cameraStatus || "").toLowerCase() === "online" || Boolean(cameraReady);
-  const status: DeviceStatus = controllerHeartbeatLive || cameraLooksLive ? "online" : "offline";
+  const status: DeviceStatus = controllerHeartbeatLive ? "online" : "offline";
   const detectorFrameWidth = finiteNumber(record.detectorFrameWidth);
   const detectorFrameHeight = finiteNumber(record.detectorFrameHeight);
   const rawDetections = normalizeDetections(record.detections);
@@ -1236,15 +1180,21 @@ function normalizeOneDevice(raw: SnapshotDevice): DeviceRecord | null {
   const invalidBrowserYoloPayload = /browser-yolo/i.test(yoloSource)
     && rawDetections.length > 0
     && detections.length === 0;
-  const vehicleBreakdown = invalidBrowserYoloPayload ? undefined : normalizeVehicleBreakdown(record.vehicleBreakdown);
+  const vehicleBreakdown = invalidBrowserYoloPayload ? undefined : normalizeVehicleBreakdown(objectDetection) || normalizeVehicleBreakdown(record.vehicleBreakdown);
   const vehicleCount = invalidBrowserYoloPayload
     ? 0
-    : finiteNumber(record.vehicleCount)
+    : finiteNumber(objectDetection.total)
+      ?? finiteNumber(record.vehicleCount)
       ?? finiteNumber(record.vehicles)
       ?? vehicleBreakdown?.total;
-  const cameraMode = isCameraMode(record.cameraMode)
-    ? record.cameraMode
+  const rawCameraMode = stringValue(camera.mode) || record.cameraMode;
+  const cameraMode = isCameraMode(rawCameraMode)
+    ? rawCameraMode
     : cameraUrl || webrtcUrl ? "mjpeg" : undefined;
+  const trafficColorValue = stringValue(traffic.current)
+    || (traffic.red === true ? "red" : traffic.yellow === true ? "yellow" : traffic.green === true ? "green" : "")
+    || stringValue(record.trafficColor)
+    || "";
 
   return {
     id,
@@ -1257,30 +1207,30 @@ function normalizeOneDevice(raw: SnapshotDevice): DeviceRecord | null {
     cameraHlsUrl,
     cameraThumbnailUrl: stringValue(record.cameraThumbnailUrl),
     cameraStatus,
-    cameraUpdatedAt: finiteNumber(record.cameraUpdatedAt),
+    cameraUpdatedAt,
     cameraDataset: normalizeCameraDataset(record.cameraDataset),
     cameraMode,
     webrtcEnabled: typeof record.webrtcEnabled === "boolean" ? record.webrtcEnabled : undefined,
     webrtcPath: stringValue(record.webrtcPath),
     webrtcUrl,
     cameraReady,
-    roadName: stringValue(record.roadName),
+    roadName: stringValue(record.roadName) || stringValue(location.label),
     roadHint: stringValue(record.roadHint),
-    trafficColor: isTrafficColor(record.trafficColor) ? record.trafficColor : undefined,
-    trafficDuration: finiteNumber(record.trafficDuration) ?? finiteNumber(record.trafficDurationSec),
-    trafficStartedAt: finiteNumber(record.trafficStartedAt),
+    trafficColor: isTrafficColor(trafficColorValue) ? trafficColorValue : undefined,
+    trafficDuration: finiteNumber(traffic.durationSec) ?? finiteNumber(traffic.duration) ?? finiteNumber(record.trafficDuration) ?? finiteNumber(record.trafficDurationSec),
+    trafficStartedAt: finiteNumber(traffic.startedAt) ?? finiteNumber(record.trafficStartedAt),
     vehicleCount,
     vehicleBreakdown,
-    detectorStatus: stringValue(record.detectorStatus),
+    detectorStatus: stringValue(objectDetection.source) || stringValue(record.detectorStatus),
     detectorNote: stringValue(record.detectorNote),
-    detectorUpdatedAt: finiteNumber(record.detectorUpdatedAt),
+    detectorUpdatedAt,
     detectorFps: finiteNumber(record.detectorFps),
     detectorFrameWidth,
     detectorFrameHeight,
     detectorCameraSource: stringValue(record.detectorCameraSource),
     objectCount: invalidBrowserYoloPayload
       ? 0
-      : Math.max(0, Math.round(finiteNumber(record.objectCount) ?? detections.length)),
+      : Math.max(0, Math.round(finiteNumber(objectDetection.objectCount) ?? finiteNumber(objectDetection.total) ?? finiteNumber(record.objectCount) ?? detections.length)),
     detections,
     trafficLevel: isTrafficLevel(record.trafficLevel) ? record.trafficLevel : undefined,
     trafficSource: stringValue(record.trafficSource),
@@ -1946,7 +1896,7 @@ function cameraSurfaceHtml(device: DeviceRecord | null): string {
       <div class="win-camera-frame" data-camera-frame data-ai-open="false">
         <div class="win-camera-media" data-camera-media>
           ${media}
-          <canvas class="win-camera-yolo-canvas" data-camera-yolo-canvas aria-hidden="true"></canvas>
+          <canvas class="win-camera-yolo-canvas" data-camera-yolo-canvas data-yolo-fit="contain" aria-hidden="true"></canvas>
         </div>
         <div class="win-camera-live"><span></span>${live ? "LIVE" : "OFFLINE"}</div>
         <div class="win-camera-status" data-camera-status>${escapeHtml(cameraStatusText(device))}</div>
@@ -1970,7 +1920,7 @@ function cameraMediaHtml(device: DeviceRecord | null): string {
   const poster = latestCameraSnapshot(device);
   if (pageUrl && !isLikelyImageUrl(pageUrl)) {
     return `
-      <iframe class="win-camera-fallback-frame" data-camera-iframe src="${escapeHtml(cameraEmbedUrl(pageUrl))}" allow="autoplay; camera; microphone; fullscreen" referrerpolicy="no-referrer"></iframe>
+      <iframe class="win-camera-fallback-frame" data-camera-iframe src="${escapeHtml(cameraEmbedUrl(pageUrl))}" allow="autoplay; camera; microphone; fullscreen; encrypted-media; picture-in-picture" allowfullscreen referrerpolicy="no-referrer"></iframe>
       <div class="win-camera-media-message" data-camera-media-message hidden></div>
     `;
   }
@@ -1989,7 +1939,7 @@ function cameraMediaHtml(device: DeviceRecord | null): string {
     const posterAttr = poster ? ` poster="${escapeHtml(poster)}"` : "";
     return `
       <video data-camera-video muted playsinline autoplay preload="auto" disablepictureinpicture crossorigin="anonymous"${posterAttr} data-src="${escapeHtml(src)}"${pageAttr}></video>
-      <iframe class="win-camera-fallback-frame" data-camera-iframe hidden src="about:blank" allow="autoplay; camera; microphone; fullscreen" referrerpolicy="no-referrer"></iframe>
+      <iframe class="win-camera-fallback-frame" data-camera-iframe hidden src="about:blank" allow="autoplay; camera; microphone; fullscreen; encrypted-media; picture-in-picture" allowfullscreen referrerpolicy="no-referrer"></iframe>
       <div class="win-camera-media-message" data-camera-media-message hidden></div>
     `;
   }
@@ -2273,7 +2223,7 @@ function startBrowserYolo(frame: HTMLElement): void {
     void processBrowserYoloFrame(frame);
   };
   tick();
-  state.browserYoloTimer = window.setInterval(tick, 4500);
+  state.browserYoloTimer = window.setInterval(tick, BROWSER_YOLO_INTERVAL_MS);
 }
 
 async function processBrowserYoloFrame(frame: HTMLElement): Promise<void> {
@@ -2283,14 +2233,17 @@ async function processBrowserYoloFrame(frame: HTMLElement): Promise<void> {
     const frameSource = await browserYoloSource(frame);
     if (!frameSource) {
       const hasCachedDetections = Boolean(state.device?.detections?.length && state.device.detectorFrameWidth && state.device.detectorFrameHeight);
-      const snapshot = latestCameraAnalysisSnapshot(state.device);
-      const waitingNextSnapshot = Boolean(snapshot && state.browserYoloLastSnapshotKey && Date.now() - state.browserYoloLastSnapshotAt < 15000);
+      const publicSnapshot = publicCameraSnapshotUrl(state.device);
+      const snapshot = publicSnapshot || latestCameraAnalysisSnapshot(state.device);
+      const waitingNextSnapshot = Boolean(snapshot && state.browserYoloLastSnapshotKey && Date.now() - state.browserYoloLastSnapshotAt < BROWSER_YOLO_INTERVAL_MS);
       state.browserYoloStatus = hasCachedDetections || waitingNextSnapshot ? "online" : "no-frame";
       state.browserYoloNote = hasCachedDetections
         ? "AI memakai hasil snapshot terakhir..."
         : waitingNextSnapshot
           ? "YOLO menunggu snapshot kamera berikutnya..."
-          : "Menunggu frame video live...";
+          : publicSnapshot
+            ? "Snapshot publik tunnel belum terbaca, mencoba ulang..."
+            : "Menunggu frame video live...";
       frame.dataset.yoloActive = hasCachedDetections ? "true" : "false";
       clearYoloCanvas(frame);
       drawExistingCameraDetections(frame, state.device);
@@ -2329,9 +2282,12 @@ async function browserYoloSource(frame: HTMLElement): Promise<{ source: HTMLVide
   }
   const image = frame.querySelector<HTMLImageElement>("[data-camera-image]");
   if (image?.complete && image.naturalWidth && image.naturalHeight) return { source: image, drawOverlay: true };
-  const snapshot = latestCameraAnalysisSnapshot(state.device);
+  const publicSnapshot = publicCameraSnapshotUrl(state.device);
+  const snapshot = publicSnapshot
+    ? cacheBustMediaUrl(publicSnapshot, Date.now())
+    : latestCameraAnalysisSnapshot(state.device);
   const snapshotKey = snapshot ? `${snapshot.slice(0, 96)}:${snapshot.length}` : "";
-  if (snapshotKey && state.browserYoloLastSnapshotKey === snapshotKey && Date.now() - state.browserYoloLastSnapshotAt < 15000) return null;
+  if (snapshotKey && state.browserYoloLastSnapshotKey === snapshotKey && Date.now() - state.browserYoloLastSnapshotAt < BROWSER_YOLO_INTERVAL_MS) return null;
   if (snapshotKey) {
     state.browserYoloLastSnapshotKey = snapshotKey;
     state.browserYoloLastSnapshotAt = Date.now();
@@ -2422,7 +2378,7 @@ function toYoloDetection(det: BrowserYoloDetection): YoloDetection {
 
 function publishBrowserYoloIfNeeded(result: BrowserYoloResult): void {
   const device = state.device;
-  if (!device || Date.now() - state.browserYoloLastPublishAt < 12000) return;
+  if (!device || Date.now() - state.browserYoloLastPublishAt < BROWSER_YOLO_INTERVAL_MS) return;
   state.browserYoloLastPublishAt = Date.now();
   const cameraUrl = cameraSourceForYolo(device);
   void publishBrowserYoloResult(firebaseRootUrl(), device.id, state.clientId, cameraUrl, result)
@@ -2464,7 +2420,7 @@ function startCameraAmbient(video: HTMLVideoElement, surface: HTMLElement): void
     }
   };
   sample();
-  state.ambientTimer = window.setInterval(sample, 520);
+  state.ambientTimer = window.setInterval(sample, 1800);
 }
 
 function syncImageAmbient(host: HTMLElement, image: HTMLImageElement | null, target: "gallery" | "camera"): void {
@@ -2604,7 +2560,6 @@ function updateCameraSummary(): void {
 }
 
 function startUserLocation(): void {
-  showLocationPromptIfNeeded();
   requestUserLocation();
   if (!navigator.geolocation || state.geolocationWatch) return;
   state.geolocationWatch = navigator.geolocation.watchPosition((pos) => {
@@ -2624,14 +2579,12 @@ function startUserLocation(): void {
 function requestUserLocation(): void {
   if (!navigator.geolocation) {
     state.geolocationState = "GPS tidak tersedia";
-    showLocationPrompt("GPS perangkat tidak tersedia di runtime Windows ini.");
     void requestFallbackLocation("browser geolocation tidak tersedia");
     renderTitle();
     updateMapStatus();
     return;
   }
   state.geolocationState = "meminta izin lokasi";
-  showLocationPrompt("Menunggu izin lokasi dari Windows untuk membaca posisi realtime user.");
   renderTitle();
   navigator.geolocation.getCurrentPosition((pos) => {
     applyUserPosition(pos);
@@ -2639,7 +2592,6 @@ function requestUserLocation(): void {
   }, (err) => {
     console.warn("[ITS Windows] geolocation request failed:", err);
     state.geolocationState = geolocationErrorText(err);
-    showLocationPrompt(state.geolocationState);
     void requestFallbackLocation(state.geolocationState);
     renderTitle();
     updateMapStatus();
@@ -2732,24 +2684,6 @@ async function requestNetworkLocation(): Promise<boolean> {
   } catch (err) {
     console.warn("[ITS Windows] network location failed:", err);
     return false;
-  }
-}
-
-function showLocationPromptIfNeeded(): void {
-  if (!state.userLocation || Date.now() - state.userLocation.updatedAt > 120_000) {
-    showLocationPrompt("Aplikasi akan meminta akses lokasi realtime user setiap dibuka.");
-  }
-}
-
-function showLocationPrompt(message?: string): void {
-  const host = document.querySelector<HTMLElement>("[data-location-consent]");
-  if (!host) return;
-  state.locationPromptOpen = true;
-  host.hidden = false;
-  host.classList.add("open");
-  const text = host.querySelector<HTMLParagraphElement>("p");
-  if (text && message) {
-    text.textContent = `${message} Marker user, jarak POI, dan sinkronisasi Windows membutuhkan latitude/longitude terkini.`;
   }
 }
 
@@ -2920,7 +2854,7 @@ function normalizeCameraDataset(raw: unknown): TrafficCameraDataset | undefined 
     snapshot2Url: stringValue(record.snapshot2Url)
       || stringValue(record.nama2)
       || stringValue(record.image2),
-    updatedAt: finiteNumber(record.updatedAt),
+    updatedAt: normalizeEpoch(finiteNumber(record.updatedAt) ?? 0),
     source: stringValue(record.source),
     path: stringValue(record.path),
   };
@@ -2991,13 +2925,15 @@ function cameraStatusText(device: DeviceRecord | null): string {
 }
 
 function cameraStatusTime(device: DeviceRecord | null): number {
-  return device?.cameraUpdatedAt || device?.detectorUpdatedAt || device?.lastSeen || 0;
+  return Math.max(device?.cameraUpdatedAt || 0, device?.detectorUpdatedAt || 0, device?.lastSeen || 0);
 }
 
 function aiStatusText(device: DeviceRecord | null): string {
   if (!device) return "menunggu data AI";
   if (state.browserYoloStatus === "loading") return state.browserYoloNote || "YOLO ONNX app memuat model...";
-  if (state.browserYoloStatus === "no-frame") return state.browserYoloNote || "Menunggu frame video live";
+  if (state.browserYoloStatus === "no-frame") {
+    return state.browserYoloNote || (publicCameraSnapshotUrl(device) ? "Menunggu snapshot publik dari tunnel" : "Menunggu frame video live");
+  }
   if (state.browserYoloStatus === "error") return state.browserYoloNote || "YOLO ONNX app gagal";
   if (state.browserYoloStatus === "online") {
     const fps = device.detectorFps && device.detectorFps > 0 ? ` - ${device.detectorFps.toFixed(1)} FPS` : "";
@@ -3026,6 +2962,20 @@ function publicCameraPageUrl(device: DeviceRecord | null): string {
   return hlsPageUrl(publicCameraHlsUrl(device));
 }
 
+function publicCameraSnapshotUrl(device: DeviceRecord | null): string {
+  const pageUrl = publicCameraPageUrl(device) || publicCameraUrl(device);
+  if (!pageUrl) return "";
+  if (isLikelyImageUrl(pageUrl)) return pageUrl;
+  try {
+    const parsed = new URL(pageUrl, window.location.href);
+    parsed.pathname = "/snapshot.jpg";
+    parsed.search = "";
+    return parsed.toString();
+  } catch {
+    return "";
+  }
+}
+
 function latestCameraSnapshot(device: DeviceRecord | null): string {
   if (!device) return "";
   const datasetShot = device.cameraDataset?.snapshot1Url?.trim()
@@ -3034,19 +2984,26 @@ function latestCameraSnapshot(device: DeviceRecord | null): string {
   const thumbnail = device.cameraThumbnailUrl?.trim() || "";
   const datasetAt = device.cameraDataset?.updatedAt || 0;
   const thumbnailAt = Math.max(device.cameraUpdatedAt || 0, device.detectorUpdatedAt || 0);
-  return datasetShot && datasetAt >= thumbnailAt ? datasetShot : thumbnail || datasetShot;
+  const freshDataset = datasetShot && snapshotIsFresh(device, datasetAt);
+  const freshThumbnail = thumbnail && snapshotIsFresh(device, thumbnailAt);
+  const selected = freshDataset && datasetAt >= thumbnailAt ? datasetShot : freshThumbnail ? thumbnail : freshDataset ? datasetShot : "";
+  return cacheBustMediaUrl(selected, freshDataset && selected === datasetShot ? datasetAt : thumbnailAt);
 }
 
 function latestCameraAnalysisSnapshot(device: DeviceRecord | null): string {
+  if (!device) return "";
   const dataset = device?.cameraDataset;
+  const datasetAt = dataset?.updatedAt || 0;
+  if (!snapshotIsFresh(device, datasetAt)) return "";
   if (dataset?.source === "browser-yolo" && dataset.snapshot2Url?.trim()) {
-    return dataset.snapshot2Url.trim();
+    return cacheBustMediaUrl(dataset.snapshot2Url.trim(), datasetAt);
   }
   const hasBrowserYoloDetections = /browser-yolo/i.test(device?.trafficSource || "")
     && Boolean(device?.detections?.length);
-  return dataset?.snapshot2Url?.trim()
+  const selected = dataset?.snapshot2Url?.trim()
     || dataset?.snapshot1Url?.trim()
     || (hasBrowserYoloDetections ? "" : device?.cameraThumbnailUrl?.trim() || "");
+  return cacheBustMediaUrl(selected, datasetAt || device.cameraUpdatedAt || device.detectorUpdatedAt);
 }
 
 function cameraTitleText(device: DeviceRecord | null): string {
@@ -3056,6 +3013,7 @@ function cameraTitleText(device: DeviceRecord | null): string {
 
 function cameraYoloHeadline(device: DeviceRecord | null): string {
   if (!device) return "";
+  if (!device.detectorUpdatedAt || !isFreshEpoch(device.detectorUpdatedAt, CAMERA_STATUS_FRESH_MS)) return "";
   const fps = device.detectorFps && device.detectorFps > 0 ? `${device.detectorFps.toFixed(1)} FPS` : "";
   const objectCount = Math.max(0, Math.round(device.objectCount || 0));
   const vehicleCount = Math.max(0, Math.round(device.vehicleCount || device.vehicleBreakdown?.total || 0));
@@ -3065,9 +3023,10 @@ function cameraYoloHeadline(device: DeviceRecord | null): string {
 
 function deviceCameraIsLive(device: DeviceRecord | null): boolean {
   if (!device) return false;
+  const freshCamera = cameraTelemetryIsFresh(device);
+  const hasPublicMedia = Boolean(publicCameraPageUrl(device) || publicCameraHlsUrl(device));
   return Boolean(
-    device.cameraStatus?.toLowerCase() === "online"
-    || device.cameraReady
+    (freshCamera && (device.cameraStatus?.toLowerCase() === "online" || device.cameraReady || hasPublicMedia))
     || (isWebRtcSignalingCamera(device) && state.webrtc.status === "live"),
   );
 }
@@ -3087,7 +3046,6 @@ function hlsPageUrl(url: string): string {
     const parsed = new URL(url, window.location.href);
     if (/\/index\.m3u8$/i.test(parsed.pathname)) {
       parsed.pathname = parsed.pathname.replace(/index\.m3u8$/i, "");
-      parsed.search = "";
       return parsed.toString();
     }
   } catch {
@@ -3421,7 +3379,7 @@ function renderWebRtcSurface(device: DeviceRecord): string {
 function cameraSourceForYolo(device: DeviceRecord): string {
   return isWebRtcSignalingCamera(device)
     ? webRtcSignalPath(device)
-    : publicCameraHlsUrl(device) || publicCameraUrl(device) || latestCameraSnapshot(device) || "browser-frame";
+    : publicCameraSnapshotUrl(device) || publicCameraHlsUrl(device) || publicCameraUrl(device) || latestCameraSnapshot(device) || "browser-frame";
 }
 
 function cameraSurfaceKey(device: DeviceRecord | null): string {
@@ -3432,8 +3390,7 @@ function cameraSurfaceKey(device: DeviceRecord | null): string {
 
 function deviceIsOnline(device: DeviceRecord | null): boolean {
   if (!device) return false;
-  const heartbeatLive = device.status === "online" && device.lastSeen > 0 && Date.now() - device.lastSeen <= OFFLINE_AFTER_MS;
-  return heartbeatLive || deviceCameraIsLive(device);
+  return device.status === "online" && deviceHeartbeatIsFresh(device);
 }
 
 function userMarkerIcon(): L.DivIcon {
@@ -3538,6 +3495,38 @@ function finiteNumber(v: unknown): number | undefined {
 function normalizeEpoch(v: number): number {
   if (!Number.isFinite(v) || v <= 0) return 0;
   return v < 1e11 ? v * 1000 : v;
+}
+
+function isFreshEpoch(v: number, maxAgeMs = CAMERA_STATUS_FRESH_MS): boolean {
+  const epoch = normalizeEpoch(v);
+  return epoch > 0 && Date.now() - epoch <= maxAgeMs;
+}
+
+function deviceHeartbeatIsFresh(device: DeviceRecord | null): boolean {
+  return Boolean(device?.lastSeen && isFreshEpoch(device.lastSeen, OFFLINE_AFTER_MS));
+}
+
+function cameraTelemetryIsFresh(device: DeviceRecord | null): boolean {
+  if (!device) return false;
+  return [device.cameraUpdatedAt, device.detectorUpdatedAt, device.cameraDataset?.updatedAt]
+    .some((value) => isFreshEpoch(value || 0, CAMERA_STATUS_FRESH_MS));
+}
+
+function snapshotIsFresh(device: DeviceRecord | null, updatedAt?: number): boolean {
+  if (!device) return false;
+  if (!updatedAt) return deviceHeartbeatIsFresh(device);
+  return isFreshEpoch(updatedAt, CAMERA_SNAPSHOT_FRESH_MS);
+}
+
+function cacheBustMediaUrl(url: string, updatedAt?: number): string {
+  if (!url || /^data:/i.test(url) || /^blob:/i.test(url) || !updatedAt) return url;
+  try {
+    const parsed = new URL(url, window.location.href);
+    parsed.searchParams.set("its_t", String(Math.round(normalizeEpoch(updatedAt) || updatedAt)));
+    return parsed.toString();
+  } catch {
+    return url;
+  }
 }
 
 function formatAge(v: number): string {

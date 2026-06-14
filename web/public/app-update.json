@@ -9,12 +9,22 @@
   "desktopUrl": "https://github.com/galihru/its/releases/download/its-maps-v1.0.21/ITS-Maps-Windows-Custom-Setup-1.0.21-x64.exe",
   "pwaUrl": "https://itstelkom.web.app/",
   "logoUrl": "https://itstelkom.web.app/favicon.svg",
-  "updatedAt": "2026-06-13T09:09:56+07:00",
+  "controllerJarUrl": "https://itstelkom.web.app/artifacts/ItsController.jar?v=20260615-snapshot-widget",
+  "controllerJarSha256": "77b6b75128b969640cbfe8fb73ab7ea44808ed590713c13edb805a021f8c16d8",
+  "controllerBundleUrl": "https://itstelkom.web.app/artifacts/its-controller-files.tar.gz?v=20260615-snapshot-widget",
+  "controllerBundleSha256": "ee36ddd7a140464634aa412771fdc57efe851207df6af76d849e0a539864d66b",
+  "controller": {
+    "jarUrl": "https://itstelkom.web.app/artifacts/ItsController.jar?v=20260615-snapshot-widget",
+    "jarSha256": "77b6b75128b969640cbfe8fb73ab7ea44808ed590713c13edb805a021f8c16d8",
+    "bundleUrl": "https://itstelkom.web.app/artifacts/its-controller-files.tar.gz?v=20260615-snapshot-widget",
+    "bundleSha256": "ee36ddd7a140464634aa412771fdc57efe851207df6af76d849e0a539864d66b"
+  },
+  "updatedAt": "2026-06-15T00:00:00+07:00",
   "force": false,
-  "autoDownload": true,
+  "autoDownload": false,
   "releaseNotes": [
-    "Menyamakan status Raspberry dan kamera menjadi online/offline saja, termasuk dot LIVE/OFFLINE pada website dan ITS Maps Windows.",
-    "Menambahkan canvas YOLO di atas video, popup, fullscreen, dan snapshot supaya hasil deteksi tampil langsung pada frame yang sedang dilihat.",
-    "Memperbaiki prioritas snapshot RTDB/browserYolo agar carousel dan widget memakai frame terbaru, serta tombol play/fullscreen tetap klikable di mode iframe."
+    "Memulihkan empat widget Android native: maps, alert realtime, ITS realtime, dan snapshot AI.",
+    "Memindahkan riwayat snapshot ke snapshotHistory yang hanya ditulis Raspberry tiap 10 detik bergantian image1/image2.",
+    "Mengubah update Android menjadi modal/manual, bukan auto-download mendadak."
   ]
 }
