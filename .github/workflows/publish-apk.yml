@@ -30,6 +30,22 @@ jobs:
           distribution: temurin
           java-version: '21'
 
+      - name: Set up Node
+        if: steps.android_project.outputs.available == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build web assets for Android
+        if: steps.android_project.outputs.available == 'true'
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+          rm -rf android/app/src/main/assets/public
+          mkdir -p android/app/src/main/assets/public
+          cp -R dist/. android/app/src/main/assets/public/
+
       - name: Build Android debug APK
         if: steps.android_project.outputs.available == 'true'
         working-directory: web/android

@@ -6880,9 +6880,279 @@ if (staticRoute) {
     layerModalOpen: false,
   };
 
+  type MobileTutorialStep = {
+    id: string;
+    title: string;
+    body: string;
+    selector?: string;
+    action: "next" | "click" | "swipe" | "finish";
+    cta?: string;
+    onEnter?: () => void;
+  };
+
+  const MOBILE_TUTORIAL_STORAGE_KEY = "its-mobile-tutorial:v1";
+  const mobileTutorialSteps: MobileTutorialStep[] = [
+    {
+      id: "welcome",
+      title: "Selamat datang di ITS Maps",
+      body: "Tutorial singkat ini akan memandu tombol peta, menu bawah, dan panel swipe. Ikuti tindakan yang diminta agar langkah berikutnya terbuka.",
+      action: "next",
+      cta: "Mulai",
+    },
+    {
+      id: "zoom-in",
+      title: "Perbesar peta",
+      body: "Tekan tombol + untuk memperbesar area peta.",
+      selector: '.map-toolbar-mobile [data-action="zoom-in"]',
+      action: "click",
+    },
+    {
+      id: "zoom-out",
+      title: "Perkecil peta",
+      body: "Tekan tombol - untuk mengembalikan zoom peta.",
+      selector: '.map-toolbar-mobile [data-action="zoom-out"]',
+      action: "click",
+    },
+    {
+      id: "home",
+      title: "Kembali ke Raspberry",
+      body: "Tekan tombol rumah untuk memusatkan peta ke perangkat Raspberry.",
+      selector: '.map-toolbar-mobile [data-action="home"]',
+      action: "click",
+    },
+    {
+      id: "locate",
+      title: "Lokasi pengguna",
+      body: "Tekan tombol lokasi untuk menampilkan posisi pengguna. Jika browser meminta izin, pilih izinkan.",
+      selector: '.map-toolbar-mobile [data-action="locate"]',
+      action: "click",
+    },
+    {
+      id: "layer",
+      title: "Lapisan peta",
+      body: "Tekan tombol lapisan untuk memilih tampilan 2D, satelit, atau 3D.",
+      selector: "#m-layer-btn",
+      action: "click",
+    },
+    {
+      id: "layer-choice",
+      title: "Pilih mode peta",
+      body: "Tekan salah satu pilihan tampilan peta. Setelah dipilih, panel akan menutup otomatis.",
+      selector: "#m-layer-modal .m-layer-opt",
+      action: "click",
+    },
+    {
+      id: "camera",
+      title: "Video Raspberry",
+      body: "Tekan tombol kamera untuk membuka panel ITS berisi video realtime, data kendaraan, dan status lalu lintas.",
+      selector: ".map-toolbar-mobile .toolbar-camera",
+      action: "click",
+    },
+    {
+      id: "back-to-map",
+      title: "Kembali ke menu Peta",
+      body: "Tekan menu Peta untuk kembali ke tampilan peta utama sebelum mencoba panel riwayat.",
+      selector: '#m-bottom-nav [data-tab="peta"]',
+      action: "click",
+    },
+    {
+      id: "history-swipe",
+      title: "Panel riwayat AI",
+      body: "Tarik garis kecil di atas navbar ke atas. Panel ini menyimpan snapshot Raspberry dan hasil analisis AI.",
+      selector: "#m-ai-history-sheet [data-swipe-handle]",
+      action: "swipe",
+      onEnter: () => {
+        closeITSSheet();
+        openAiHistorySheet("dock");
+      },
+    },
+    {
+      id: "about-tab",
+      title: "Tentang tim",
+      body: "Tekan tab Tentang untuk melihat tabel profil pencipta dan anggota tim.",
+      selector: '#m-ai-history-sheet [data-ai-history-tab="about"]',
+      action: "click",
+      onEnter: () => snapAiHistorySheet("peek"),
+    },
+    {
+      id: "profile-menu",
+      title: "Menu Profil",
+      body: "Tekan Profil untuk melihat ringkasan perangkat, status online, dan informasi operator.",
+      selector: '#m-bottom-nav [data-tab="profil"]',
+      action: "click",
+    },
+    {
+      id: "finish",
+      title: "Tutorial selesai",
+      body: "ITS Maps siap digunakan. Semoga membantu!",
+      action: "finish",
+      cta: "Selesai",
+    },
+  ];
+
+  const mobileTutorial = {
+    active: false,
+    index: 0,
+    overlay: null as HTMLElement | null,
+    card: null as HTMLElement | null,
+    spotlight: null as HTMLElement | null,
+    retryTimer: 0,
+  };
+
   // ─── Helpers ─────────────────────────────────────────────────────────────────
 
   function lerp(a: number, b: number, t: number) { return a + (b - a) * t; }
+
+  function mobileTutorialStep(): MobileTutorialStep {
+    return mobileTutorialSteps[Math.min(mobileTutorial.index, mobileTutorialSteps.length - 1)];
+  }
+
+  function mobileTutorialTarget(step = mobileTutorialStep()): HTMLElement | null {
+    if (!step.selector) return null;
+    const el = document.querySelector<HTMLElement>(step.selector);
+    if (!el) return null;
+    const rect = el.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+    return el;
+  }
+
+  function mobileTutorialCardPosition(targetRect: DOMRect | null, card: HTMLElement): void {
+    const margin = 14;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const cardRect = card.getBoundingClientRect();
+    const cardW = Math.min(cardRect.width || 318, vw - margin * 2);
+    const cardH = cardRect.height || 176;
+    let left = targetRect
+      ? targetRect.left + targetRect.width / 2 - cardW / 2
+      : vw / 2 - cardW / 2;
+    left = clamp(left, margin, Math.max(margin, vw - cardW - margin));
+    let top = targetRect
+      ? targetRect.bottom + 14
+      : Math.max(80, vh * 0.18);
+    if (targetRect && top + cardH + margin > vh) top = targetRect.top - cardH - 14;
+    if (top < margin) top = Math.min(vh - cardH - margin, targetRect ? targetRect.bottom + 14 : margin);
+    card.style.left = `${Math.round(clamp(left, margin, Math.max(margin, vw - cardW - margin)))}px`;
+    card.style.top = `${Math.round(clamp(top, margin, Math.max(margin, vh - cardH - margin)))}px`;
+  }
+
+  function renderMobileTutorialStep(): void {
+    if (!mobileTutorial.active || !mobileTutorial.overlay || !mobileTutorial.card || !mobileTutorial.spotlight) return;
+    window.clearTimeout(mobileTutorial.retryTimer);
+    const step = mobileTutorialStep();
+    step.onEnter?.();
+    const target = mobileTutorialTarget(step);
+    const rect = target?.getBoundingClientRect() || null;
+    const needsAction = step.action === "click" || step.action === "swipe";
+    const progress = `${Math.min(mobileTutorial.index + 1, mobileTutorialSteps.length)} / ${mobileTutorialSteps.length}`;
+    mobileTutorial.card.innerHTML = `
+      <div class="its-tutorial-kicker">${escapeHtml(progress)}</div>
+      <strong>${escapeHtml(step.title)}</strong>
+      <p>${escapeHtml(step.body)}</p>
+      ${needsAction ? `<div class="its-tutorial-action">${step.action === "swipe" ? "Tarik bagian yang disorot untuk lanjut" : "Tekan bagian yang disorot untuk lanjut"}</div>` : ""}
+      <div class="its-tutorial-controls">
+        <button type="button" class="its-tutorial-skip" data-tutorial-skip>Lewati</button>
+        ${needsAction ? "" : `<button type="button" class="its-tutorial-next" data-tutorial-next>${escapeHtml(step.cta || "Lanjut")}</button>`}
+      </div>
+    `;
+    mobileTutorial.card.querySelector<HTMLButtonElement>("[data-tutorial-next]")?.addEventListener("click", () => advanceMobileTutorial());
+    mobileTutorial.card.querySelector<HTMLButtonElement>("[data-tutorial-skip]")?.addEventListener("click", () => finishMobileTutorial(true));
+    if (rect) {
+      mobileTutorial.spotlight.hidden = false;
+      mobileTutorial.spotlight.style.left = `${Math.round(rect.left - 7)}px`;
+      mobileTutorial.spotlight.style.top = `${Math.round(rect.top - 7)}px`;
+      mobileTutorial.spotlight.style.width = `${Math.round(rect.width + 14)}px`;
+      mobileTutorial.spotlight.style.height = `${Math.round(rect.height + 14)}px`;
+    } else {
+      mobileTutorial.spotlight.hidden = true;
+    }
+    requestAnimationFrame(() => {
+      if (!mobileTutorial.card) return;
+      mobileTutorialCardPosition(rect, mobileTutorial.card);
+    });
+    if (step.selector && !target) {
+      mobileTutorial.retryTimer = window.setTimeout(renderMobileTutorialStep, 180);
+    }
+  }
+
+  function advanceMobileTutorial(): void {
+    if (!mobileTutorial.active) return;
+    if (mobileTutorial.index >= mobileTutorialSteps.length - 1) {
+      finishMobileTutorial(false);
+      return;
+    }
+    mobileTutorial.index += 1;
+    renderMobileTutorialStep();
+  }
+
+  function finishMobileTutorial(skipped: boolean): void {
+    window.clearTimeout(mobileTutorial.retryTimer);
+    mobileTutorial.active = false;
+    try {
+      localStorage.setItem(MOBILE_TUTORIAL_STORAGE_KEY, skipped ? "skipped" : "done");
+    } catch {
+      /* ignore */
+    }
+    document.body.classList.remove("its-tutorial-active");
+    mobileTutorial.overlay?.remove();
+    mobileTutorial.overlay = null;
+    mobileTutorial.card = null;
+    mobileTutorial.spotlight = null;
+  }
+
+  function handleMobileTutorialClick(event: MouseEvent): void {
+    if (!mobileTutorial.active) return;
+    const step = mobileTutorialStep();
+    if (step.action !== "click" || !step.selector) return;
+    const target = event.target as HTMLElement | null;
+    if (!target?.closest(step.selector)) return;
+    window.setTimeout(() => advanceMobileTutorial(), 260);
+  }
+
+  function handleMobileTutorialAction(event: Event): void {
+    if (!mobileTutorial.active) return;
+    const detail = (event as CustomEvent<{ action?: string }>).detail;
+    const step = mobileTutorialStep();
+    if (step.action === "swipe" && detail?.action === "history-opened") {
+      window.setTimeout(() => advanceMobileTutorial(), 180);
+    }
+  }
+
+  function startMobileTutorialIfNeeded(): void {
+    if (!isMobile() || mobileTutorial.active) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("tutorial") === "1") {
+      try { localStorage.removeItem(MOBILE_TUTORIAL_STORAGE_KEY); } catch { /* ignore */ }
+    }
+    try {
+      if (localStorage.getItem(MOBILE_TUTORIAL_STORAGE_KEY)) return;
+    } catch {
+      /* ignore */
+    }
+    const overlay = document.createElement("div");
+    overlay.id = "its-mobile-tutorial";
+    overlay.className = "its-tutorial-overlay";
+    overlay.setAttribute("aria-live", "polite");
+    overlay.innerHTML = `
+      <div class="its-tutorial-scrim" aria-hidden="true"></div>
+      <div class="its-tutorial-spotlight" aria-hidden="true"></div>
+      <section class="its-tutorial-card" role="dialog" aria-label="Tutorial ITS Maps"></section>
+    `;
+    document.body.appendChild(overlay);
+    mobileTutorial.active = true;
+    mobileTutorial.index = 0;
+    mobileTutorial.overlay = overlay;
+    mobileTutorial.card = overlay.querySelector<HTMLElement>(".its-tutorial-card");
+    mobileTutorial.spotlight = overlay.querySelector<HTMLElement>(".its-tutorial-spotlight");
+    document.body.classList.add("its-tutorial-active");
+    renderMobileTutorialStep();
+  }
+
+  document.addEventListener("click", handleMobileTutorialClick, true);
+  window.addEventListener("resize", () => {
+    if (mobileTutorial.active) renderMobileTutorialStep();
+  });
+  window.addEventListener("its:tutorial-action", handleMobileTutorialAction);
 
   // ─── 1. Bottom Navigation (Blur) ─────────────────────────────────────────────
 
@@ -7019,6 +7289,9 @@ if (staticRoute) {
     setAiHistorySheetProgress(height);
     setMapHeight(snap === "dock" ? 0 : height);
     if (snap !== "dock") void refreshAiHistorySnapshot();
+    window.dispatchEvent(new CustomEvent("its:tutorial-action", {
+      detail: { action: snap === "dock" ? "history-docked" : "history-opened", snap },
+    }));
   }
 
   function createAiHistorySheet(): HTMLElement {
@@ -7961,6 +8234,7 @@ if (staticRoute) {
         openAiHistorySheet("dock");
       }
     }, 420);
+    window.setTimeout(startMobileTutorialIfNeeded, 920);
 
     // FIX 6: hapus const _orig yang tidak dipakai
     setInterval(() => {
