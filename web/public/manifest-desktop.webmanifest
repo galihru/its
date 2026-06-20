@@ -1,15 +1,15 @@
 {
-  "id": "/?source=pwa",
-  "name": "ITS Maps",
-  "short_name": "ITS Maps",
-  "description": "ITS Maps untuk peta realtime OSM, Raspberry Pi, kamera lalu lintas, snapshot AI, widget, PWA mobile, dan PWA desktop.",
-  "start_url": "/?source=pwa",
+  "id": "/desktop/renderer.html?source=pwa-desktop",
+  "name": "ITS Maps Desktop",
+  "short_name": "ITS Desktop",
+  "description": "ITS Maps desktop PWA dengan tampilan seperti aplikasi desktop untuk peta, kamera, history, dan panel realtime.",
+  "start_url": "/desktop/renderer.html?source=pwa-desktop",
   "scope": "/",
   "display": "standalone",
-  "display_override": ["standalone", "minimal-ui"],
-  "background_color": "#ffffff",
-  "theme_color": "#ffffff",
-  "orientation": "any",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "background_color": "#111827",
+  "theme_color": "#111827",
+  "orientation": "landscape",
   "categories": ["maps", "navigation", "utilities"],
   "prefer_related_applications": false,
   "related_applications": [
@@ -51,52 +51,28 @@
       "sizes": "1672x941",
       "type": "image/png",
       "form_factor": "wide",
-      "label": "Dashboard desktop ITS Maps"
+      "label": "Tampilan desktop ITS Maps dari folder src/ss/windows"
     },
     {
       "src": "/screenshots/pwa/desktop-2.png",
       "sizes": "1672x941",
       "type": "image/png",
       "form_factor": "wide",
-      "label": "Peta OSM desktop ITS Maps"
+      "label": "Preview desktop ITS Maps"
     },
     {
-      "src": "/screenshots/pwa/mobile-1.png",
-      "sizes": "1536x1024",
+      "src": "/screenshots/pwa/desktop-3.png",
+      "sizes": "1672x941",
       "type": "image/png",
-      "form_factor": "narrow",
-      "label": "Peta mobile ITS Maps"
+      "form_factor": "wide",
+      "label": "Panel desktop ITS Maps"
     }
   ],
   "shortcuts": [
     {
-      "name": "Buka Peta",
-      "short_name": "Peta",
-      "url": "/?route=map&source=pwa",
-      "icons": [
-        {
-          "src": "/icons/shortcut-map-96.png",
-          "sizes": "96x96",
-          "type": "image/png"
-        }
-      ]
-    },
-    {
-      "name": "Buka Kamera",
-      "short_name": "Camera",
-      "url": "/?route=camera&source=pwa",
-      "icons": [
-        {
-          "src": "/icons/shortcut-camera-96.png",
-          "sizes": "96x96",
-          "type": "image/png"
-        }
-      ]
-    },
-    {
-      "name": "Documentation",
-      "short_name": "Docs",
-      "url": "/documentation?source=pwa",
+      "name": "Buka Dashboard Desktop",
+      "short_name": "Dashboard",
+      "url": "/desktop/renderer.html?source=pwa-desktop",
       "icons": [
         {
           "src": "/icons/icon-96.png",
@@ -106,9 +82,9 @@
       ]
     },
     {
-      "name": "What's New",
-      "short_name": "New",
-      "url": "/new?source=pwa",
+      "name": "Dokumentasi",
+      "short_name": "Docs",
+      "url": "/documentation?source=pwa-desktop",
       "icons": [
         {
           "src": "/icons/icon-96.png",

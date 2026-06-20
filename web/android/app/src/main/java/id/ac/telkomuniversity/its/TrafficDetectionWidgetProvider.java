@@ -877,7 +877,7 @@ public class TrafficDetectionWidgetProvider extends AppWidgetProvider {
                 dataset.optInt("trafficDurationSec", device.optInt("trafficDurationSec", 0)),
                 firstNonEmpty(dataset.optString("locationLabel", ""), firstNonEmpty(device.optString("locationLabel", ""), device.optString("roadName", "Lokasi sistem"))),
                 firstNonEmpty(dataset.optString("source", ""), "raspberry-camera"),
-                dataset.optLong("updatedAt", device.optLong("lastSeen", 0L)),
+                normalizeEpoch(dataset.optLong("updatedAt", device.optLong("lastSeen", 0L))),
                 device.optString("lastSeenText", ""),
                 dataset.optInt("detectorFrameWidth", device.optInt("detectorFrameWidth", 0)),
                 dataset.optInt("detectorFrameHeight", device.optInt("detectorFrameHeight", 0)),
@@ -952,6 +952,11 @@ public class TrafficDetectionWidgetProvider extends AppWidgetProvider {
             return fallback == null ? "" : fallback.trim();
         }
 
+        private static long normalizeEpoch(long value) {
+            if (value <= 0L) return 0L;
+            return value < 100_000_000_000L ? value * 1000L : value;
+        }
+
         String imageForCarousel(long now) {
             boolean first = ((now / CAROUSEL_INTERVAL_MS) % 2L) == 0L;
             String selected = first ? nama1 : nama2;
@@ -968,7 +973,7 @@ public class TrafficDetectionWidgetProvider extends AppWidgetProvider {
         }
 
         boolean isFresh(long now) {
-            return updatedAt > 0L && now - updatedAt <= STALE_AFTER_MS;
+            return updatedAt > 0L && now - updatedAt <= STALE_AFTER_MS && updatedAt - now <= 300_000L;
         }
 
         boolean detectorOnline() {

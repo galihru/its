@@ -14,7 +14,7 @@
         android:layout_alignParentBottom="true"
         android:background="@drawable/widget_panel"
         android:contentDescription="Preview peta realtime"
-        android:scaleType="centerCrop" />
+        android:scaleType="fitXY" />
 
     <LinearLayout
         android:id="@+id/widget_maps_locations"
@@ -28,35 +28,35 @@
 
         <ImageView
             android:id="@+id/widget_maps_location_user"
-            android:layout_width="42dp"
-            android:layout_height="42dp"
+            android:layout_width="38dp"
+            android:layout_height="38dp"
             android:background="@drawable/widget_panel"
             android:contentDescription="Lokasi saya"
-            android:padding="10dp"
+            android:padding="9dp"
             android:src="@drawable/ic_widget_location_user" />
 
         <ImageView
             android:id="@+id/widget_maps_location_raspi"
-            android:layout_width="42dp"
-            android:layout_height="42dp"
+            android:layout_width="38dp"
+            android:layout_height="38dp"
             android:layout_marginStart="6dp"
             android:background="@drawable/widget_panel"
             android:contentDescription="Raspberry Pi"
-            android:padding="10dp"
+            android:padding="9dp"
             android:src="@drawable/ic_widget_location_raspi" />
     </LinearLayout>
 
     <ImageView
         android:id="@+id/widget_maps_zoom_toggle"
-        android:layout_width="46dp"
-        android:layout_height="46dp"
+        android:layout_width="42dp"
+        android:layout_height="42dp"
         android:layout_alignParentEnd="true"
         android:layout_alignParentBottom="true"
         android:layout_marginEnd="8dp"
         android:layout_marginBottom="8dp"
         android:background="@drawable/widget_panel"
         android:contentDescription="Zoom peta"
-        android:padding="11dp"
+        android:padding="10dp"
         android:src="@drawable/ic_widget_map_zoom" />
 
     <TextView

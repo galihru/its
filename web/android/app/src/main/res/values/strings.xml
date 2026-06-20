@@ -8,6 +8,8 @@
     <string name="widget_chart_description">Widget ITS Live realtime</string>
     <string name="widget_traffic_name">ITS Traffic AI</string>
     <string name="widget_traffic_description">Widget 4x2 realtime kamera Raspberry, lokasi, status online, dan deteksi kendaraan ITS</string>
+    <string name="widget_lock_screen_name">ITS Lock Screen AI</string>
+    <string name="widget_lock_screen_description">Widget lock screen Android untuk jam, tanggal, status RTDB, histori gambar, scanning AI, detail object, dan swipe buka layar</string>
     <string name="widget_alert_full_data_name">Alert dan Full Data</string>
     <string name="widget_alert_full_data_description">Widget carousel realtime untuk data kendaraan, grafik traffic, pemantauan kamera, dan pemberitahuan ITS</string>
     <string name="package_name">id.ac.telkomuniversity.its</string>

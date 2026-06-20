@@ -46,6 +46,7 @@ public class ChartWidgetProvider extends AppWidgetProvider {
     private static final String STATE_SNAPSHOT_URL = "https://itstelkom.web.app/data/its-state.json";
     private static final String PRIMARY_DEVICE_ID = "raspberry-its";
     private static final long REFRESH_INTERVAL_MS = 10_000L;
+    private static final long STALE_AFTER_MS = 90_000L;
     private static final int POINT_LIMIT = 20;
     private static final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor();
 
@@ -136,13 +137,13 @@ public class ChartWidgetProvider extends AppWidgetProvider {
         views.setTextViewText(R.id.widget_chart_value_bus, String.valueOf(snapshot.bus));
         views.setTextViewText(R.id.widget_chart_value_truck, String.valueOf(snapshot.truck));
         views.setTextViewText(R.id.widget_chart_value_bicycle, String.valueOf(snapshot.bicycle));
-        views.setTextViewText(R.id.widget_chart_value_detector, snapshot.detectorStatus.toUpperCase(Locale.ROOT));
+        views.setTextViewText(R.id.widget_chart_value_detector, snapshot.aiStatusLabel());
 
         int statusColor = snapshot.isOnline()
             ? ContextCompat.getColor(context, R.color.its_widget_green)
             : ContextCompat.getColor(context, R.color.its_widget_red);
         int trafficColor = colorForTraffic(context, snapshot.trafficColor);
-        int aiColor = snapshot.detectorOnline()
+        int aiColor = snapshot.aiReady()
             ? ContextCompat.getColor(context, R.color.its_widget_green)
             : ContextCompat.getColor(context, R.color.its_widget_red);
         views.setTextColor(R.id.widget_chart_status, statusColor);
@@ -477,6 +478,7 @@ public class ChartWidgetProvider extends AppWidgetProvider {
         final String detectorStatus;
         final String trafficColor;
         final int trafficDurationSec;
+        final long lastSeen;
         final String lastSeenText;
         final int vehicleCount;
         final int car;
@@ -493,6 +495,7 @@ public class ChartWidgetProvider extends AppWidgetProvider {
             String detectorStatus,
             String trafficColor,
             int trafficDurationSec,
+            long lastSeen,
             String lastSeenText,
             int vehicleCount,
             int car,
@@ -508,6 +511,7 @@ public class ChartWidgetProvider extends AppWidgetProvider {
             this.detectorStatus = detectorStatus;
             this.trafficColor = trafficColor;
             this.trafficDurationSec = trafficDurationSec;
+            this.lastSeen = lastSeen;
             this.lastSeenText = lastSeenText;
             this.vehicleCount = vehicleCount;
             this.car = car;
@@ -526,6 +530,7 @@ public class ChartWidgetProvider extends AppWidgetProvider {
                 "error",
                 "red",
                 0,
+                0L,
                 "Update -",
                 0,
                 0,
@@ -555,9 +560,9 @@ public class ChartWidgetProvider extends AppWidgetProvider {
             String detectorStatus = firstNonEmpty(device.optString("detectorStatus", ""), "-");
             String trafficColor = firstNonEmpty(device.optString("trafficColor", ""), "-");
             int trafficDurationSec = Math.max(0, device.optInt("trafficDurationSec", 0));
+            long lastSeen = normalizeEpoch(device.optLong("lastSeen", root.optLong("updatedAt", 0L)));
             String lastSeenText = device.optString("lastSeenText", "");
             if (TextUtils.isEmpty(lastSeenText)) {
-                long lastSeen = device.optLong("lastSeen", root.optLong("updatedAt", 0L));
                 if (lastSeen > 0) {
                     lastSeenText = String.format(Locale.getDefault(), "%tA, %td %<tb %<tY %<tH:%<tM:%<tS", lastSeen);
                 } else {
@@ -573,6 +578,7 @@ public class ChartWidgetProvider extends AppWidgetProvider {
                 detectorStatus,
                 trafficColor,
                 trafficDurationSec,
+                lastSeen,
                 lastSeenText,
                 total,
                 car,
@@ -616,7 +622,7 @@ public class ChartWidgetProvider extends AppWidgetProvider {
             long bestLastSeen = Long.MIN_VALUE;
             int bestScore = Integer.MIN_VALUE;
             for (JSONObject candidate : candidates) {
-                long lastSeen = candidate.optLong("lastSeen", 0L);
+                long lastSeen = normalizeEpoch(candidate.optLong("lastSeen", 0L));
                 int score = scoreCandidate(candidate);
                 if (lastSeen > bestLastSeen || (lastSeen == bestLastSeen && score > bestScore)) {
                     best = candidate;
@@ -638,7 +644,7 @@ public class ChartWidgetProvider extends AppWidgetProvider {
             long bestLastSeen = Long.MIN_VALUE;
             int bestScore = Integer.MIN_VALUE;
             for (JSONObject candidate : candidates) {
-                long lastSeen = candidate.optLong("lastSeen", 0L);
+                long lastSeen = normalizeEpoch(candidate.optLong("lastSeen", 0L));
                 int score = scoreCandidate(candidate);
                 if (lastSeen > bestLastSeen || (lastSeen == bestLastSeen && score > bestScore)) {
                     best = candidate;
@@ -682,11 +688,34 @@ public class ChartWidgetProvider extends AppWidgetProvider {
         }
 
         boolean isOnline() {
-            return "online".equalsIgnoreCase(status);
+            return ("online".equalsIgnoreCase(status) || "degraded".equalsIgnoreCase(status))
+                && isFresh(System.currentTimeMillis());
         }
 
         boolean detectorOnline() {
-            return "online".equalsIgnoreCase(detectorStatus) || "ok".equalsIgnoreCase(detectorStatus);
+            String value = detectorStatus == null ? "" : detectorStatus.trim().toLowerCase(Locale.ROOT);
+            return "online".equals(value)
+                || "ok".equals(value)
+                || value.startsWith("browser-yolo")
+                || value.startsWith("onnx");
+        }
+
+        boolean aiReady() {
+            String value = detectorStatus == null ? "" : detectorStatus.trim().toLowerCase(Locale.ROOT);
+            return detectorOnline()
+                || "disabled".equals(value)
+                || "-".equals(value)
+                || vehicleCount > 0;
+        }
+
+        String aiStatusLabel() {
+            if (detectorOnline()) return "AKTIF";
+            if (aiReady()) return "READY";
+            return "OFF";
+        }
+
+        boolean isFresh(long now) {
+            return lastSeen > 0L && now - lastSeen <= STALE_AFTER_MS && lastSeen - now <= 300_000L;
         }
 
         String statusChip() {
@@ -714,6 +743,11 @@ public class ChartWidgetProvider extends AppWidgetProvider {
 
         int greenDurationSec() {
             return "green".equalsIgnoreCase(trafficColor) ? trafficDurationSec : 0;
+        }
+
+        private static long normalizeEpoch(long value) {
+            if (value <= 0L) return 0L;
+            return value < 100_000_000_000L ? value * 1000L : value;
         }
 
         private static String trafficLabel(String color) {

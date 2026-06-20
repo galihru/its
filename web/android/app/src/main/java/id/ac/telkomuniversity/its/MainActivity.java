@@ -94,6 +94,57 @@ public class MainActivity extends BridgeActivity {
 		public void notifyUpdate(String title, String message, String targetUrl) {
 			showUpdateNotification(title, message, targetUrl);
 		}
+
+		@JavascriptInterface
+		public void activateLockScreenWidget() {
+			runOnUiThread(() -> setLockScreenMonitoringEnabled(true));
+		}
+
+		@JavascriptInterface
+		public void previewLockScreenWidget() {
+			runOnUiThread(() -> MainActivity.this.openLockScreenPreview());
+		}
+
+		@JavascriptInterface
+		public boolean isLockScreenMonitoringEnabled() {
+			return LockScreenPreferences.isEnabled(MainActivity.this);
+		}
+
+		@JavascriptInterface
+		public void setLockScreenMonitoringEnabled(boolean enabled) {
+			runOnUiThread(() -> MainActivity.this.setLockScreenMonitoringEnabled(enabled));
+		}
+	}
+
+	private void setLockScreenMonitoringEnabled(boolean enabled) {
+		LockScreenPreferences.setEnabled(this, enabled);
+		WidgetRealtimeService.setLockScreenMonitoringEnabled(this, enabled);
+		if (!enabled) {
+			Toast.makeText(this, "Pemantauan layar kunci dinonaktifkan", Toast.LENGTH_SHORT).show();
+			return;
+		}
+		requestNotificationPermissionIfNeeded();
+		requestFullScreenIntentAccessIfNeeded();
+		Toast.makeText(this, "Pemantauan layar kunci aktif", Toast.LENGTH_SHORT).show();
+	}
+
+	private void openLockScreenPreview() {
+		Intent intent = new Intent(this, LockScreenDashboardActivity.class);
+		intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+		startActivity(intent);
+	}
+
+	private void requestFullScreenIntentAccessIfNeeded() {
+		if (Build.VERSION.SDK_INT < 34) return;
+		NotificationManager manager = getSystemService(NotificationManager.class);
+		if (manager == null || manager.canUseFullScreenIntent()) return;
+		try {
+			Intent intent = new Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT);
+			intent.setData(Uri.parse("package:" + getPackageName()));
+			startActivity(intent);
+		} catch (RuntimeException ignored) {
+			Toast.makeText(this, "Izinkan notifikasi layar penuh agar panel tampil saat perangkat terkunci", Toast.LENGTH_LONG).show();
+		}
 	}
 
 	private void installApkFromUrl(String rawUrl, String rawFileName) {

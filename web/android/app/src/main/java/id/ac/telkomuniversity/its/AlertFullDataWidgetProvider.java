@@ -477,14 +477,15 @@ public class AlertFullDataWidgetProvider extends AppWidgetProvider {
 
     private void drawTrafficLiveChart(Canvas canvas, RectF rect, List<HistoryPoint> points) {
         Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        paint.setColor(0xFF101827);
+        paint.setColor(0xFFFFFFFF);
         canvas.drawRoundRect(rect, 24f, 24f, paint);
-
-        paint.setShader(new LinearGradient(rect.left, rect.top, rect.right, rect.bottom, 0xFF111D32, 0xFF0B1220, Shader.TileMode.CLAMP));
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(2f);
+        paint.setColor(0xFFE1EAF5);
         canvas.drawRoundRect(rect, 24f, 24f, paint);
-        paint.setShader(null);
+        paint.setStyle(Paint.Style.FILL);
 
-        Paint title = textPaint(0xFFEAF2FF, 21f, true);
+        Paint title = textPaint(0xFF16233D, 21f, true);
         canvas.drawText("Traffic merah / kuning / hijau", rect.left + 30f, rect.top + 38f, title);
         drawLegend(canvas, rect.right - 272f, rect.top + 32f, "Merah", 0xFFEF4444);
         drawLegend(canvas, rect.right - 174f, rect.top + 32f, "Kuning", 0xFFFACC15);
@@ -502,7 +503,7 @@ public class AlertFullDataWidgetProvider extends AppWidgetProvider {
         }
 
         Paint grid = new Paint(Paint.ANTI_ALIAS_FLAG);
-        grid.setColor(0x223D5A80);
+        grid.setColor(0xFFE7EEF8);
         grid.setStrokeWidth(2f);
         for (int i = 0; i < 5; i++) {
             float y = top + (bottom - top) * i / 4f;
@@ -510,12 +511,12 @@ public class AlertFullDataWidgetProvider extends AppWidgetProvider {
         }
 
         Paint axis = new Paint(Paint.ANTI_ALIAS_FLAG);
-        axis.setColor(0xFF72819D);
+        axis.setColor(0xFF94A3B8);
         axis.setStrokeWidth(3f);
         canvas.drawLine(left, top, left, bottom, axis);
         canvas.drawLine(left, bottom, right, bottom, axis);
 
-        Paint axisText = textPaint(0xFF91A2BE, 17f, false);
+        Paint axisText = textPaint(0xFF64748B, 17f, false);
         canvas.drawText(String.valueOf(maxY), rect.left + 28f, top + 7f, axisText);
         canvas.drawText(String.valueOf(maxY / 2), rect.left + 28f, top + (bottom - top) / 2f + 7f, axisText);
         canvas.drawText("0", rect.left + 38f, bottom + 7f, axisText);
@@ -542,7 +543,7 @@ public class AlertFullDataWidgetProvider extends AppWidgetProvider {
         area.lineTo(lastX, bottom);
         area.close();
         Paint areaPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        areaPaint.setColor(0x222F80ED);
+        areaPaint.setColor(0x182F80ED);
         canvas.drawPath(area, areaPaint);
 
         Paint linePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -671,7 +672,7 @@ public class AlertFullDataWidgetProvider extends AppWidgetProvider {
         Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         paint.setColor(color);
         canvas.drawCircle(x, y, 7f, paint);
-        Paint text = textPaint(0xFFEAF2FF, 17f, true);
+        Paint text = textPaint(0xFF334155, 17f, true);
         canvas.drawText(label, x + 12f, y + 6f, text);
     }
 
@@ -1413,7 +1414,7 @@ public class AlertFullDataWidgetProvider extends AppWidgetProvider {
                 dataset.optInt("trafficDurationSec", device.optInt("trafficDurationSec", 0)),
                 firstNonEmpty(dataset.optString("locationLabel", ""), firstNonEmpty(device.optString("locationLabel", ""), device.optString("roadName", "Lokasi sistem"))),
                 firstNonEmpty(dataset.optString("source", ""), "raspberry-camera"),
-                dataset.optLong("updatedAt", device.optLong("lastSeen", 0L)),
+                normalizeEpoch(dataset.optLong("updatedAt", device.optLong("lastSeen", 0L))),
                 device.optString("lastSeenText", ""),
                 dataset.optInt("detectorFrameWidth", device.optInt("detectorFrameWidth", 0)),
                 dataset.optInt("detectorFrameHeight", device.optInt("detectorFrameHeight", 0)),
@@ -1439,7 +1440,7 @@ public class AlertFullDataWidgetProvider extends AppWidgetProvider {
         }
 
         boolean isFresh(long now) {
-            return updatedAt > 0L && now - updatedAt <= STALE_AFTER_MS;
+            return updatedAt > 0L && now - updatedAt <= STALE_AFTER_MS && updatedAt - now <= 300_000L;
         }
 
         boolean detectorOnline() {
@@ -1590,6 +1591,11 @@ public class AlertFullDataWidgetProvider extends AppWidgetProvider {
         private static String firstNonEmpty(String first, String fallback) {
             if (first != null && !first.trim().isEmpty()) return first.trim();
             return fallback == null ? "" : fallback.trim();
+        }
+
+        private static long normalizeEpoch(long value) {
+            if (value <= 0L) return 0L;
+            return value < 100_000_000_000L ? value * 1000L : value;
         }
     }
 }

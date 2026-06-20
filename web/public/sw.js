@@ -1,11 +1,14 @@
-const CACHE_NAME = 'its-maps-cache-v5';
+const CACHE_NAME = 'its-maps-cache-v8';
 const OFFLINE_URLS = [
   '/',
   '/index.html',
+  '/desktop/renderer.html',
   '/document',
   '/documentation',
   '/new',
   '/manifest.webmanifest',
+  '/manifest-mobile.webmanifest',
+  '/manifest-desktop.webmanifest',
   '/its.png',
   '/icons/icon-96.png',
   '/icons/icon-192.png',
@@ -15,6 +18,11 @@ const OFFLINE_URLS = [
   '/screenshots/desktop-home.png',
   '/screenshots/desktop-map.png',
   '/screenshots/mobile-map.png',
+  '/screenshots/pwa/mobile-1.png',
+  '/screenshots/pwa/mobile-2.png',
+  '/screenshots/pwa/desktop-1.png',
+  '/screenshots/pwa/desktop-2.png',
+  '/screenshots/pwa/desktop-3.png',
   '/app-update.json'
 ];
 

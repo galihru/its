@@ -13,6 +13,7 @@ export default defineConfig({
       input: {
         main: fileURLToPath(new URL("./index.html", import.meta.url)),
         windows: fileURLToPath(new URL("./desktop/renderer.html", import.meta.url)),
+        lockScreenDetector: fileURLToPath(new URL("./lockscreen-detector.html", import.meta.url)),
       },
     },
   },

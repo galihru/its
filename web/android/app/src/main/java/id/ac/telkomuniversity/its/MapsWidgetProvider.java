@@ -65,6 +65,7 @@ public class MapsWidgetProvider extends AppWidgetProvider {
     private static final String FIREBASE_DEVICES_URL = "https://itstelkom-default-rtdb.asia-southeast1.firebasedatabase.app/devices.json";
     private static final String STATE_SNAPSHOT_URL = "https://itstelkom.web.app/data/its-state.json";
     private static final long REFRESH_INTERVAL_MS = 10_000L;
+    private static final long STALE_AFTER_MS = 90_000L;
     private static final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor();
 
     @Override
@@ -388,31 +389,40 @@ public class MapsWidgetProvider extends AppWidgetProvider {
         int height = PREVIEW_HEIGHT;
         Bitmap output = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(output);
-        // base gradient
-        canvas.drawColor(0xFF0F172A);
+        // Light fallback map when live map tiles are unavailable.
+        canvas.drawColor(0xFFF8FBFF);
         Paint base = new Paint(Paint.ANTI_ALIAS_FLAG);
-        base.setShader(new LinearGradient(0, 0, width, height, 0xFF0B1220, 0xFF111827, Shader.TileMode.CLAMP));
+        base.setShader(new LinearGradient(0, 0, width, height, 0xFFFFFFFF, 0xFFE8F2F8, Shader.TileMode.CLAMP));
         canvas.drawRect(0, 0, width, height, base);
 
-        // faint grid to simulate map texture
         Paint grid = new Paint(Paint.ANTI_ALIAS_FLAG);
-        grid.setColor(0x2234475A);
-        grid.setStrokeWidth(1.5f);
-        for (int i = -1; i <= 1; i++) {
-            float y = height / 2f + i * 28f;
+        grid.setColor(0xFFE1EAF5);
+        grid.setStrokeWidth(3f);
+        for (int i = -5; i <= 5; i++) {
+            float y = height / 2f + i * 34f;
             canvas.drawLine(0, y, width, y, grid);
         }
-        for (int i = -2; i <= 2; i++) {
-            float x = width / 2f + i * 40f;
+        for (int i = -7; i <= 7; i++) {
+            float x = width / 2f + i * 46f;
             canvas.drawLine(x, 0, x, height, grid);
         }
 
-        // curved road hints
-        Paint road = new Paint(Paint.ANTI_ALIAS_FLAG);
-        road.setColor(0x334A6578);
-        road.setStyle(Paint.Style.STROKE);
-        road.setStrokeWidth(3f);
         Path path = new Path();
+        Paint river = new Paint(Paint.ANTI_ALIAS_FLAG);
+        river.setColor(0xFFBDEBFF);
+        river.setStyle(Paint.Style.STROKE);
+        river.setStrokeCap(Paint.Cap.ROUND);
+        river.setStrokeWidth(22f);
+        path.moveTo(width * 0.08f, height * 0.82f);
+        path.cubicTo(width * 0.35f, height * 0.62f, width * 0.36f, height * 0.22f, width * 0.72f, height * 0.16f);
+        canvas.drawPath(path, river);
+
+        Paint road = new Paint(Paint.ANTI_ALIAS_FLAG);
+        road.setColor(0xFFFFE3B5);
+        road.setStyle(Paint.Style.STROKE);
+        road.setStrokeCap(Paint.Cap.ROUND);
+        road.setStrokeWidth(16f);
+        path.reset();
         path.moveTo(12f, height * 0.28f);
         path.cubicTo(88f, height * 0.18f, 160f, height * 0.6f, width - 12f, height * 0.46f);
         canvas.drawPath(path, road);
@@ -420,6 +430,20 @@ public class MapsWidgetProvider extends AppWidgetProvider {
         path.moveTo(8f, height * 0.72f);
         path.cubicTo(80f, height * 0.86f, 200f, height * 0.54f, width - 8f, height * 0.76f);
         canvas.drawPath(path, road);
+
+        Paint roadCore = new Paint(Paint.ANTI_ALIAS_FLAG);
+        roadCore.setColor(0xFFFFFFFF);
+        roadCore.setStyle(Paint.Style.STROKE);
+        roadCore.setStrokeCap(Paint.Cap.ROUND);
+        roadCore.setStrokeWidth(8f);
+        path.reset();
+        path.moveTo(12f, height * 0.28f);
+        path.cubicTo(88f, height * 0.18f, 160f, height * 0.6f, width - 12f, height * 0.46f);
+        canvas.drawPath(path, roadCore);
+        path.reset();
+        path.moveTo(8f, height * 0.72f);
+        path.cubicTo(80f, height * 0.86f, 200f, height * 0.54f, width - 8f, height * 0.76f);
+        canvas.drawPath(path, roadCore);
 
         drawMapMarkers(
             canvas,
@@ -568,7 +592,7 @@ public class MapsWidgetProvider extends AppWidgetProvider {
 
         Paint halo = new Paint(Paint.ANTI_ALIAS_FLAG);
         halo.setColor(active ? 0x66FFFFFF : 0x38FFFFFF);
-        float scale = Math.max(1.0f, width / 320f);
+        float scale = Math.max(0.88f, Math.min(1.32f, width / 520f));
         float pulseBoost = (pulsePhase == 0 ? 0f : pulsePhase == 1 ? 3f : 6f) * scale;
         canvas.drawCircle(x, y, (active ? 14f : 10f) * scale + pulseBoost, halo);
 
@@ -770,7 +794,7 @@ public class MapsWidgetProvider extends AppWidgetProvider {
             String deviceId = device.optString("id", PRIMARY_DEVICE_ID);
             String label = device.optString("label", device.optString("name", "Raspberry Pi ITS"));
             String status = device.optString("status", "unknown");
-            long lastSeen = device.optLong("lastSeen", device.optLong("updatedAt", 0L));
+            long lastSeen = normalizeEpoch(device.optLong("lastSeen", device.optLong("updatedAt", 0L)));
             JSONObject position = device.optJSONObject("position");
             double latitude = position != null
                 ? position.optDouble("lat", position.optDouble("latitude", -6.9727))
@@ -832,7 +856,11 @@ public class MapsWidgetProvider extends AppWidgetProvider {
         }
 
         boolean isOnline() {
-            return "online".equalsIgnoreCase(status) || "degraded".equalsIgnoreCase(status);
+            long now = System.currentTimeMillis();
+            return ("online".equalsIgnoreCase(status) || "degraded".equalsIgnoreCase(status))
+                && lastSeen > 0L
+                && now - lastSeen <= STALE_AFTER_MS
+                && lastSeen - now <= 300_000L;
         }
 
         WidgetLocation deviceLocation() {
@@ -841,6 +869,11 @@ public class MapsWidgetProvider extends AppWidgetProvider {
 
         String statusLine() {
             return deviceLabel + " · " + (isOnline() ? "online" : status);
+        }
+
+        private static long normalizeEpoch(long value) {
+            if (value <= 0L) return 0L;
+            return value < 100_000_000_000L ? value * 1000L : value;
         }
     }
 }

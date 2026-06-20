@@ -22,6 +22,16 @@ allprojects {
         google()
         mavenCentral()
     }
+
+    if (System.getenv("ITS_FORCE_FORK_JAVAC") == "1") {
+        tasks.withType(JavaCompile).configureEach {
+            options.fork = true
+            def javaHome = System.getenv("JAVA_HOME")
+            if (javaHome) {
+                options.forkOptions.executable = file("${javaHome}/bin/javac.exe").absolutePath
+            }
+        }
+    }
 }
 
 task clean(type: Delete) {

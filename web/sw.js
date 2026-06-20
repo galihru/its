@@ -1,4 +1,4 @@
-const CACHE_NAME = 'its-maps-cache-v5';
+const CACHE_NAME = 'its-maps-cache-v8';
 const OFFLINE_URLS = [
   '/',
   '/index.html',

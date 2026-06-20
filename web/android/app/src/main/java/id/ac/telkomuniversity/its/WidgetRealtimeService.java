@@ -3,9 +3,13 @@ package id.ac.telkomuniversity.its;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.app.KeyguardManager;
+import android.app.PendingIntent;
 import android.app.Service;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.location.Location;
@@ -28,8 +32,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class WidgetRealtimeService extends Service {
+    private static final String ACTION_LOCK_SCREEN_CHANGED = "id.ac.telkomuniversity.its.action.LOCK_SCREEN_CHANGED";
     private static final String CHANNEL_ID = "its_widget_realtime";
+    private static final String LOCK_CHANNEL_ID = "its_lock_screen_ai";
     private static final int NOTIFICATION_ID = 7201;
+    private static final int LOCK_NOTIFICATION_ID = 7202;
     private static final String[] FIREBASE_STREAM_URLS = new String[] {
         "https://itstelkom-default-rtdb.asia-southeast1.firebasedatabase.app/devices.json",
         "https://itstelkom-default-rtdb.asia-southeast1.firebasedatabase.app/snapshotHistory.json"
@@ -39,12 +46,15 @@ public class WidgetRealtimeService extends Service {
     private static final String PREF_USER_LNG = "user_lng";
     private static final String PREF_USER_TIME = "user_time";
     private static final long RECONNECT_DELAY_MS = 3_000L;
+    private static final long LOCK_SCREEN_LAUNCH_COOLDOWN_MS = 15_000L;
 
     private volatile boolean running;
     private final List<Thread> listenerThreads = new ArrayList<>();
     private HttpURLConnection activeConnection;
     private volatile String lastEventFingerprint = "";
     private LocationManager locationManager;
+    private BroadcastReceiver lockScreenReceiver;
+    private long lastLockScreenLaunchAt;
     private final LocationListener locationListener = new LocationListener() {
         @Override
         public void onLocationChanged(Location location) {
@@ -83,6 +93,7 @@ public class WidgetRealtimeService extends Service {
         super.onCreate();
         createChannel();
         startLocationUpdates();
+        syncLockScreenMonitor();
         running = true;
         for (String streamUrl : FIREBASE_STREAM_URLS) {
             Thread listenerThread = new Thread(() -> listenLoop(streamUrl), "its-widget-realtime");
@@ -94,6 +105,9 @@ public class WidgetRealtimeService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         startForeground(NOTIFICATION_ID, buildNotification());
+        if (intent != null && ACTION_LOCK_SCREEN_CHANGED.equals(intent.getAction())) {
+            syncLockScreenMonitor();
+        }
         return START_STICKY;
     }
 
@@ -101,6 +115,7 @@ public class WidgetRealtimeService extends Service {
     public void onDestroy() {
         running = false;
         stopLocationUpdates();
+        stopLockScreenMonitor();
         closeConnection();
         for (Thread listenerThread : listenerThreads) {
             if (listenerThread != null) {
@@ -282,6 +297,15 @@ public class WidgetRealtimeService extends Service {
             NotificationManager.IMPORTANCE_LOW
         );
         manager.createNotificationChannel(channel);
+
+        NotificationChannel lockChannel = new NotificationChannel(
+            LOCK_CHANNEL_ID,
+            "ITS Lock Screen AI",
+            NotificationManager.IMPORTANCE_HIGH
+        );
+        lockChannel.setDescription("Menampilkan panel Lock Screen AI saat layar terkunci");
+        lockChannel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+        manager.createNotificationChannel(lockChannel);
     }
 
     private Notification buildNotification() {
@@ -293,5 +317,110 @@ public class WidgetRealtimeService extends Service {
             .setOnlyAlertOnce(true)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .build();
+    }
+
+    private void startLockScreenMonitor() {
+        if (lockScreenReceiver != null) return;
+        lockScreenReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                String action = intent == null ? "" : intent.getAction();
+                if (Intent.ACTION_USER_PRESENT.equals(action)) {
+                    cancelLockScreenNotification();
+                    return;
+                }
+                if (Intent.ACTION_SCREEN_ON.equals(action)) {
+                    showLockScreenIfLocked();
+                }
+            }
+        };
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(Intent.ACTION_SCREEN_ON);
+        filter.addAction(Intent.ACTION_USER_PRESENT);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(lockScreenReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(lockScreenReceiver, filter);
+        }
+    }
+
+    public static void setLockScreenMonitoringEnabled(Context context, boolean enabled) {
+        LockScreenPreferences.setEnabled(context, enabled);
+        Intent intent = new Intent(context, WidgetRealtimeService.class);
+        intent.setAction(ACTION_LOCK_SCREEN_CHANGED);
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent);
+            } else {
+                context.startService(intent);
+            }
+        } catch (RuntimeException ignored) {
+        }
+    }
+
+    private void syncLockScreenMonitor() {
+        if (LockScreenPreferences.isEnabled(this)) {
+            startLockScreenMonitor();
+        } else {
+            stopLockScreenMonitor();
+            cancelLockScreenNotification();
+        }
+    }
+
+    private void stopLockScreenMonitor() {
+        if (lockScreenReceiver == null) return;
+        try {
+            unregisterReceiver(lockScreenReceiver);
+        } catch (RuntimeException ignored) {
+        }
+        lockScreenReceiver = null;
+    }
+
+    private void showLockScreenIfLocked() {
+        if (!LockScreenPreferences.isEnabled(this)) return;
+        long now = System.currentTimeMillis();
+        if (now - lastLockScreenLaunchAt < LOCK_SCREEN_LAUNCH_COOLDOWN_MS) return;
+        KeyguardManager keyguardManager = (KeyguardManager) getSystemService(Context.KEYGUARD_SERVICE);
+        if (keyguardManager == null || !keyguardManager.isKeyguardLocked()) return;
+        lastLockScreenLaunchAt = now;
+
+        Intent intent = new Intent(this, LockScreenDashboardActivity.class);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NO_ANIMATION);
+        try {
+            startActivity(intent);
+        } catch (RuntimeException ignored) {
+        }
+        showLockScreenNotification(intent);
+    }
+
+    private void showLockScreenNotification(Intent intent) {
+        PendingIntent pendingIntent = PendingIntent.getActivity(
+            this,
+            LOCK_NOTIFICATION_ID,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
+        Notification notification = new NotificationCompat.Builder(this, LOCK_CHANNEL_ID)
+            .setContentTitle("ITS Lock Screen AI")
+            .setContentText("Membuka panel realtime AI di layar terkunci")
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setFullScreenIntent(pendingIntent, true)
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .build();
+        NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        if (manager != null) {
+            manager.notify(LOCK_NOTIFICATION_ID, notification);
+        }
+    }
+
+    private void cancelLockScreenNotification() {
+        NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        if (manager != null) {
+            manager.cancel(LOCK_NOTIFICATION_ID);
+        }
     }
 }
