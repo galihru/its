@@ -29,7 +29,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class LockScreenDashboardActivity extends Activity {
-    private static final String DETECTOR_URL = "https://itstelkom.web.app/lockscreen-detector.html?native=1";
+    private static final String DETECTOR_URL = "file:///android_asset/public/lockscreen-detector.html?native=1";
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private DashboardView dashboardView;
     private WebView detectorWebView;

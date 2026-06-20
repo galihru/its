@@ -979,7 +979,7 @@ public class TrafficDetectionWidgetProvider extends AppWidgetProvider {
         boolean detectorOnline() {
             return "online".equalsIgnoreCase(detectorStatus)
                 || "ok".equalsIgnoreCase(detectorStatus)
-                || detectorStatus.toLowerCase(Locale.ROOT).startsWith("browser-yolo");
+                || detectorStatus.toLowerCase(Locale.ROOT).startsWith("browser-rfdetr");
         }
 
         boolean raspberryOnline(long now) {

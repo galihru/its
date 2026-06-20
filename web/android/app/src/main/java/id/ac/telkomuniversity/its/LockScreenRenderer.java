@@ -1074,8 +1074,7 @@ final class LockScreenRenderer {
             String value = detectorStatus == null ? "" : detectorStatus.trim().toLowerCase(Locale.ROOT);
             return "online".equals(value)
                 || "ok".equals(value)
-                || value.startsWith("browser-yolo")
-                || value.startsWith("onnx")
+                || value.startsWith("browser-rfdetr")
                 || value.startsWith("rf-detr");
         }
 

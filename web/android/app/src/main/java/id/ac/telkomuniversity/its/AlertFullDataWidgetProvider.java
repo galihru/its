@@ -815,7 +815,7 @@ public class AlertFullDataWidgetProvider extends AppWidgetProvider {
         if (!snapshot.detectorOnline()) {
             String detector = emptyAs(snapshot.detectorStatus, "offline");
             if (!"online".equalsIgnoreCase(detector) && !"ok".equalsIgnoreCase(detector)) {
-                notices.add(new NoticeItem("Deteksi YOLO", "Status deteksi: " + detector, time, 0xFF8B5CF6));
+                notices.add(new NoticeItem("Deteksi RF-DETR", "Status deteksi: " + detector, time, 0xFF8B5CF6));
             }
         }
 
@@ -1446,7 +1446,7 @@ public class AlertFullDataWidgetProvider extends AppWidgetProvider {
         boolean detectorOnline() {
             return "online".equalsIgnoreCase(detectorStatus)
                 || "ok".equalsIgnoreCase(detectorStatus)
-                || detectorStatus.toLowerCase(Locale.ROOT).startsWith("browser-yolo");
+                || detectorStatus.toLowerCase(Locale.ROOT).startsWith("browser-rfdetr");
         }
 
         boolean raspberryOnline(long now) {

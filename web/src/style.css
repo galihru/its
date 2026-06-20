@@ -3322,7 +3322,7 @@ body.its-sheet-open .leaflet-control-attribution {
   box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.18);
 }
 
-.camera-yolo-canvas {
+.camera-rf-detr-canvas {
   position: absolute;
   inset: 0;
   z-index: 4;
@@ -3333,7 +3333,7 @@ body.its-sheet-open .leaflet-control-attribution {
   transition: opacity 160ms ease;
 }
 
-.camera-popup.yolo-active .camera-yolo-canvas {
+.camera-popup.rf-detr-active .camera-rf-detr-canvas {
   opacity: 1;
 }
 
@@ -3382,7 +3382,7 @@ body.its-sheet-open .leaflet-control-attribution {
   object-fit: contain;
 }
 
-.m-camera-yolo-canvas {
+.m-camera-rf-detr-canvas {
   position: absolute;
   inset: 0;
   z-index: 3;
@@ -3393,7 +3393,7 @@ body.its-sheet-open .leaflet-control-attribution {
   transition: opacity 160ms ease;
 }
 
-#m-its-scroll.yolo-active .m-camera-yolo-canvas {
+#m-its-scroll.rf-detr-active .m-camera-rf-detr-canvas {
   opacity: 1;
 }
 
@@ -6158,7 +6158,7 @@ body.its-sheet-overlay-history #m-ai-history-sheet {
   display: none;
 }
 
-.video-yolo-canvas {
+.video-rf-detr-canvas {
   position: absolute;
   inset: 0;
   z-index: 3;
@@ -6169,8 +6169,8 @@ body.its-sheet-overlay-history #m-ai-history-sheet {
   transition: opacity 160ms ease;
 }
 
-.video-fullscreen.ai-open .video-yolo-canvas,
-.video-fullscreen.yolo-active .video-yolo-canvas {
+.video-fullscreen.ai-open .video-rf-detr-canvas,
+.video-fullscreen.rf-detr-active .video-rf-detr-canvas {
   opacity: 1;
 }
 

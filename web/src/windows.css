@@ -626,7 +626,7 @@ button {
   object-fit: cover;
 }
 
-.win-gallery-yolo-canvas {
+.win-gallery-rf-detr-canvas {
   position: absolute;
   inset: 0;
   z-index: 2;
@@ -1777,7 +1777,7 @@ button {
   object-fit: initial;
 }
 
-.win-camera-yolo-canvas {
+.win-camera-rf-detr-canvas {
   position: absolute;
   inset: 0;
   z-index: 4;
@@ -1788,7 +1788,7 @@ button {
   transition: opacity 160ms ease;
 }
 
-.win-camera-frame[data-yolo-active="true"] .win-camera-yolo-canvas {
+.win-camera-frame[data-rf-detr-active="true"] .win-camera-rf-detr-canvas {
   opacity: 1;
 }
 

@@ -1,9 +1,9 @@
 import {
   displayDetectionLabel,
   loadImageSource,
-  runBrowserYolo,
-  type BrowserYoloDetection,
-} from "./browserYolo";
+  runBrowserRfDetr,
+  type BrowserRfDetrDetection,
+} from "./browserRfDetr";
 
 type LockScreenBridge = {
   onDetection?: (payload: string) => void;
@@ -31,7 +31,7 @@ function setStatus(message: string): void {
   if (statusEl) statusEl.textContent = message;
 }
 
-function detectionPayload(detection: BrowserYoloDetection): BrowserYoloDetection {
+function detectionPayload(detection: BrowserRfDetrDetection): BrowserRfDetrDetection {
   return {
     ...detection,
     label: displayDetectionLabel(detection.label),
@@ -60,7 +60,7 @@ async function analyzeSlot(slot: number, history: SnapshotHistory): Promise<bool
   setStatus(`Menganalisis gambar ${slot} dengan RF-DETR...`);
   const image = await loadImageSource(imageValue);
   if (!image) throw new Error(`Gambar ${slot} tidak dapat dibaca`);
-  const result = await runBrowserYolo(image);
+  const result = await runBrowserRfDetr(image);
   if (result.status !== "online") throw new Error(result.note || "RF-DETR belum siap");
   analyzedKeys.set(slot, key);
   bridge()?.onDetection?.(JSON.stringify({

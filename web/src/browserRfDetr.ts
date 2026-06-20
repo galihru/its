@@ -1,4 +1,4 @@
-export type BrowserYoloDetection = {
+export type BrowserRfDetrDetection = {
   label: string;
   confidence: number;
   vehicle?: boolean;
@@ -8,7 +8,7 @@ export type BrowserYoloDetection = {
   height: number;
 };
 
-export type BrowserYoloBreakdown = {
+export type BrowserRfDetrBreakdown = {
   car: number;
   motorcycle: number;
   bus: number;
@@ -17,7 +17,7 @@ export type BrowserYoloBreakdown = {
   total: number;
 };
 
-export type BrowserYoloResult = {
+export type BrowserRfDetrResult = {
   status: "online" | "no-frame" | "error";
   note: string;
   updatedAt: number;
@@ -26,22 +26,20 @@ export type BrowserYoloResult = {
   frameHeight: number;
   objectCount: number;
   vehicleCount: number;
-  vehicleBreakdown: BrowserYoloBreakdown;
-  detections: BrowserYoloDetection[];
+  vehicleBreakdown: BrowserRfDetrBreakdown;
+  detections: BrowserRfDetrDetection[];
   rawThumbnailUrl?: string;
   annotatedThumbnailUrl?: string;
   modelUrl: string;
   outputShape: string;
 };
 
-export type DrawYoloDetectionsOptions = {
+export type DrawRfDetrDetectionsOptions = {
   hud?: boolean;
   scanActive?: boolean;
-  scannerFocus?: BrowserYoloDetection | null;
+  scannerFocus?: BrowserRfDetrDetection | null;
 };
 
-type OrtModule = typeof import("onnxruntime-web");
-type OrtSession = Awaited<ReturnType<typeof import("onnxruntime-web").InferenceSession.create>>;
 type ImageSource = HTMLVideoElement | HTMLImageElement | HTMLCanvasElement | ImageBitmap;
 type RfDetrOutput = import("@huggingface/transformers").ObjectDetectionOutput;
 type RfDetrPipeline = ((image: HTMLCanvasElement, options?: {
@@ -57,18 +55,15 @@ const DETR_FALLBACK_MODEL_ID = "Xenova/detr-resnet-50";
 const RF_DETR_CONFIDENCE = 0.2;
 const RF_DETR_MAX_DETECTIONS = 48;
 const RF_DETR_DETAIL_CROP_LIMIT = 3;
-const YOLO_INPUT_SIZE = 640;
-const YOLO_CAPTURE_MAX_EDGE = 960;
-const YOLO_CONFIDENCE = 0.18;
-const YOLO_NMS = 0.52;
-const YOLO_MAX_DETECTIONS = 72;
-const YOLO_DETAIL_CROP_LIMIT = 2;
-const YOLO_SOFT_NMS_SIGMA = 0.55;
+const RF_DETR_CAPTURE_MAX_EDGE = 960;
+const RF_DETR_DEFAULT_CONFIDENCE = 0.18;
+const RF_DETR_NMS = 0.52;
+const RF_DETR_CANDIDATE_LIMIT = 72;
+const RF_DETR_SOFT_NMS_SIGMA = 0.55;
 const RENDER_TRACK_LIMIT = 14;
 const RENDER_TRACK_TTL_MS = 1200;
 const RENDER_TRACK_TAU_MS = 190;
 const RENDER_SCANNER_LOCK_MS = 620;
-const ORT_WASM_VERSION = "1.26.0-dev.20260416-b7804b056c";
 const VEHICLE_LABELS = new Set(["bicycle", "car", "motorcycle", "bus", "truck"]);
 const MIN_CONFIDENCE_BY_LABEL: Record<string, number> = {
   person: 0.22,
@@ -94,13 +89,6 @@ const VEHICLE_COUNT_CONFIDENCE: Record<string, number> = {
   truck: 0.28,
 };
 
-type YoloInput = {
-  tensor: import("onnxruntime-web").Tensor;
-  scale: number;
-  padX: number;
-  padY: number;
-};
-
 type CapturedFrame = {
   canvas: HTMLCanvasElement;
   imageData: ImageData;
@@ -113,27 +101,13 @@ type DetectionCrop = CapturedFrame & {
   y: number;
 };
 
-type DetectionTrack = BrowserYoloDetection & {
+type DetectionTrack = BrowserRfDetrDetection & {
   id: number;
   createdAt: number;
   lastSeen: number;
   seen: number;
   alpha: number;
 };
-
-const COCO_LABELS = [
-  "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat",
-  "traffic light", "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat",
-  "dog", "horse", "sheep", "cow", "elephant", "bear", "zebra", "giraffe", "backpack",
-  "umbrella", "handbag", "tie", "suitcase", "frisbee", "skis", "snowboard", "sports ball",
-  "kite", "baseball bat", "baseball glove", "skateboard", "surfboard", "tennis racket",
-  "bottle", "wine glass", "cup", "fork", "knife", "spoon", "bowl", "banana", "apple",
-  "sandwich", "orange", "broccoli", "carrot", "hot dog", "pizza", "donut", "cake",
-  "chair", "couch", "potted plant", "bed", "dining table", "toilet", "tv", "laptop",
-  "mouse", "remote", "keyboard", "cell phone", "microwave", "oven", "toaster", "sink",
-  "refrigerator", "book", "clock", "vase", "scissors", "teddy bear", "hair drier",
-  "toothbrush",
-];
 
 const DETECTION_LABEL_ALIASES: Record<string, string> = {
   human: "person",
@@ -240,8 +214,6 @@ const DETECTION_LABELS_ID: Record<string, string> = {
   toothbrush: "Sikat Gigi",
 };
 
-let yoloSessionPromise: Promise<OrtSession> | null = null;
-let ortModulePromise: Promise<OrtModule> | null = null;
 let rfDetrPipelinePromise: Promise<RfDetrPipeline> | null = null;
 let rfDetrLoadingNote = "";
 let activeObjectDetectionModelId = RF_DETR_MODEL_ID;
@@ -257,20 +229,16 @@ export function resolvePublicAssetUrl(path: string): string {
   return new URL(clean, here).toString();
 }
 
-export function browserYoloModelUrl(): string {
+export function browserRfDetrModelUrl(): string {
   return RF_DETR_MODEL_URL;
 }
 
-function legacyYoloModelUrl(): string {
-  return resolvePublicAssetUrl("artifacts/yolo26n.onnx");
-}
-
-export function vehicleBreakdownFromYoloDetections(
-  detections: BrowserYoloDetection[],
+export function vehicleBreakdownFromRfDetrDetections(
+  detections: BrowserRfDetrDetection[],
   frameWidth = 0,
   frameHeight = 0,
-): BrowserYoloBreakdown {
-  const breakdown: BrowserYoloBreakdown = { car: 0, motorcycle: 0, bus: 0, truck: 0, bicycle: 0, total: 0 };
+): BrowserRfDetrBreakdown {
+  const breakdown: BrowserRfDetrBreakdown = { car: 0, motorcycle: 0, bus: 0, truck: 0, bicycle: 0, total: 0 };
   compactCountableVehicles(detections, frameWidth, frameHeight).forEach((det) => {
     const label = canonicalDetectionLabel(det.label);
     if (label === "car") breakdown.car += 1;
@@ -334,12 +302,12 @@ function mixHexColor(from: string, to: string, amount: number): string {
   return `rgb(${channel(0)}, ${channel(1)}, ${channel(2)})`;
 }
 
-export function drawYoloDetections(
+export function drawRfDetrDetections(
   canvas: HTMLCanvasElement,
-  detections: BrowserYoloDetection[],
+  detections: BrowserRfDetrDetection[],
   frameWidth: number,
   frameHeight: number,
-  options: DrawYoloDetectionsOptions = {},
+  options: DrawRfDetrDetectionsOptions = {},
 ): void {
   const ctx = canvas.getContext("2d");
   if (!ctx || frameWidth <= 0 || frameHeight <= 0) return;
@@ -353,7 +321,7 @@ export function drawYoloDetections(
     canvas.height = targetHeight;
   }
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  const fit = canvas.dataset.yoloFit === "contain" ? "contain" : "cover";
+  const fit = canvas.dataset.detectorFit === "contain" ? "contain" : "cover";
   const scale = fit === "contain"
     ? Math.min(canvas.width / frameWidth, canvas.height / frameHeight)
     : Math.max(canvas.width / frameWidth, canvas.height / frameHeight);
@@ -462,9 +430,9 @@ export function drawYoloDetections(
   ctx.restore();
 }
 
-export async function runBrowserYolo(source: ImageSource): Promise<BrowserYoloResult> {
+export async function runBrowserRfDetr(source: ImageSource): Promise<BrowserRfDetrResult> {
   const startedAt = performance.now();
-  const modelUrl = browserYoloModelUrl();
+  const modelUrl = browserRfDetrModelUrl();
   const frame = captureImageSource(source);
   if (!frame) {
     return emptyResult("no-frame", "Frame kamera belum tersedia", modelUrl);
@@ -493,12 +461,12 @@ export async function loadImageSource(src: string): Promise<HTMLImageElement | n
   });
 }
 
-export async function publishBrowserYoloResult(
+export async function publishBrowserRfDetrResult(
   firebaseRootUrl: string,
   deviceId: string,
   _viewerId: string,
   cameraUrl: string,
-  result: BrowserYoloResult,
+  result: BrowserRfDetrResult,
 ): Promise<void> {
   if (!firebaseRootUrl || !deviceId || result.status !== "online") return;
   const vehicleOnly = {
@@ -540,8 +508,8 @@ export async function publishBrowserYoloResult(
   await firebasePatch(firebaseRootUrl, `devices/${deviceId}`, devicePatch);
 }
 
-function emptyResult(status: BrowserYoloResult["status"], note: string, modelUrl: string): BrowserYoloResult {
-  const vehicleBreakdown: BrowserYoloBreakdown = { car: 0, motorcycle: 0, bus: 0, truck: 0, bicycle: 0, total: 0 };
+function emptyResult(status: BrowserRfDetrResult["status"], note: string, modelUrl: string): BrowserRfDetrResult {
+  const vehicleBreakdown: BrowserRfDetrBreakdown = { car: 0, motorcycle: 0, bus: 0, truck: 0, bicycle: 0, total: 0 };
   return {
     status,
     note,
@@ -558,7 +526,7 @@ function emptyResult(status: BrowserYoloResult["status"], note: string, modelUrl
   };
 }
 
-async function runRfDetrFrame(frame: CapturedFrame, startedAt: number): Promise<BrowserYoloResult> {
+async function runRfDetrFrame(frame: CapturedFrame, startedAt: number): Promise<BrowserRfDetrResult> {
   const detector = await loadRfDetrPipeline();
   let detections = await inferRfDetrFrame(detector, frame, 0, 0);
   if (shouldRunDetailCrops(frame, detections)) {
@@ -566,8 +534,8 @@ async function runRfDetrFrame(frame: CapturedFrame, startedAt: number): Promise<
     const detailed = await Promise.all(crops.map((crop) => inferRfDetrFrame(detector, crop, crop.x, crop.y)));
     detections = detections.concat(detailed.flat());
   }
-  detections = resolveCrossClassAmbiguity(nonMaxSuppression(detections, YOLO_NMS)).slice(0, RF_DETR_MAX_DETECTIONS);
-  const breakdown = vehicleBreakdownFromYoloDetections(detections, frame.width, frame.height);
+  detections = resolveCrossClassAmbiguity(nonMaxSuppression(detections, RF_DETR_NMS)).slice(0, RF_DETR_MAX_DETECTIONS);
+  const breakdown = vehicleBreakdownFromRfDetrDetections(detections, frame.width, frame.height);
   const rawThumbnailUrl = frame.canvas.toDataURL("image/jpeg", 0.56);
   const annotatedThumbnailUrl = annotatedSnapshot(frame.canvas, detections, frame.width, frame.height);
   const elapsed = Math.max(1, performance.now() - startedAt);
@@ -590,50 +558,6 @@ async function runRfDetrFrame(frame: CapturedFrame, startedAt: number): Promise<
     annotatedThumbnailUrl,
     modelUrl: activeModelUrl,
     outputShape: `${activeObjectDetectionModelId}; detections=${detections.length}`,
-  };
-}
-
-export async function runLegacyYoloFrame(frame: CapturedFrame, startedAt: number): Promise<BrowserYoloResult> {
-  const modelUrl = legacyYoloModelUrl();
-  const ort = await loadOrtModule();
-  const session = await loadYoloSession(modelUrl);
-  const inputName = session.inputNames[0] || "images";
-  const full = await inferYoloFrame(session, inputName, frame.imageData, frame.width, frame.height, 0, 0, ort);
-  let detections = full.detections;
-  if (shouldRunDetailCrops(frame, detections)) {
-    const crops = detailCropsForFrame(frame).slice(0, YOLO_DETAIL_CROP_LIMIT);
-    const detailed = await Promise.all(crops.map((crop) => inferYoloFrame(
-      session,
-      inputName,
-      crop.imageData,
-      crop.width,
-      crop.height,
-      crop.x,
-      crop.y,
-      ort,
-    )));
-    detections = detections.concat(detailed.flatMap((item) => item.detections));
-  }
-  detections = resolveCrossClassAmbiguity(nonMaxSuppression(detections, YOLO_NMS)).slice(0, YOLO_MAX_DETECTIONS);
-  const breakdown = vehicleBreakdownFromYoloDetections(detections, frame.width, frame.height);
-  const rawThumbnailUrl = frame.canvas.toDataURL("image/jpeg", 0.56);
-  const annotatedThumbnailUrl = annotatedSnapshot(frame.canvas, detections, frame.width, frame.height);
-  const elapsed = Math.max(1, performance.now() - startedAt);
-  return {
-    status: "online",
-    note: detections.length ? "YOLO ONNX browser mendeteksi objek" : "YOLO ONNX browser aktif, belum ada objek",
-    updatedAt: Date.now(),
-    fps: Number((1000 / elapsed).toFixed(2)),
-    frameWidth: frame.width,
-    frameHeight: frame.height,
-    objectCount: detections.length,
-    vehicleCount: breakdown.total,
-    vehicleBreakdown: breakdown,
-    detections,
-    rawThumbnailUrl,
-    annotatedThumbnailUrl,
-    modelUrl,
-    outputShape: full.outputShape,
   };
 }
 
@@ -723,7 +647,7 @@ async function inferRfDetrFrame(
   frame: CapturedFrame,
   offsetX: number,
   offsetY: number,
-): Promise<BrowserYoloDetection[]> {
+): Promise<BrowserRfDetrDetection[]> {
   const output = await detector(frame.canvas, { threshold: RF_DETR_CONFIDENCE, percentage: false });
   return output.flatMap((item) => {
     const label = canonicalDetectionLabel(item.label || "");
@@ -740,28 +664,6 @@ async function inferRfDetrFrame(
   });
 }
 
-async function loadYoloSession(modelUrl: string): Promise<OrtSession> {
-  if (yoloSessionPromise) return yoloSessionPromise;
-  yoloSessionPromise = (async () => {
-    const ort = await loadOrtModule();
-    return ort.InferenceSession.create(modelUrl, {
-      executionProviders: ["wasm"],
-      graphOptimizationLevel: "all",
-    });
-  })();
-  return yoloSessionPromise;
-}
-
-async function loadOrtModule(): Promise<OrtModule> {
-  if (ortModulePromise) return ortModulePromise;
-  ortModulePromise = import("onnxruntime-web").then((ort) => {
-    ort.env.wasm.numThreads = 1;
-    ort.env.wasm.wasmPaths = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_WASM_VERSION}/dist/`;
-    return ort;
-  });
-  return ortModulePromise;
-}
-
 function captureImageSource(source: ImageSource): CapturedFrame | null {
   const sourceWidth = source instanceof HTMLVideoElement
     ? source.videoWidth
@@ -774,7 +676,7 @@ function captureImageSource(source: ImageSource): CapturedFrame | null {
       ? source.naturalHeight || source.height
       : source.height;
   if (!sourceWidth || !sourceHeight) return null;
-  const scale = Math.min(1, YOLO_CAPTURE_MAX_EDGE / Math.max(sourceWidth, sourceHeight));
+  const scale = Math.min(1, RF_DETR_CAPTURE_MAX_EDGE / Math.max(sourceWidth, sourceHeight));
   const width = Math.max(1, Math.round(sourceWidth * scale));
   const height = Math.max(1, Math.round(sourceHeight * scale));
   const canvas = document.createElement("canvas");
@@ -787,31 +689,7 @@ function captureImageSource(source: ImageSource): CapturedFrame | null {
   return { canvas, imageData, width, height };
 }
 
-async function inferYoloFrame(
-  session: OrtSession,
-  inputName: string,
-  imageData: ImageData,
-  frameWidth: number,
-  frameHeight: number,
-  offsetX: number,
-  offsetY: number,
-  ort: OrtModule,
-): Promise<{ detections: BrowserYoloDetection[]; outputShape: string }> {
-  const input = imageDataToYoloInput(ort, imageData);
-  const output = await session.run({ [inputName]: input.tensor });
-  const outputName = session.outputNames[0] || Object.keys(output)[0];
-  const tensor = output[outputName];
-  const detections = parseYoloOutput(
-    Array.from(tensor.data as Float32Array),
-    tensor.dims,
-    frameWidth,
-    frameHeight,
-    input,
-  ).map((det) => ({ ...det, x: det.x + offsetX, y: det.y + offsetY }));
-  return { detections, outputShape: tensor.dims.join("x") };
-}
-
-function shouldRunDetailCrops(frame: CapturedFrame, detections: BrowserYoloDetection[]): boolean {
+function shouldRunDetailCrops(frame: CapturedFrame, detections: BrowserRfDetrDetection[]): boolean {
   if (Math.max(frame.width, frame.height) < 520) return false;
   const confident = detections.filter((det) => det.confidence >= 0.24);
   const vehicles = detections.filter((det) => VEHICLE_LABELS.has(det.label));
@@ -879,159 +757,7 @@ function imageHasSignal(image: ImageData): boolean {
   return colorDelta / samples > 4;
 }
 
-function imageDataToYoloInput(ort: OrtModule, image: ImageData): YoloInput {
-  const resized = document.createElement("canvas");
-  resized.width = YOLO_INPUT_SIZE;
-  resized.height = YOLO_INPUT_SIZE;
-  const ctx = resized.getContext("2d", { willReadFrequently: true });
-  if (!ctx) throw new Error("Canvas 2D tidak tersedia");
-  const source = document.createElement("canvas");
-  source.width = image.width;
-  source.height = image.height;
-  const sourceCtx = source.getContext("2d");
-  if (!sourceCtx) throw new Error("Canvas source tidak tersedia");
-  sourceCtx.putImageData(image, 0, 0);
-  ctx.fillStyle = "rgb(114, 114, 114)";
-  ctx.fillRect(0, 0, YOLO_INPUT_SIZE, YOLO_INPUT_SIZE);
-  const scale = Math.min(YOLO_INPUT_SIZE / image.width, YOLO_INPUT_SIZE / image.height);
-  const drawWidth = Math.round(image.width * scale);
-  const drawHeight = Math.round(image.height * scale);
-  const padX = Math.floor((YOLO_INPUT_SIZE - drawWidth) / 2);
-  const padY = Math.floor((YOLO_INPUT_SIZE - drawHeight) / 2);
-  ctx.drawImage(source, padX, padY, drawWidth, drawHeight);
-  const data = ctx.getImageData(0, 0, YOLO_INPUT_SIZE, YOLO_INPUT_SIZE).data;
-  const tensor = new Float32Array(1 * 3 * YOLO_INPUT_SIZE * YOLO_INPUT_SIZE);
-  const plane = YOLO_INPUT_SIZE * YOLO_INPUT_SIZE;
-  for (let i = 0; i < plane; i += 1) {
-    const offset = i * 4;
-    tensor[i] = (data[offset] || 0) / 255;
-    tensor[plane + i] = (data[offset + 1] || 0) / 255;
-    tensor[plane * 2 + i] = (data[offset + 2] || 0) / 255;
-  }
-  return {
-    tensor: new ort.Tensor("float32", tensor, [1, 3, YOLO_INPUT_SIZE, YOLO_INPUT_SIZE]),
-    scale,
-    padX,
-    padY,
-  };
-}
-
-function parseYoloOutput(data: number[], dims: readonly number[], frameWidth: number, frameHeight: number, input: YoloInput): BrowserYoloDetection[] {
-  if (!data.length || dims.length < 2) return [];
-  const a = dims[dims.length - 2] || 0;
-  const b = dims[dims.length - 1] || 0;
-  if (a <= 0 || b < 6) return [];
-  if (a > b) return parseRowsOutput(data, a, b, (row, attr) => row * b + attr, frameWidth, frameHeight, input);
-  return parseRowsOutput(data, b, a, (row, attr) => attr * b + row, frameWidth, frameHeight, input);
-}
-
-function parseRowsOutput(
-  data: number[],
-  rows: number,
-  attrs: number,
-  index: (row: number, attr: number) => number,
-  frameWidth: number,
-  frameHeight: number,
-  input: YoloInput,
-): BrowserYoloDetection[] {
-  if (attrs === 6) {
-    const parsed = parseSixAttributeOutput(data, rows, index, frameWidth, frameHeight, input);
-    if (parsed.length) return parsed;
-  }
-  const classStart = attrs >= 85 ? 5 : 4;
-  const hasObjectness = attrs >= 85;
-  const detections: BrowserYoloDetection[] = [];
-  for (let row = 0; row < rows; row += 1) {
-    const cx = read(data, index(row, 0));
-    const cy = read(data, index(row, 1));
-    const width = read(data, index(row, 2));
-    const height = read(data, index(row, 3));
-    const objectness = hasObjectness ? normalizeScore(read(data, index(row, 4))) : 1;
-    let bestClass = -1;
-    let bestScore = 0;
-    for (let attr = classStart; attr < attrs; attr += 1) {
-      const score = normalizeScore(read(data, index(row, attr))) * objectness;
-      if (score > bestScore) {
-        bestScore = score;
-        bestClass = attr - classStart;
-      }
-    }
-    const label = COCO_LABELS[bestClass] || `class-${bestClass}`;
-    if (bestScore >= confidenceForLabel(label)) {
-      const detection = toCenterDetection(label, bestScore, cx, cy, width, height, frameWidth, frameHeight, input);
-      if (detection) detections.push(detection);
-    }
-  }
-  return detections;
-}
-
-function parseSixAttributeOutput(
-  data: number[],
-  rows: number,
-  index: (row: number, attr: number) => number,
-  frameWidth: number,
-  frameHeight: number,
-  input: YoloInput,
-): BrowserYoloDetection[] {
-  const detections: BrowserYoloDetection[] = [];
-  for (let row = 0; row < rows; row += 1) {
-    const a0 = read(data, index(row, 0));
-    const a1 = read(data, index(row, 1));
-    const a2 = read(data, index(row, 2));
-    const a3 = read(data, index(row, 3));
-    const a4 = read(data, index(row, 4));
-    const a5 = read(data, index(row, 5));
-    const pair = isClassId(a5) && isProbabilityScore(a4) ? [Math.round(a5), a4]
-      : isClassId(a4) && isProbabilityScore(a5) ? [Math.round(a4), a5]
-        : null;
-    if (!pair) continue;
-    const [classId, rawScore] = pair;
-    const score = clamp(rawScore, 0, 1);
-    const label = COCO_LABELS[classId] || `class-${classId}`;
-    if (score < confidenceForLabel(label)) continue;
-    const detection = a2 > a0 && a3 > a1
-      ? toCornerDetection(label, score, a0, a1, a2, a3, frameWidth, frameHeight, input)
-      : toCenterDetection(label, score, a0, a1, a2, a3, frameWidth, frameHeight, input);
-    if (detection) detections.push(detection);
-  }
-  return detections;
-}
-
-function toCenterDetection(label: string, confidence: number, cx: number, cy: number, width: number, height: number, frameWidth: number, frameHeight: number, input: YoloInput): BrowserYoloDetection | null {
-  if (!rawBoxIsReasonable([cx, cy, width, height])) return null;
-  const normalized = [cx, cy, width, height].every((value) => value >= 0 && value <= 1.5);
-  if (!normalized && (width > YOLO_INPUT_SIZE * 1.12 || height > YOLO_INPUT_SIZE * 1.12)) return null;
-  const inputCx = normalized ? cx * YOLO_INPUT_SIZE : cx;
-  const inputCy = normalized ? cy * YOLO_INPUT_SIZE : cy;
-  const inputWidth = normalized ? width * YOLO_INPUT_SIZE : width;
-  const inputHeight = normalized ? height * YOLO_INPUT_SIZE : height;
-  const boxWidth = clamp(inputWidth / input.scale, 0, frameWidth);
-  const boxHeight = clamp(inputHeight / input.scale, 0, frameHeight);
-  const x = clamp(((inputCx - input.padX) / input.scale) - boxWidth / 2, 0, frameWidth);
-  const y = clamp(((inputCy - input.padY) / input.scale) - boxHeight / 2, 0, frameHeight);
-  if (!boxIsReasonable(x, y, boxWidth, boxHeight, frameWidth, frameHeight)) return null;
-  return normalizeDetection({ label, confidence, x, y, width: boxWidth, height: boxHeight }, frameWidth, frameHeight);
-}
-
-function toCornerDetection(label: string, confidence: number, x1: number, y1: number, x2: number, y2: number, frameWidth: number, frameHeight: number, input: YoloInput): BrowserYoloDetection | null {
-  if (!rawBoxIsReasonable([x1, y1, x2, y2])) return null;
-  const normalized = [x1, y1, x2, y2].every((value) => value >= 0 && value <= 1.5);
-  if (!normalized && [x1, y1, x2, y2].some((value) => value < -YOLO_INPUT_SIZE * 0.08 || value > YOLO_INPUT_SIZE * 1.08)) return null;
-  const inputX1 = normalized ? x1 * YOLO_INPUT_SIZE : x1;
-  const inputY1 = normalized ? y1 * YOLO_INPUT_SIZE : y1;
-  const inputX2 = normalized ? x2 * YOLO_INPUT_SIZE : x2;
-  const inputY2 = normalized ? y2 * YOLO_INPUT_SIZE : y2;
-  const left = clamp((inputX1 - input.padX) / input.scale, 0, frameWidth);
-  const top = clamp((inputY1 - input.padY) / input.scale, 0, frameHeight);
-  const right = clamp((inputX2 - input.padX) / input.scale, 0, frameWidth);
-  const bottom = clamp((inputY2 - input.padY) / input.scale, 0, frameHeight);
-  const width = Math.max(0, right - left);
-  const height = Math.max(0, bottom - top);
-  if (!boxIsReasonable(left, top, width, height, frameWidth, frameHeight)) return null;
-  return normalizeDetection({ label, confidence, x: left, y: top, width, height }, frameWidth, frameHeight);
-}
-
-function normalizeDetection(det: BrowserYoloDetection, frameWidth: number, frameHeight: number): BrowserYoloDetection | null {
+function normalizeDetection(det: BrowserRfDetrDetection, frameWidth: number, frameHeight: number): BrowserRfDetrDetection | null {
   const key = canonicalDetectionLabel(det.label);
   const normalized = { ...det, label: key, confidence: clamp(det.confidence, 0, 1), vehicle: VEHICLE_LABELS.has(key) };
   return detectionMatchesClassGeometry(normalized, frameWidth, frameHeight) ? normalized : null;
@@ -1039,7 +765,7 @@ function normalizeDetection(det: BrowserYoloDetection, frameWidth: number, frame
 
 function confidenceForLabel(label: string): number {
   const key = canonicalDetectionLabel(label);
-  return MIN_CONFIDENCE_BY_LABEL[key] ?? YOLO_CONFIDENCE;
+  return MIN_CONFIDENCE_BY_LABEL[key] ?? RF_DETR_DEFAULT_CONFIDENCE;
 }
 
 function countConfidenceForVehicle(label: string): number {
@@ -1047,7 +773,7 @@ function countConfidenceForVehicle(label: string): number {
   return VEHICLE_COUNT_CONFIDENCE[key] ?? 0.3;
 }
 
-function detectionMatchesClassGeometry(det: BrowserYoloDetection, frameWidth: number, frameHeight: number): boolean {
+function detectionMatchesClassGeometry(det: BrowserRfDetrDetection, frameWidth: number, frameHeight: number): boolean {
   if (!boxIsReasonable(det.x, det.y, det.width, det.height, frameWidth, frameHeight)) return false;
   const label = canonicalDetectionLabel(det.label);
   const aspect = det.width / Math.max(1, det.height);
@@ -1063,13 +789,13 @@ function detectionMatchesClassGeometry(det: BrowserYoloDetection, frameWidth: nu
   return aspect >= 0.05 && aspect <= 18 && areaRatio <= 0.9;
 }
 
-function nonMaxSuppression(detections: BrowserYoloDetection[], threshold: number): BrowserYoloDetection[] {
+function nonMaxSuppression(detections: BrowserRfDetrDetection[], threshold: number): BrowserRfDetrDetection[] {
   const queue = detections
     .map((det) => ({ ...det }))
     .sort((a, b) => b.confidence - a.confidence)
-    .slice(0, YOLO_MAX_DETECTIONS * 2);
-  const kept: BrowserYoloDetection[] = [];
-  while (queue.length && kept.length < YOLO_MAX_DETECTIONS) {
+    .slice(0, RF_DETR_CANDIDATE_LIMIT * 2);
+  const kept: BrowserRfDetrDetection[] = [];
+  while (queue.length && kept.length < RF_DETR_CANDIDATE_LIMIT) {
     queue.sort((a, b) => b.confidence - a.confidence);
     const current = queue.shift();
     if (!current) break;
@@ -1078,7 +804,7 @@ function nonMaxSuppression(detections: BrowserYoloDetection[], threshold: number
       if (canonicalDetectionLabel(candidate.label) !== canonicalDetectionLabel(current.label)) continue;
       const overlap = iou(current, candidate);
       if (overlap <= threshold) continue;
-      candidate.confidence *= Math.exp(-((overlap * overlap) / YOLO_SOFT_NMS_SIGMA));
+      candidate.confidence *= Math.exp(-((overlap * overlap) / RF_DETR_SOFT_NMS_SIGMA));
     }
     for (let i = queue.length - 1; i >= 0; i -= 1) {
       if (queue[i].confidence < confidenceForLabel(queue[i].label) * 0.62) queue.splice(i, 1);
@@ -1087,11 +813,11 @@ function nonMaxSuppression(detections: BrowserYoloDetection[], threshold: number
   return kept;
 }
 
-function resolveCrossClassAmbiguity(detections: BrowserYoloDetection[]): BrowserYoloDetection[] {
+function resolveCrossClassAmbiguity(detections: BrowserRfDetrDetection[]): BrowserRfDetrDetection[] {
   const sorted = detections
     .filter((det) => det.confidence >= confidenceForLabel(det.label) * 0.74)
     .sort((a, b) => detectionPriority(b) - detectionPriority(a));
-  const kept: BrowserYoloDetection[] = [];
+  const kept: BrowserRfDetrDetection[] = [];
   for (const det of sorted) {
     const duplicate = kept.some((other) => detectionsLookDuplicated(det, other));
     if (!duplicate) kept.push(det);
@@ -1099,7 +825,7 @@ function resolveCrossClassAmbiguity(detections: BrowserYoloDetection[]): Browser
   return kept.sort((a, b) => b.confidence - a.confidence);
 }
 
-function detectionPriority(det: BrowserYoloDetection): number {
+function detectionPriority(det: BrowserRfDetrDetection): number {
   const label = canonicalDetectionLabel(det.label);
   const preferredBoost = label === "person"
     ? 0.16
@@ -1112,7 +838,7 @@ function detectionPriority(det: BrowserYoloDetection): number {
   return det.confidence + preferredBoost - penalty;
 }
 
-function detectionsLookDuplicated(a: BrowserYoloDetection, b: BrowserYoloDetection): boolean {
+function detectionsLookDuplicated(a: BrowserRfDetrDetection, b: BrowserRfDetrDetection): boolean {
   const aLabel = canonicalDetectionLabel(a.label);
   const bLabel = canonicalDetectionLabel(b.label);
   const overlap = iou(a, b);
@@ -1126,14 +852,14 @@ function detectionsLookDuplicated(a: BrowserYoloDetection, b: BrowserYoloDetecti
 }
 
 function compactCountableVehicles(
-  detections: BrowserYoloDetection[],
+  detections: BrowserRfDetrDetection[],
   frameWidth: number,
   frameHeight: number,
-): BrowserYoloDetection[] {
+): BrowserRfDetrDetection[] {
   return detections
     .filter((det) => isCountableVehicleDetection(det, frameWidth, frameHeight))
     .sort((a, b) => b.confidence - a.confidence)
-    .reduce<BrowserYoloDetection[]>((kept, candidate) => {
+    .reduce<BrowserRfDetrDetection[]>((kept, candidate) => {
       const duplicate = kept.some((existing) => {
         const overlap = iou(existing, candidate);
         if (overlap > 0.3) return true;
@@ -1145,7 +871,7 @@ function compactCountableVehicles(
     }, []);
 }
 
-function isCountableVehicleDetection(det: BrowserYoloDetection, frameWidth: number, frameHeight: number): boolean {
+function isCountableVehicleDetection(det: BrowserRfDetrDetection, frameWidth: number, frameHeight: number): boolean {
   const label = canonicalDetectionLabel(det.label);
   if (!VEHICLE_LABELS.has(label)) return false;
   if (det.confidence < countConfidenceForVehicle(label)) return false;
@@ -1160,14 +886,14 @@ function isCountableVehicleDetection(det: BrowserYoloDetection, frameWidth: numb
   return true;
 }
 
-function annotatedSnapshot(source: HTMLCanvasElement, detections: BrowserYoloDetection[], frameWidth: number, frameHeight: number): string {
+function annotatedSnapshot(source: HTMLCanvasElement, detections: BrowserRfDetrDetection[], frameWidth: number, frameHeight: number): string {
   const canvas = document.createElement("canvas");
   canvas.width = frameWidth;
   canvas.height = frameHeight;
   const ctx = canvas.getContext("2d");
   if (!ctx) return source.toDataURL("image/jpeg", 0.68);
   ctx.drawImage(source, 0, 0, frameWidth, frameHeight);
-  drawYoloDetections(canvas, detections, frameWidth, frameHeight);
+  drawRfDetrDetections(canvas, detections, frameWidth, frameHeight);
   return canvas.toDataURL("image/jpeg", 0.62);
 }
 
@@ -1186,31 +912,6 @@ function firebaseWrite(method: "PATCH" | "PUT", rootUrl: string, path: string, p
   });
 }
 
-function read(data: number[], index: number): number {
-  return index >= 0 && index < data.length ? Number(data[index]) || 0 : 0;
-}
-
-function isClassId(value: number): boolean {
-  const rounded = Math.round(value);
-  return Math.abs(value - rounded) <= 0.001 && rounded >= 0 && rounded < COCO_LABELS.length;
-}
-
-function isProbabilityScore(value: number): boolean {
-  return Number.isFinite(value) && value >= 0 && value <= 1.05;
-}
-
-function normalizeScore(value: number): number {
-  if (!Number.isFinite(value)) return 0;
-  if (value >= 0 && value <= 1) return value;
-  if (value > 1 && value <= 100) return value / 100;
-  if (value > -50 && value < 50) return 1 / (1 + Math.exp(-value));
-  return value > 0 ? 1 : 0;
-}
-
-function rawBoxIsReasonable(values: number[]): boolean {
-  return values.every(Number.isFinite) && values[2] > 0 && values[3] > 0;
-}
-
 function boxIsReasonable(x: number, y: number, width: number, height: number, frameWidth: number, frameHeight: number): boolean {
   if (![x, y, width, height, frameWidth, frameHeight].every(Number.isFinite)) return false;
   if (width < 2 || height < 2 || frameWidth <= 0 || frameHeight <= 0) return false;
@@ -1225,11 +926,11 @@ function boxIsReasonable(x: number, y: number, width: number, height: number, fr
   return true;
 }
 
-function isRenderableDetection(det: BrowserYoloDetection, frameWidth: number, frameHeight: number): boolean {
+function isRenderableDetection(det: BrowserRfDetrDetection, frameWidth: number, frameHeight: number): boolean {
   return boxIsReasonable(det.x, det.y, det.width, det.height, frameWidth, frameHeight);
 }
 
-function iou(a: BrowserYoloDetection, b: BrowserYoloDetection): number {
+function iou(a: BrowserRfDetrDetection, b: BrowserRfDetrDetection): number {
   const ax2 = a.x + a.width;
   const ay2 = a.y + a.height;
   const bx2 = b.x + b.width;
@@ -1244,7 +945,7 @@ function iou(a: BrowserYoloDetection, b: BrowserYoloDetection): number {
   return union <= 0 ? 0 : (interWidth * interHeight) / union;
 }
 
-function intersectionOverMinArea(a: BrowserYoloDetection, b: BrowserYoloDetection): number {
+function intersectionOverMinArea(a: BrowserRfDetrDetection, b: BrowserRfDetrDetection): number {
   const ax2 = a.x + a.width;
   const ay2 = a.y + a.height;
   const bx2 = b.x + b.width;
@@ -1259,7 +960,7 @@ function intersectionOverMinArea(a: BrowserYoloDetection, b: BrowserYoloDetectio
   return minArea <= 0 ? 0 : (interWidth * interHeight) / minArea;
 }
 
-function adaptiveConfidenceForDetection(det: BrowserYoloDetection, frameWidth: number, frameHeight: number): number {
+function adaptiveConfidenceForDetection(det: BrowserRfDetrDetection, frameWidth: number, frameHeight: number): number {
   const base = confidenceForLabel(det.label);
   const areaRatio = (det.width * det.height) / Math.max(1, frameWidth * frameHeight);
   const smallObjectBoost = areaRatio < 0.015 ? 0.055 : areaRatio < 0.05 ? 0.035 : areaRatio < 0.1 ? 0.018 : 0;
@@ -1268,7 +969,7 @@ function adaptiveConfidenceForDetection(det: BrowserYoloDetection, frameWidth: n
 
 function updateDetectionTracks(
   canvas: HTMLCanvasElement,
-  detections: BrowserYoloDetection[],
+  detections: BrowserRfDetrDetection[],
   frameWidth: number,
   frameHeight: number,
 ): DetectionTrack[] {
@@ -1325,7 +1026,7 @@ function updateDetectionTracks(
 }
 
 function bestTrackMatch(
-  det: BrowserYoloDetection,
+  det: BrowserRfDetrDetection,
   tracks: DetectionTrack[],
   used: Set<DetectionTrack>,
 ): DetectionTrack | null {
@@ -1346,11 +1047,11 @@ function bestTrackMatch(
   return bestScore >= 0.18 ? best : null;
 }
 
-function centerX(det: BrowserYoloDetection): number {
+function centerX(det: BrowserRfDetrDetection): number {
   return det.x + det.width / 2;
 }
 
-function centerY(det: BrowserYoloDetection): number {
+function centerY(det: BrowserRfDetrDetection): number {
   return det.y + det.height / 2;
 }
 
