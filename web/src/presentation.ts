@@ -3,7 +3,7 @@ import "./presentation.css";
 import JSZip from "jszip";
 import { runPptAiPipeline } from "./ppt-ai-pipeline";
 import { initializeApp } from "firebase/app";
-import { connectAuthEmulator, getAuth, GoogleAuthProvider, signInAnonymously, signInWithPopup, type User } from "firebase/auth";
+import { connectAuthEmulator, getAuth, GoogleAuthProvider, linkWithPopup, signInAnonymously, signInWithPopup, type User } from "firebase/auth";
 import {
   connectDatabaseEmulator,
   get,
@@ -306,6 +306,8 @@ let activeCommentElementId = "";
 let activeCommentSlide = 0;
 let pendingReplaceImageElementId = "";
 let latestSharedRecords: Record<string, SharedProjectRecord> = {};
+let audienceFillMode: "contain" | "cover" = "contain";
+let audiencePinchDistance = 0;
 
 const usbManager = AdbDaemonWebUsbDeviceManager.BROWSER;
 const credentialStore = new AdbWebCredentialStore(`PrezADB@${location.hostname}`);
@@ -658,6 +660,7 @@ function friendlyError(error: unknown): string {
   const message = String((error as { message?: string })?.message || error || "Kesalahan tidak diketahui");
   if (message.includes("auth/operation-not-allowed")) return "Anonymous Authentication belum diaktifkan di Firebase Console.";
   if (message.includes("auth/popup-closed-by-user")) return "Login Google dibatalkan.";
+  if (message.includes("auth/credential-already-in-use")) return "Akun Google itu sudah terhubung ke sesi lain. Untuk project owner ini, tetap gunakan sesi owner yang sedang aktif.";
   if (message.includes("auth/unauthorized-domain")) return "Domain ini belum diizinkan untuk Google Sign-In di Firebase Console.";
   if (message.includes("PERMISSION_DENIED")) return "Database Rules belum mengizinkan fitur presentasi.";
   if (message.toLowerCase().includes("network")) return "koneksi jaringan tidak tersedia.";
@@ -673,6 +676,15 @@ function syncIdentityUi(): void {
   $("#hub-user-name").textContent = name;
   const googleButton = $("#hub-google-login") as HTMLButtonElement;
   googleButton.textContent = firebaseUser?.isAnonymous ? "Google" : "Akun Google";
+  syncOwnerAuthUi();
+}
+
+function syncOwnerAuthUi(): void {
+  const button = document.getElementById("owner-google-login") as HTMLButtonElement | null;
+  if (!button) return;
+  button.hidden = role !== "owner";
+  button.textContent = firebaseUser?.isAnonymous ? "Google" : "Akun Google";
+  button.title = firebaseUser?.isAnonymous ? "Masuk dengan Google" : authDisplayName(firebaseUser) || "Akun Google";
 }
 
 async function signInAnonymousIfNeeded(): Promise<User> {
@@ -681,7 +693,13 @@ async function signInAnonymousIfNeeded(): Promise<User> {
 }
 
 async function signInWithGoogleAccount(): Promise<User> {
-  const credential = await signInWithPopup(auth, googleProvider);
+  const current = auth.currentUser;
+  const credential = current?.isAnonymous
+    ? await linkWithPopup(current, googleProvider).catch(async (error) => {
+      if (String(error?.code || error?.message || "").includes("credential-already-in-use") && !(projectId && role === "owner")) return signInWithPopup(auth, googleProvider);
+      throw error;
+    })
+    : await signInWithPopup(auth, googleProvider);
   firebaseUser = credential.user;
   const display = authDisplayName(firebaseUser);
   if (display) {
@@ -866,6 +884,7 @@ function showEditor(): void {
   app.classList.toggle("readonly", !isEditableRole());
   $("#role-badge").textContent = role === "owner" ? "Pemilik" : "Editor kolaborasi";
   $("#share-button").toggleAttribute("hidden", role !== "owner");
+  syncOwnerAuthUi();
   $("#present-button").innerHTML = role === "owner" ? "<span>▶</span><span>Slideshow</span>" : "Preview";
   if (role !== "owner") {
     $("#present-button").textContent = "Preview";
@@ -882,6 +901,7 @@ function showAudience(): void {
   const audienceView = $("#audience-view");
   audienceView.removeAttribute("hidden");
   audienceView.classList.toggle("audience-viewer", role === "viewer");
+  setAudienceFillMode("contain");
   followingPresenter = true;
   presenterSlide = clamp(Number(presentationState.currentSlide) || 0, 0, deck.slides.length - 1);
   currentSlide = presenterSlide;
@@ -943,6 +963,7 @@ async function enterSharedProject(): Promise<void> {
     const fullscreen = document.fullscreenEnabled ? document.documentElement.requestFullscreen().catch(() => undefined) : Promise.resolve();
     await startPresence();
     await fullscreen;
+    await tryLockLandscape();
   } else {
     showEditor();
     await startPresence();
@@ -1239,13 +1260,17 @@ function openCommentDialogForElement(elementId: string, slideIndex: number): voi
   activeCommentSlide = slideIndex;
   renderCommentDialog();
   const dialog = $("#comment-dialog") as HTMLDialogElement;
-  dialog.classList.add("audience-rail-dialog");
+  dialog.classList.toggle("audience-rail-dialog", isAudienceOpen());
   resetDialogMotion(dialog);
   for (const other of [$("#segment-dialog") as HTMLDialogElement, $("#people-dialog") as HTMLDialogElement]) {
     if (other.open) other.close();
   }
   if (!dialog.open) dialog.show();
   syncAudienceRailState();
+}
+
+function isCompactAudienceLayout(): boolean {
+  return matchMedia("(max-width: 760px)").matches || matchMedia("(max-height: 560px) and (orientation: landscape)").matches;
 }
 
 function renderCommentDialog(): void {
@@ -1789,7 +1814,8 @@ function bindCommentInteractions(node: HTMLElement, element: SlideElement, audie
     if (event.pointerType !== "touch") return;
     clearTimeout(longPressTimer);
     longPressTimer = window.setTimeout(() => {
-      openElementContextMenu(element.id, slideIndex, event.clientX, event.clientY);
+      if (isAudienceOpen() && isCompactAudienceLayout()) openCommentDialogForElement(element.id, slideIndex);
+      else openElementContextMenu(element.id, slideIndex, event.clientX, event.clientY);
       longPressOpenedAt = Date.now();
     }, 560);
   });
@@ -1837,7 +1863,16 @@ function bindSurfaceCommentInteractions(surface: HTMLElement): void {
     startY = event.clientY;
     clearTimeout(longPressTimer);
     longPressTimer = window.setTimeout(() => {
-      openElementContextMenuFromSurface(event, surface);
+      if (isAudienceOpen() && isCompactAudienceLayout()) {
+        const element = elementFromSurfaceEvent(event, surface);
+        if (element) {
+          event.preventDefault();
+          event.stopPropagation();
+          openCommentDialogForElement(element.id, currentSlide);
+        }
+      } else {
+        openElementContextMenuFromSurface(event, surface);
+      }
     }, 560);
   });
   surface.addEventListener("pointermove", (event) => {
@@ -1855,6 +1890,48 @@ function bindSurfaceCommentInteractions(surface: HTMLElement): void {
       }
     });
   }
+}
+
+function bindAudienceStageGestures(surface: HTMLElement): void {
+  const pointers = new Map<number, PointerEvent>();
+  let lastTap = 0;
+  const distance = () => {
+    const values = [...pointers.values()];
+    if (values.length < 2) return 0;
+    return Math.hypot(values[0].clientX - values[1].clientX, values[0].clientY - values[1].clientY);
+  };
+  surface.addEventListener("pointerdown", (event) => {
+    pointers.set(event.pointerId, event);
+    if (pointers.size === 2) audiencePinchDistance = distance();
+    if (event.pointerType === "touch" && pointers.size === 1) {
+      const now = Date.now();
+      if (now - lastTap < 280) {
+        event.preventDefault();
+        toggleAudienceFillMode();
+      }
+      lastTap = now;
+    }
+  });
+  surface.addEventListener("pointermove", (event) => {
+    if (!pointers.has(event.pointerId)) return;
+    pointers.set(event.pointerId, event);
+    if (pointers.size !== 2 || !audiencePinchDistance) return;
+    const next = distance();
+    if (Math.abs(next - audiencePinchDistance) < 34) return;
+    setAudienceFillMode(next > audiencePinchDistance ? "cover" : "contain");
+    audiencePinchDistance = next;
+  });
+  const release = (event: PointerEvent) => {
+    pointers.delete(event.pointerId);
+    if (pointers.size < 2) audiencePinchDistance = 0;
+  };
+  surface.addEventListener("pointerup", release);
+  surface.addEventListener("pointercancel", release);
+  surface.addEventListener("pointerleave", release);
+  surface.addEventListener("dblclick", (event) => {
+    event.preventDefault();
+    toggleAudienceFillMode();
+  });
 }
 
 function createElementNode(element: SlideElement, audience: boolean): HTMLDivElement {
@@ -3384,7 +3461,9 @@ function renderAudienceSlide(): void {
   target.className = `audience-slide transition-${cssToken(slide.transition)}`;
   for (const element of slide.elements) target.append(createElementNode(element, true));
   resizeAudienceSlide();
+  updateAudienceAmbient(slide);
   renderAudienceChrome();
+  syncAudienceMediaControls();
   renderRemoteCursors();
   renderCommentBadges();
 }
@@ -3423,6 +3502,72 @@ function renderAudienceChrome(): void {
     ? live ? "LIVE - peer-to-peer" : "Tidak Live - klik Live untuk kembali"
     : "Menunggu presenter...";
   renderSegmentDialog();
+}
+
+function setAudienceFillMode(mode: "contain" | "cover"): void {
+  audienceFillMode = mode;
+  const view = document.getElementById("audience-view");
+  if (view) view.classList.toggle("stage-cover", mode === "cover");
+  resizeAudienceSlide();
+}
+
+function toggleAudienceFillMode(): void {
+  setAudienceFillMode(audienceFillMode === "cover" ? "contain" : "cover");
+  toast(audienceFillMode === "cover" ? "Slide memenuhi layar." : "Slide kembali pas layar.");
+}
+
+function updateAudienceAmbient(slide: Slide): void {
+  const view = document.getElementById("audience-view");
+  if (!view) return;
+  const colors = sampleSlideColors(slide);
+  view.style.setProperty("--ambient-a", colors[0]);
+  view.style.setProperty("--ambient-b", colors[1]);
+  view.style.setProperty("--ambient-c", colors[2]);
+}
+
+function sampleSlideColors(slide: Slide): [string, string, string] {
+  const canvas = document.createElement("canvas");
+  canvas.width = 48;
+  canvas.height = 27;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) return ["#243c46", "#14151b", "#0b0c0f"];
+  drawSlideToContext(context, slide, canvas.width / SLIDE_WIDTH);
+  let data: Uint8ClampedArray;
+  try {
+    data = context.getImageData(0, 0, canvas.width, canvas.height).data;
+  } catch {
+    return ["#243c46", "#14151b", "#0b0c0f"];
+  }
+  const buckets = new Map<string, { r: number; g: number; b: number; count: number; weight: number }>();
+  for (let i = 0; i < data.length; i += 16) {
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const sat = max - min;
+    const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    if (luminance > 238 || luminance < 18 || sat < 18) continue;
+    const key = `${Math.round(r / 32)}-${Math.round(g / 32)}-${Math.round(b / 32)}`;
+    const item = buckets.get(key) || { r: 0, g: 0, b: 0, count: 0, weight: 0 };
+    const weight = sat + Math.abs(142 - luminance) * 0.16;
+    item.r += r * weight;
+    item.g += g * weight;
+    item.b += b * weight;
+    item.count += 1;
+    item.weight += weight;
+    buckets.set(key, item);
+  }
+  const chosen = [...buckets.values()]
+    .sort((a, b) => b.weight - a.weight)
+    .slice(0, 3)
+    .map((item) => rgbToHex(item.r / item.weight, item.g / item.weight, item.b / item.weight));
+  while (chosen.length < 3) chosen.push(["#274a5a", "#4a2638", "#14151b"][chosen.length]);
+  return [chosen[0], chosen[1], chosen[2]] as [string, string, string];
+}
+
+function rgbToHex(r: number, g: number, b: number): string {
+  return `#${[r, g, b].map((value) => clamp(Math.round(value), 0, 255).toString(16).padStart(2, "0")).join("")}`;
 }
 
 function renderAudiencePeople(): void {
@@ -3466,7 +3611,9 @@ function showAudienceChrome(): void {
 
 function syncAudienceRailState(): void {
   const open = ($("#segment-dialog") as HTMLDialogElement).open || ($("#people-dialog") as HTMLDialogElement).open || ($("#comment-dialog") as HTMLDialogElement).open;
-  $("#audience-view").classList.toggle("rail-open", open && isAudienceOpen());
+  const view = $("#audience-view");
+  view.classList.toggle("rail-open", open && isAudienceOpen());
+  if (!open) view.style.removeProperty("--rail-swipe-offset");
   resizeAudienceSlide();
 }
 
@@ -3485,6 +3632,7 @@ function openAudienceRailDialog(dialog: HTMLDialogElement): void {
   }
   dialog.classList.add("audience-rail-dialog");
   resetDialogMotion(dialog);
+  $("#audience-view").style.removeProperty("--rail-swipe-offset");
   if (!dialog.open) dialog.show();
   syncAudienceRailState();
   showAudienceChrome();
@@ -3494,7 +3642,10 @@ function openPeopleDialog(): void {
   renderAudiencePeople();
   const dialog = $("#people-dialog") as HTMLDialogElement;
   if (isAudienceOpen()) openAudienceRailDialog(dialog);
-  else dialog.showModal();
+  else {
+    dialog.classList.remove("audience-rail-dialog");
+    dialog.showModal();
+  }
 }
 
 function goToAudienceSlide(index: number): void {
@@ -3562,8 +3713,8 @@ function syncFullscreenButton(): void {
   const button = $("#audience-fullscreen");
   const full = Boolean(document.fullscreenElement);
   button.innerHTML = full
-    ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v6H3M15 3v6h6M9 21v-6H3M15 21v-6h6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
-    : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" fill="none" stroke="currentColor" stroke-width="2.15" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+    : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10V4h6M20 10V4h-6M4 14v6h6M20 14v6h-6" fill="none" stroke="currentColor" stroke-width="2.15" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   button.title = full ? "Keluar layar penuh" : "Layar penuh";
   button.setAttribute("aria-label", button.title);
 }
@@ -3583,12 +3734,21 @@ function handleFullscreenChange(): void {
   }
 }
 
+async function tryLockLandscape(): Promise<void> {
+  const orientation = screen.orientation as ScreenOrientation & { lock?: (orientation: "landscape") => Promise<void> };
+  if (!orientation?.lock || !document.fullscreenElement) return;
+  await orientation.lock("landscape").catch(() => undefined);
+}
+
 async function toggleAudienceFullscreen(): Promise<void> {
   if (document.fullscreenElement) {
     await document.exitFullscreen().catch(() => undefined);
     if (role === "owner") returnOwnerToEditorFromAudience();
   }
-  else if (document.fullscreenEnabled) await document.documentElement.requestFullscreen().catch(() => undefined);
+  else if (document.fullscreenEnabled) {
+    await document.documentElement.requestFullscreen().catch(() => undefined);
+    await tryLockLandscape();
+  }
   syncFullscreenButton();
 }
 
@@ -3625,7 +3785,9 @@ function updatePointerFromSurface(event: PointerEvent, surface: HTMLElement): vo
 
 function resizeAudienceSlide(): void {
   const stage = $("#audience-stage");
-  const scale = Math.min(stage.clientWidth / SLIDE_WIDTH, stage.clientHeight / SLIDE_HEIGHT);
+  const scale = audienceFillMode === "cover"
+    ? Math.max(stage.clientWidth / SLIDE_WIDTH, stage.clientHeight / SLIDE_HEIGHT)
+    : Math.min(stage.clientWidth / SLIDE_WIDTH, stage.clientHeight / SLIDE_HEIGHT);
   $("#audience-slide").setAttribute("style", `transform:translate(-50%,-50%) scale(${scale})`);
 }
 
@@ -4280,6 +4442,7 @@ async function togglePresentation(): Promise<void> {
       : Promise.resolve();
     showAudience();
     await fullscreen;
+    await tryLockLandscape();
     syncFullscreenButton();
     return;
   }
@@ -4306,6 +4469,7 @@ async function startPresentation(): Promise<void> {
   await ensureCurrentSlideMirrors();
   showAudience();
   await fullscreen;
+  await tryLockLandscape();
   presenterRequestUnsubscribe?.();
   presenterRequestUnsubscribe = localMode ? null : onChildAdded(ref(db, `presentationRtc/${projectId}`), (snapshot) => {
     const request = snapshot.child("request").val() as { uid?: string } | null;
@@ -4385,6 +4549,7 @@ async function connectViewerRtc(): Promise<void> {
     $("#audience-slide").setAttribute("hidden", "");
     status.classList.add("live");
     $("span:last-child", status).textContent = "LIVE - peer-to-peer";
+    syncAudienceMediaControls();
     void video.play().catch(() => undefined);
   };
   peer.onicecandidate = (event) => { if (event.candidate) void push(ref(db, `${base}/viewerCandidates`), event.candidate.toJSON()); };
@@ -4417,6 +4582,7 @@ function disconnectViewerRtc(): void {
   const video = $("#live-video") as HTMLVideoElement;
   video.srcObject = null;
   video.setAttribute("hidden", "");
+  syncAudienceMediaControls();
   $("#audience-slide").removeAttribute("hidden");
   const status = $("#audience-status");
   status.classList.remove("live");
@@ -4435,6 +4601,57 @@ async function copyInput(id: string, label: string): Promise<void> {
   const value = ($(`#${id}`) as HTMLInputElement).value;
   await navigator.clipboard.writeText(value);
   toast(`${label} disalin.`);
+}
+
+async function shareAudiencePresentation(): Promise<void> {
+  const url = projectId ? buildUrl({ view: true }) : location.href;
+  const title = deck.title || "ITS Presentasi";
+  const shareData = { title, text: title, url };
+  const canShare = "share" in navigator && (!("canShare" in navigator) || navigator.canShare?.(shareData));
+  if (canShare) await navigator.share(shareData).catch((error) => {
+    if (!String(error?.name || error).includes("Abort")) throw error;
+  });
+  else {
+    await navigator.clipboard.writeText(url);
+    toast("Link viewer disalin.");
+  }
+}
+
+function downloadAudiencePresentation(): void {
+  downloadDeckJson();
+}
+
+function syncAudienceMediaControls(): void {
+  const video = $("#live-video") as HTMLVideoElement;
+  const stream = video.srcObject instanceof MediaStream ? video.srcObject : null;
+  const hasMedia = Boolean(stream && (stream.getAudioTracks().length || stream.getVideoTracks().length));
+  $("#audience-volume-panel").toggleAttribute("hidden", !hasMedia);
+  if (hasMedia) {
+    const volume = $("#audience-volume") as HTMLInputElement;
+    video.volume = Number(volume.value || 0.9);
+    video.muted = video.volume <= 0;
+  }
+}
+
+function updateAudienceVolume(): void {
+  const video = $("#live-video") as HTMLVideoElement;
+  const volume = Number(($("#audience-volume") as HTMLInputElement).value || 0);
+  video.volume = clamp(volume, 0, 1);
+  video.muted = video.volume <= 0;
+}
+
+function toggleAudienceMediaMute(): void {
+  const video = $("#live-video") as HTMLVideoElement;
+  const volume = $("#audience-volume") as HTMLInputElement;
+  if (video.muted || Number(volume.value) <= 0) {
+    volume.value = "0.9";
+    video.muted = false;
+    video.volume = 0.9;
+  } else {
+    volume.value = "0";
+    video.muted = true;
+    video.volume = 0;
+  }
 }
 
 async function deleteProject(id: string): Promise<void> {
@@ -4517,15 +4734,18 @@ function bindSwipeRightToClose(target: HTMLElement, close: () => void): void {
   let startX = 0;
   let startY = 0;
   let dragging = false;
+  const audienceView = () => document.getElementById("audience-view");
   const reset = () => {
     target.style.transition = "";
     target.style.transform = "";
     target.style.opacity = "";
+    audienceView()?.style.removeProperty("--rail-swipe-offset");
   };
   const closeWithAnimation = () => {
     target.style.transition = "transform .2s ease, opacity .2s ease";
     target.style.transform = "translateX(110%)";
     target.style.opacity = "0";
+    if (isAudienceOpen() && target.classList.contains("audience-rail-dialog")) audienceView()?.style.setProperty("--rail-swipe-offset", "420px");
     window.setTimeout(() => {
       close();
       reset();
@@ -4544,6 +4764,9 @@ function bindSwipeRightToClose(target: HTMLElement, close: () => void): void {
     if (dx > 4 && dy < 90) {
       target.style.transform = `translateX(${dx}px)`;
       target.style.opacity = String(Math.max(0.45, 1 - dx / 420));
+      if (isAudienceOpen() && target.classList.contains("audience-rail-dialog") && !isCompactAudienceLayout()) {
+        audienceView()?.style.setProperty("--rail-swipe-offset", `${Math.min(dx, 420)}px`);
+      }
     }
   });
   target.addEventListener("pointerup", (event) => {
@@ -4587,7 +4810,7 @@ function bindSwipeDownToClose(target: HTMLElement, close: () => void): void {
     const dy = event.clientY - startY;
     const dx = Math.abs(event.clientX - startX);
     dragging = false;
-    if (dy > 86 && dx < 70 && matchMedia("(max-width: 760px)").matches && !isAudienceOpen()) {
+    if (dy > 86 && dx < 70 && (isCompactAudienceLayout() || !isAudienceOpen())) {
       target.style.transition = "transform .2s ease, opacity .2s ease";
       target.style.transform = "translateY(110%)";
       target.style.opacity = "0";
@@ -4616,6 +4839,7 @@ async function handleHubGoogleLogin(): Promise<void> {
 function bindUi(): void {
   $("#create-project").addEventListener("click", () => void createProject().catch((error) => toast(friendlyError(error))));
   $("#hub-google-login").addEventListener("click", () => void handleHubGoogleLogin().catch((error) => toast(friendlyError(error))));
+  $("#owner-google-login").addEventListener("click", () => void signInWithGoogleAccount().catch((error) => toast(friendlyError(error))));
   $("#refresh-shared-projects").addEventListener("click", () => void renderSharedProjects(latestSharedRecords));
   document.querySelectorAll<HTMLElement>("[data-template]").forEach((button) => {
     button.addEventListener("click", () => void createProject(button.dataset.template || "").catch((error) => toast(friendlyError(error))));
@@ -4658,6 +4882,18 @@ function bindUi(): void {
     event.preventDefault();
     void enterSharedProject().catch((error) => toast(friendlyError(error)));
   });
+  $("#join-more-button").addEventListener("click", (event) => {
+    event.stopPropagation();
+    $("#join-more-menu").toggleAttribute("hidden");
+  });
+  $("#join-share-action").addEventListener("click", () => {
+    $("#join-more-menu").setAttribute("hidden", "");
+    void shareAudiencePresentation().catch((error) => toast(friendlyError(error)));
+  });
+  $("#join-download-action").addEventListener("click", () => {
+    $("#join-more-menu").setAttribute("hidden", "");
+    downloadAudiencePresentation();
+  });
   $("#pptx-input").addEventListener("change", (event) => {
     const input = event.currentTarget as HTMLInputElement;
     const file = input.files?.[0];
@@ -4685,6 +4921,10 @@ function bindUi(): void {
   });
   $("#confirm-delete").addEventListener("click", () => void deleteProject(deleteTarget));
   $("#audience-fullscreen").addEventListener("click", () => void toggleAudienceFullscreen());
+  $("#audience-share-action").addEventListener("click", () => void shareAudiencePresentation().catch((error) => toast(friendlyError(error))));
+  $("#audience-download-action").addEventListener("click", downloadAudiencePresentation);
+  $("#audience-volume-button").addEventListener("click", toggleAudienceMediaMute);
+  $("#audience-volume").addEventListener("input", updateAudienceVolume);
   $("#audience-live-toggle").addEventListener("click", returnToLiveSlide);
   $("#audience-segment-button").addEventListener("click", () => {
     renderSegmentDialog();
@@ -4700,6 +4940,7 @@ function bindUi(): void {
   $("#audience-stage").addEventListener("pointerleave", hidePresenceCursor);
   bindSurfaceCommentInteractions($("#slide-canvas"));
   bindSurfaceCommentInteractions($("#audience-stage"));
+  bindAudienceStageGestures($("#audience-stage"));
   document.addEventListener("fullscreenchange", handleFullscreenChange);
   ($("#people-dialog") as HTMLDialogElement).addEventListener("close", syncAudienceRailState);
   ($("#segment-dialog") as HTMLDialogElement).addEventListener("close", syncAudienceRailState);
@@ -4714,7 +4955,7 @@ function bindUi(): void {
     event.stopPropagation();
     openMenu(button);
   }));
-  document.addEventListener("click", () => { closeMenu(); closeSlideContextMenu(); closeElementContextMenu(); });
+  document.addEventListener("click", () => { closeMenu(); closeSlideContextMenu(); closeElementContextMenu(); $("#join-more-menu").setAttribute("hidden", ""); });
   ($("#zoom-select") as HTMLSelectElement).addEventListener("change", () => {
     const value = ($("#zoom-select") as HTMLSelectElement).value;
     setZoom(value === "fit" ? fitZoom : Number(value), value === "fit");

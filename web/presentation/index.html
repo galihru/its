@@ -76,6 +76,7 @@
         </div>
         <div class="title-actions">
           <span id="save-state" class="save-state"><span class="status-dot"></span><span>Tersimpan</span></span>
+          <button id="owner-google-login" class="google-login-button owner-login-button" type="button">Google</button>
           <button id="comment-alert" class="comment-alert" type="button" title="Komentar" hidden><span>0</span></button>
           <button id="presence-button" class="presence-button" type="button" title="Kolaborator"><span id="presence-list" class="presence-list" aria-label="Pengunjung aktif"></span></button>
           <button id="present-button" class="present-button"><span>&#9654;</span><span>Slideshow</span></button>
@@ -144,6 +145,15 @@
   </div>
 
   <section id="share-entry" class="share-entry" hidden>
+    <div class="join-top-actions">
+      <button id="join-more-button" class="audience-icon-button" type="button" title="Menu" aria-label="Menu share dan download">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.2a1.8 1.8 0 1 0 0-3.6 1.8 1.8 0 0 0 0 3.6ZM12 13.8a1.8 1.8 0 1 0 0-3.6 1.8 1.8 0 0 0 0 3.6ZM12 19.4a1.8 1.8 0 1 0 0-3.6 1.8 1.8 0 0 0 0 3.6Z"/></svg>
+      </button>
+      <div id="join-more-menu" class="floating-action-menu" hidden>
+        <button id="join-share-action" type="button">Bagikan link</button>
+        <button id="join-download-action" type="button">Download presentasi</button>
+      </div>
+    </div>
     <div class="share-preview-pane">
       <div class="share-brand"><div class="app-logo"><img src="/its.png" alt="" /></div><div><span>ITS Presentasi</span><strong id="join-title">Presentasi tanpa judul</strong></div></div>
       <div id="join-preview-list" class="join-preview-list" aria-label="Preview slide"></div>
@@ -170,6 +180,21 @@
       <button id="audience-people-button" class="audience-people-button" type="button" title="Audiens"><span id="audience-avatars" class="audience-avatars"></span><span id="audience-more"></span></button>
     </header>
     <div id="audience-control-layer" class="audience-control-layer">
+      <div class="audience-media-row">
+        <div id="audience-volume-panel" class="audience-volume-panel" hidden>
+          <button id="audience-volume-button" class="audience-icon-button" type="button" title="Suara" aria-label="Suara">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h4l5-4.2v13.4l-5-4.2H4Z" fill="currentColor"/><path d="M16 8.5c1.2 1 1.9 2.2 1.9 3.5S17.2 14.6 16 15.5M18.5 6c1.9 1.6 3 3.6 3 6s-1.1 4.4-3 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          </button>
+          <input id="audience-volume" type="range" min="0" max="1" step="0.05" value="0.9" aria-label="Volume" />
+        </div>
+        <span class="audience-action-spacer"></span>
+        <button id="audience-share-action" class="audience-icon-button" type="button" title="Bagikan" aria-label="Bagikan">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 12.2 15.4 8M8.5 11.8l6.9 4.2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="6" cy="12" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="6.5" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="17.5" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+        </button>
+        <button id="audience-download-action" class="audience-icon-button" type="button" title="Download" aria-label="Download presentasi">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v10m0 0 4-4m-4 4-4-4M5 19h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
       <div id="audience-segments" class="audience-segments"></div>
       <div class="audience-bottom-bar">
         <button id="audience-live-toggle" class="audience-live-toggle" type="button"><strong id="audience-slide-index">1 / 1</strong><span id="audience-live-state">Live</span></button>
