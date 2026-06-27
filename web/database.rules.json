@@ -1,8 +1,9 @@
 {
   "rules": {
-    ".read": true,
+    ".read": false,
     ".write": false,
     "devices": {
+      ".read": true,
       "$deviceId": {
         ".read": true,
         ".write": true
@@ -24,6 +25,71 @@
     "webrtc": {
       ".read": true,
       ".write": true
+    },
+    "browserYolo": {
+      ".read": true
+    },
+    "trafficObjectDetectionDataset": {
+      ".read": true
+    },
+    "desktopClients": {
+      ".read": true,
+      ".write": true
+    },
+    "presentations": {
+      "$projectId": {
+        ".read": true,
+        ".write": "auth != null && ((!data.exists() && newData.child('ownerUid').val() === auth.uid) || data.child('ownerUid').val() === auth.uid)",
+        ".validate": "!newData.exists() || (newData.hasChildren(['ownerUid', 'visibility', 'deck', 'state', 'createdAt', 'updatedAt']) && newData.child('ownerUid').isString() && newData.child('visibility').val() === 'public')"
+      }
+    },
+    "presentationUsers": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "presentationPresence": {
+      "$projectId": {
+        ".read": true,
+        ".write": "auth != null && root.child('presentations').child($projectId).child('ownerUid').val() === auth.uid",
+        "$sessionId": {
+          ".write": "auth != null && ((!data.exists() && newData.child('uid').val() === auth.uid) || data.child('uid').val() === auth.uid)",
+          ".validate": "!newData.exists() || (newData.child('uid').val() === auth.uid && newData.hasChildren(['sessionId', 'name', 'role', 'lastSeen']))"
+        }
+      }
+    },
+    "presentationCollab": {
+      "$projectId": {
+        ".write": "auth != null && root.child('presentations').child($projectId).child('ownerUid').val() === auth.uid",
+        "$token": {
+          ".read": "auth != null && root.child('presentations').child($projectId).child('ownerUid').val() === auth.uid",
+          "$uid": {
+            ".read": "auth != null && (auth.uid === $uid || root.child('presentations').child($projectId).child('ownerUid').val() === auth.uid)",
+            ".write": "auth != null && (auth.uid === $uid || data.child('uid').val() === auth.uid || root.child('presentations').child($projectId).child('ownerUid').val() === auth.uid)",
+            ".validate": "!newData.exists() || (newData.child('uid').val() === $uid && newData.hasChildren(['name', 'deck', 'updatedAt']))"
+          }
+        }
+      }
+    },
+    "presentationComments": {
+      "$projectId": {
+        ".read": true,
+        "$commentId": {
+          ".write": "auth != null && (newData.child('authorUid').val() === auth.uid || data.child('authorUid').val() === auth.uid || root.child('presentations').child($projectId).child('ownerUid').val() === auth.uid)",
+          ".validate": "!newData.exists() || (newData.hasChildren(['id', 'slide', 'elementId', 'elementLabel', 'elementKind', 'authorUid', 'authorName', 'authorColor', 'text', 'createdAt']) && newData.child('id').isString() && newData.child('elementId').isString() && newData.child('authorUid').isString() && newData.child('text').isString())"
+        }
+      }
+    },
+    "presentationRtc": {
+      "$projectId": {
+        ".read": "auth != null && root.child('presentations').child($projectId).child('ownerUid').val() === auth.uid",
+        ".write": "auth != null && root.child('presentations').child($projectId).child('ownerUid').val() === auth.uid",
+        "$viewerId": {
+          ".read": "auth != null && (data.child('request').child('uid').val() === auth.uid || root.child('presentations').child($projectId).child('ownerUid').val() === auth.uid)",
+          ".write": "auth != null && (data.child('request').child('uid').val() === auth.uid || newData.child('request').child('uid').val() === auth.uid || root.child('presentations').child($projectId).child('ownerUid').val() === auth.uid)"
+        }
+      }
     }
   }
 }

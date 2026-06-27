@@ -1808,6 +1808,55 @@ function bindCommentInteractions(node: HTMLElement, element: SlideElement, audie
   if (audience) node.tabIndex = 0;
 }
 
+function elementFromSurfaceEvent(event: MouseEvent | PointerEvent, surface: HTMLElement): SlideElement | null {
+  const point = pointerToSlidePoint(event, surface);
+  return elementAtSlidePoint(point.x, point.y);
+}
+
+function openElementContextMenuFromSurface(event: MouseEvent | PointerEvent, surface: HTMLElement): boolean {
+  if (event.defaultPrevented) return false;
+  if ((event.target as HTMLElement).closest("dialog, .element-context-menu, button, input, textarea, select, [contenteditable='true']")) return false;
+  const element = elementFromSurfaceEvent(event, surface);
+  if (!element) return false;
+  event.preventDefault();
+  event.stopPropagation();
+  openElementContextMenu(element.id, currentSlide, event.clientX, event.clientY);
+  return true;
+}
+
+function bindSurfaceCommentInteractions(surface: HTMLElement): void {
+  let longPressTimer = 0;
+  let startX = 0;
+  let startY = 0;
+  surface.addEventListener("contextmenu", (event) => {
+    openElementContextMenuFromSurface(event, surface);
+  });
+  surface.addEventListener("pointerdown", (event) => {
+    if (event.pointerType !== "touch") return;
+    startX = event.clientX;
+    startY = event.clientY;
+    clearTimeout(longPressTimer);
+    longPressTimer = window.setTimeout(() => {
+      openElementContextMenuFromSurface(event, surface);
+    }, 560);
+  });
+  surface.addEventListener("pointermove", (event) => {
+    if (!longPressTimer) return;
+    if (Math.abs(event.clientX - startX) > 8 || Math.abs(event.clientY - startY) > 8) {
+      clearTimeout(longPressTimer);
+      longPressTimer = 0;
+    }
+  });
+  for (const type of ["pointerup", "pointercancel", "pointerleave"]) {
+    surface.addEventListener(type, () => {
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = 0;
+      }
+    });
+  }
+}
+
 function createElementNode(element: SlideElement, audience: boolean): HTMLDivElement {
   const node = document.createElement("div");
   node.className = `slide-element ${element.type}-slide-element${!audience && selectedElementId === element.id ? " selected" : ""}${element.animation ? ` anim-${element.animation}` : ""}`;
@@ -3483,7 +3532,15 @@ function isAudienceOpen(): boolean {
 
 function handleAudienceStageClick(event: MouseEvent): void {
   if ((event.target as HTMLElement).closest(".remote-cursor")) return;
-  const rect = $("#audience-stage").getBoundingClientRect();
+  const stage = $("#audience-stage");
+  const element = elementFromSurfaceEvent(event, stage);
+  if (element && commentsForElement(element.id, currentSlide).length) {
+    event.preventDefault();
+    event.stopPropagation();
+    openCommentDialogForElement(element.id, currentSlide);
+    return;
+  }
+  const rect = stage.getBoundingClientRect();
   const x = (event.clientX - rect.left) / Math.max(1, rect.width);
   if (x < 0.34) audienceStep(-1);
   else if (x > 0.66) audienceStep(1);
@@ -3535,7 +3592,7 @@ async function toggleAudienceFullscreen(): Promise<void> {
   syncFullscreenButton();
 }
 
-function pointerToSlidePoint(event: PointerEvent, surface: HTMLElement): { x: number; y: number } {
+function pointerToSlidePoint(event: MouseEvent | PointerEvent, surface: HTMLElement): { x: number; y: number } {
   const rect = surface.getBoundingClientRect();
   return {
     x: clamp((event.clientX - rect.left) / Math.max(1, rect.width) * SLIDE_WIDTH, 0, SLIDE_WIDTH),
@@ -4239,8 +4296,10 @@ async function startPresentation(): Promise<void> {
   clearInterval(broadcastTimer);
   broadcastTimer = window.setInterval(drawBroadcastFrame, 100);
   presentationState = { currentSlide, presenting: true, presenterSession: firebaseUser.uid, updatedAt: Date.now() };
-  await set(ref(db, `presentations/${projectId}/state`), presentationState);
-  await remove(ref(db, `presentationRtc/${projectId}`)).catch(() => undefined);
+  if (!localMode) {
+    await set(ref(db, `presentations/${projectId}/state`), presentationState);
+    await remove(ref(db, `presentationRtc/${projectId}`)).catch(() => undefined);
+  }
   const button = $("#present-button");
   button.classList.add("live");
   button.innerHTML = "<span>■</span><span>Hentikan</span>";
@@ -4248,7 +4307,7 @@ async function startPresentation(): Promise<void> {
   showAudience();
   await fullscreen;
   presenterRequestUnsubscribe?.();
-  presenterRequestUnsubscribe = onChildAdded(ref(db, `presentationRtc/${projectId}`), (snapshot) => {
+  presenterRequestUnsubscribe = localMode ? null : onChildAdded(ref(db, `presentationRtc/${projectId}`), (snapshot) => {
     const request = snapshot.child("request").val() as { uid?: string } | null;
     if (request?.uid) void answerViewer(snapshot.key || "");
   });
@@ -4257,14 +4316,14 @@ async function startPresentation(): Promise<void> {
 
 async function stopPresentation(): Promise<void> {
   presentationState = { currentSlide, presenting: false, presenterSession: null, updatedAt: Date.now() };
-  await set(ref(db, `presentations/${projectId}/state`), presentationState);
+  if (!localMode) await set(ref(db, `presentations/${projectId}/state`), presentationState);
   presenterRequestUnsubscribe?.();
   presenterRequestUnsubscribe = null;
   for (const [id] of presenterPeers) cleanupPresenterPeer(id);
   broadcastStream?.getTracks().forEach((track) => track.stop());
   broadcastStream = null;
   clearInterval(broadcastTimer);
-  await remove(ref(db, `presentationRtc/${projectId}`)).catch(() => undefined);
+  if (!localMode) await remove(ref(db, `presentationRtc/${projectId}`)).catch(() => undefined);
   const button = $("#present-button");
   button.classList.remove("live");
   button.innerHTML = "<span>▶</span><span>Presentasikan</span>";
@@ -4276,7 +4335,7 @@ async function publishSlideState(): Promise<void> {
   presenterSlide = currentSlide;
   presentationState.currentSlide = currentSlide;
   presentationState.updatedAt = Date.now();
-  await set(ref(db, `presentations/${projectId}/state`), presentationState);
+  if (!localMode) await set(ref(db, `presentations/${projectId}/state`), presentationState);
   updatePresenceSlide();
   await ensureCurrentSlideMirrors();
   drawBroadcastFrame();
@@ -4639,6 +4698,8 @@ function bindUi(): void {
   $("#slide-canvas").addEventListener("pointerleave", hidePresenceCursor);
   $("#audience-stage").addEventListener("pointermove", (event) => updatePointerFromSurface(event, $("#audience-stage")));
   $("#audience-stage").addEventListener("pointerleave", hidePresenceCursor);
+  bindSurfaceCommentInteractions($("#slide-canvas"));
+  bindSurfaceCommentInteractions($("#audience-stage"));
   document.addEventListener("fullscreenchange", handleFullscreenChange);
   ($("#people-dialog") as HTMLDialogElement).addEventListener("close", syncAudienceRailState);
   ($("#segment-dialog") as HTMLDialogElement).addEventListener("close", syncAudienceRailState);

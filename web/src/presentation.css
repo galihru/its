@@ -481,7 +481,10 @@ dialog.audience-rail-dialog .dialog-title { position: sticky; top: 0; z-index: 2
   .hub-header { padding: 0 12px; gap: 8px; }
   .brand-lockup span { display: none; }
   .hub-search { height: 42px; margin: 0; }
-  .identity-actions { display: none; }
+  .identity-actions { display: flex; }
+  .identity-pill { display: none; }
+  .identity-actions .google-login-button { min-width: 34px; padding: 0 10px; font-size: 0; }
+  .identity-actions .google-login-button::before { margin-right: 0; }
   .template-band { padding: 16px 18px 22px; }
   .template-strip { display: flex; gap: 14px; overflow-x: auto; scroll-snap-type: x proximity; }
   .template-card { flex: 0 0 164px; scroll-snap-align: start; }
