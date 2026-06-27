@@ -19,7 +19,10 @@
       <button class="hub-menu" type="button" title="Menu">&#9776;</button>
       <div class="brand-lockup"><div class="app-logo"><img src="/its.png" alt="" /></div><span>ITS Presentasi</span></div>
       <label class="hub-search" aria-label="Telusuri presentasi"><span>&#8981;</span><input id="project-search" placeholder="Telusuri" /></label>
-      <div class="identity-pill"><span class="presence-dot"></span><span id="hub-user-name">Anonim</span></div>
+      <div class="identity-actions">
+        <div class="identity-pill"><span class="presence-dot"></span><span id="hub-user-name">Anonim</span></div>
+        <button id="hub-google-login" class="google-login-button" type="button">Google</button>
+      </div>
     </header>
     <main class="hub-main">
       <section class="template-band" aria-label="Mulai presentasi baru">
@@ -45,6 +48,15 @@
         <div class="empty-illustration">&#9633;</div><h2>Belum ada presentasi</h2>
         <p>Project yang dibuat akan tersimpan di Firebase dan tetap dapat diedit saat Anda kembali.</p>
       </div>
+      <div class="recent-heading shared-heading">
+        <h2>Dibagikan ke saya</h2>
+        <div class="recent-tools"><button id="refresh-shared-projects" type="button" title="Refresh">&#8635;</button></div>
+      </div>
+      <div id="shared-project-list" class="project-grid shared-project-grid"></div>
+      <div id="empty-shared-projects" class="empty-projects compact" hidden>
+        <div class="empty-illustration">&#9633;</div><h2>Belum ada presentasi bersama</h2>
+        <p>Link viewer atau editor yang pernah dibuka akan muncul di sini.</p>
+      </div>
     </main>
   </section>
 
@@ -64,6 +76,7 @@
         </div>
         <div class="title-actions">
           <span id="save-state" class="save-state"><span class="status-dot"></span><span>Tersimpan</span></span>
+          <button id="comment-alert" class="comment-alert" type="button" title="Komentar" hidden><span>0</span></button>
           <button id="presence-button" class="presence-button" type="button" title="Kolaborator"><span id="presence-list" class="presence-list" aria-label="Pengunjung aktif"></span></button>
           <button id="present-button" class="present-button"><span>&#9654;</span><span>Slideshow</span></button>
           <button id="share-button" class="share-button">Bagikan</button>
@@ -140,10 +153,13 @@
       <div class="join-handle"></div>
       <span id="join-mode-label" class="eyebrow">VIEWER</span>
       <h1 id="join-role-title">Pilih lihat sebagai apa</h1>
-      <label class="join-option"><input name="join-role" type="radio" checked /><span>Anonymous</span></label>
+      <label class="join-option"><input name="join-auth" type="radio" value="anonymous" checked /><span>Anonymous</span></label>
+      <label class="join-option"><input name="join-auth" type="radio" value="google" /><span>Google</span></label>
       <label class="join-field"><span>Nama</span><input id="join-name" autocomplete="name" placeholder="Nama Anda" /></label>
       <label class="remember-row"><input id="join-remember" type="checkbox" /><span>Ingat saya</span></label>
+      <button id="join-google" class="google-login-button full" type="button">Masuk dengan Google</button>
       <button id="join-enter" class="primary-button full" type="submit">Masuk</button>
+      <p class="legal-copy">Dengan masuk, Anda menyetujui <button id="open-terms" type="button">Ketentuan</button> dan <button id="open-privacy" type="button">Privasi</button> ITS Presentasi.</p>
     </form>
   </section>
 
@@ -186,6 +202,27 @@
       <div class="share-block"><label>Link viewer</label><p>Penonton melihat slide dan layar HP secara live, tetapi tidak dapat mengubah isi.</p><div class="copy-row"><input id="viewer-link" readonly /><button id="copy-viewer" type="button">Salin</button></div></div>
       <div class="share-block editor-share"><label>Link editor kolaborasi</label><p>Editor mengirim perubahan ke pemilik. Perubahan disimpan replace-only tanpa histori.</p><div class="copy-row"><input id="editor-link" readonly /><button id="copy-editor" type="button">Salin</button></div><button id="rotate-editor-link" class="text-button" type="button">Buat ulang link editor</button></div>
       <div id="share-presence" class="share-presence"></div>
+    </form>
+  </dialog>
+
+  <dialog id="comment-dialog" class="comment-dialog">
+    <form method="dialog">
+      <div class="dialog-title"><div><span class="eyebrow">KOMENTAR</span><h2 id="comment-title">Komentar</h2></div><button class="icon-button" value="cancel" aria-label="Tutup">&times;</button></div>
+      <div id="comment-preview" class="comment-preview"></div>
+      <div id="comment-list" class="comment-list"></div>
+      <div class="comment-composer">
+        <span id="comment-author-avatar" class="presence-avatar"></span>
+        <textarea id="comment-input" rows="3" placeholder="Tulis komentar"></textarea>
+        <button id="send-comment" class="primary-button" type="button">Kirim</button>
+      </div>
+      <button id="replace-comment-image" class="secondary-button full" type="button" hidden>Ganti gambar elemen</button>
+    </form>
+  </dialog>
+
+  <dialog id="legal-dialog" class="legal-dialog">
+    <form method="dialog">
+      <div class="dialog-title"><div><span class="eyebrow">ITS PRESENTASI</span><h2 id="legal-title">Ketentuan</h2></div><button class="icon-button" value="cancel" aria-label="Tutup">&times;</button></div>
+      <div id="legal-body" class="legal-body"></div>
     </form>
   </dialog>
 

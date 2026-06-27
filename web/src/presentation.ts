@@ -3,7 +3,7 @@ import "./presentation.css";
 import JSZip from "jszip";
 import { runPptAiPipeline } from "./ppt-ai-pipeline";
 import { initializeApp } from "firebase/app";
-import { connectAuthEmulator, getAuth, signInAnonymously, type User } from "firebase/auth";
+import { connectAuthEmulator, getAuth, GoogleAuthProvider, signInAnonymously, signInWithPopup, type User } from "firebase/auth";
 import {
   connectDatabaseEmulator,
   get,
@@ -177,7 +177,25 @@ type CursorPresence = {
 };
 type PresenceRecord = { uid: string; sessionId: string; name: string; role: Role; color: string; lastSeen: number | object; slide?: number; cursor?: CursorPresence };
 type ProjectIndexRecord = { title: string; updatedAt: number; createdAt: number };
+type SharedProjectRecord = { id: string; title: string; role: Role; updatedAt: number; createdAt?: number; ownerUid?: string; url?: string };
 type CollaborationPacket = { uid: string; name: string; deck: Deck; updatedAt: number };
+type CommentRecord = {
+  id: string;
+  slide: number;
+  elementId: string;
+  elementLabel: string;
+  elementKind: SlideElement["type"];
+  elementText?: string;
+  elementImage?: string;
+  authorUid: string;
+  authorName: string;
+  authorColor: string;
+  text: string;
+  createdAt: number | object;
+  resolved?: boolean;
+  resolvedAt?: number | object;
+  deleted?: boolean;
+};
 type ConnectedAdb = { device: AdbDaemonWebUsbDevice; connection: AdbDaemonWebUsbConnection; adb: Adb; label: string };
 type MirrorState = { running: boolean; lastUrl: string | null };
 type BrowserUsbDevice = {
@@ -226,6 +244,7 @@ sessionStorage.setItem("its-presentasi-name", participantName);
 
 const firebaseApp = initializeApp(FIREBASE_CONFIG);
 const auth = getAuth(firebaseApp);
+const googleProvider = new GoogleAuthProvider();
 const db = getDatabase(firebaseApp);
 const params = new URLSearchParams(location.search);
 const emulatorMode = params.get("emulator") === "1";
@@ -256,6 +275,7 @@ let audienceChromeTimer = 0;
 let remoteUnsubscribe: Unsubscribe | null = null;
 let presenceUnsubscribe: Unsubscribe | null = null;
 let collaborationUnsubscribe: Unsubscribe | null = null;
+let commentsUnsubscribe: Unsubscribe | null = null;
 let rtcViewerUnsubscribe: Unsubscribe | null = null;
 let activePresencePath = "";
 let presenceSessionId = "";
@@ -281,6 +301,11 @@ let activeMenuButton: HTMLElement | null = null;
 let showSpeakerNotes = true;
 let joinedSharedProject = false;
 let activePresenceRecords: PresenceRecord[] = [];
+let activeComments: CommentRecord[] = [];
+let activeCommentElementId = "";
+let activeCommentSlide = 0;
+let pendingReplaceImageElementId = "";
+let latestSharedRecords: Record<string, SharedProjectRecord> = {};
 
 const usbManager = AdbDaemonWebUsbDeviceManager.BROWSER;
 const credentialStore = new AdbWebCredentialStore(`PrezADB@${location.hostname}`);
@@ -501,6 +526,95 @@ function homeUrl(): string {
   return url.href;
 }
 
+function sharedHistoryKey(): string {
+  return "its-presentasi-shared-history";
+}
+
+function loadLocalSharedHistory(): Record<string, SharedProjectRecord> {
+  try {
+    const value = JSON.parse(localStorage.getItem(sharedHistoryKey()) || "{}") as Record<string, SharedProjectRecord>;
+    return value && typeof value === "object" ? value : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveLocalSharedHistory(records: Record<string, SharedProjectRecord>): void {
+  localStorage.setItem(sharedHistoryKey(), JSON.stringify(records));
+}
+
+function sharedProjectUrl(id: string, sharedRole: Role, token = ""): string {
+  const url = new URL("./", location.href);
+  url.search = "";
+  url.searchParams.set("p", id);
+  if (sharedRole === "viewer") url.searchParams.set("view", "1");
+  if (sharedRole === "editor" && token) url.searchParams.set("edit", token);
+  if (emulatorMode) url.searchParams.set("emulator", "1");
+  return url.href;
+}
+
+async function rememberSharedProject(sharedRole = role): Promise<void> {
+  if (!projectId || sharedRole === "owner") return;
+  const now = Date.now();
+  const record: SharedProjectRecord = {
+    id: projectId,
+    title: deck.title || "Presentasi tanpa judul",
+    role: sharedRole,
+    ownerUid: undefined,
+    createdAt: projectCreatedAt || now,
+    updatedAt: now,
+    url: sharedProjectUrl(projectId, sharedRole, editorToken),
+  };
+  const local = loadLocalSharedHistory();
+  local[projectId] = record;
+  saveLocalSharedHistory(local);
+  if (!localMode && firebaseUser) {
+    const remoteRecord = { ...record };
+    delete remoteRecord.ownerUid;
+    await set(ref(db, `presentationUsers/${firebaseUser.uid}/shared/${projectId}`), remoteRecord).catch(() => undefined);
+  }
+}
+
+async function removeSharedHistory(id: string): Promise<void> {
+  const local = loadLocalSharedHistory();
+  delete local[id];
+  saveLocalSharedHistory(local);
+  delete latestSharedRecords[id];
+  if (!localMode && firebaseUser) await remove(ref(db, `presentationUsers/${firebaseUser.uid}/shared/${id}`)).catch(() => undefined);
+  renderSharedProjects(latestSharedRecords);
+}
+
+async function renderSharedProjects(records: Record<string, SharedProjectRecord> = latestSharedRecords): Promise<void> {
+  const list = $("#shared-project-list");
+  list.innerHTML = "";
+  const search = ($("#project-search") as HTMLInputElement).value.trim().toLowerCase();
+  const entries = Object.entries(records || {})
+    .filter(([, item]) => !search || (item?.title || "Presentasi tanpa judul").toLowerCase().includes(search))
+    .sort((a, b) => Number(b[1]?.updatedAt || 0) - Number(a[1]?.updatedAt || 0));
+  $("#empty-shared-projects").toggleAttribute("hidden", entries.length !== 0);
+  for (const [id, item] of entries) {
+    const card = document.createElement("article");
+    card.className = "project-card shared";
+    card.innerHTML = `<div class="project-preview"></div><div class="project-meta"><div class="project-card-actions"><strong></strong><button class="project-delete" title="Hapus histori">...</button></div><span></span></div>`;
+    $("strong", card).textContent = item.title || "Presentasi tanpa judul";
+    $(".project-meta span", card).textContent = `${item.role === "editor" ? "Editor" : "Viewer"} · Dibuka ${formatDateTime(item.updatedAt)}`;
+    const preview = $(".project-preview", card);
+    void get(ref(db, `presentations/${id}/deck`)).then((deckSnapshot) => {
+      if (!deckSnapshot.exists()) return;
+      const projectDeck = sanitizeDeck(deckSnapshot.val());
+      preview.innerHTML = "";
+      preview.classList.add("has-preview");
+      preview.append(createSlidePreview(projectDeck.slides[0], "project-slide-preview"));
+    }).catch(() => undefined);
+    card.addEventListener("click", () => { location.href = item.url || sharedProjectUrl(id, item.role); });
+    $(".project-delete", card).addEventListener("click", (event) => {
+      event.stopPropagation();
+      void removeSharedHistory(id);
+    });
+    list.append(card);
+  }
+}
+
 function ownerEditorTokenKey(): string {
   return `prezadb-edit-token:${firebaseUser.uid}:${projectId}`;
 }
@@ -525,10 +639,9 @@ async function boot(): Promise<void> {
       showEditor();
       return;
     }
-    $("#boot-note").textContent = emulatorMode ? "Menghubungkan emulator Firebase lokal" : "Masuk sebagai pengunjung anonim";
-    const credential = await signInAnonymously(auth);
-    firebaseUser = credential.user;
-    $("#hub-user-name").textContent = participantName;
+    $("#boot-note").textContent = emulatorMode ? "Menghubungkan emulator Firebase lokal" : "Menyiapkan sesi masuk";
+    firebaseUser = await signInAnonymousIfNeeded();
+    syncIdentityUi();
     if (!projectId) {
       await showProjectHub();
     } else {
@@ -544,9 +657,40 @@ async function boot(): Promise<void> {
 function friendlyError(error: unknown): string {
   const message = String((error as { message?: string })?.message || error || "Kesalahan tidak diketahui");
   if (message.includes("auth/operation-not-allowed")) return "Anonymous Authentication belum diaktifkan di Firebase Console.";
+  if (message.includes("auth/popup-closed-by-user")) return "Login Google dibatalkan.";
+  if (message.includes("auth/unauthorized-domain")) return "Domain ini belum diizinkan untuk Google Sign-In di Firebase Console.";
   if (message.includes("PERMISSION_DENIED")) return "Database Rules belum mengizinkan fitur presentasi.";
   if (message.toLowerCase().includes("network")) return "koneksi jaringan tidak tersedia.";
   return message;
+}
+
+function authDisplayName(user: User): string {
+  return (user.displayName || user.email || "").trim();
+}
+
+function syncIdentityUi(): void {
+  const name = authDisplayName(firebaseUser) || participantName;
+  $("#hub-user-name").textContent = name;
+  const googleButton = $("#hub-google-login") as HTMLButtonElement;
+  googleButton.textContent = firebaseUser?.isAnonymous ? "Google" : "Akun Google";
+}
+
+async function signInAnonymousIfNeeded(): Promise<User> {
+  if (auth.currentUser) return auth.currentUser;
+  return (await signInAnonymously(auth)).user;
+}
+
+async function signInWithGoogleAccount(): Promise<User> {
+  const credential = await signInWithPopup(auth, googleProvider);
+  firebaseUser = credential.user;
+  const display = authDisplayName(firebaseUser);
+  if (display) {
+    participantName = display;
+    sessionStorage.setItem("its-presentasi-name", participantName);
+    localStorage.setItem("its-presentasi-name", participantName);
+  }
+  syncIdentityUi();
+  return firebaseUser;
 }
 
 async function showProjectHub(): Promise<void> {
@@ -593,7 +737,18 @@ async function showProjectHub(): Promise<void> {
     latestRecords = snapshot.val() as Record<string, ProjectIndexRecord> | null;
     void renderProjects(latestRecords);
   }));
-  $("#project-search").addEventListener("input", () => void renderProjects(latestRecords));
+  latestSharedRecords = loadLocalSharedHistory();
+  void renderSharedProjects(latestSharedRecords);
+  if (!localMode) {
+    runtimeUnsubscribers.push(onValue(ref(db, `presentationUsers/${firebaseUser.uid}/shared`), (snapshot) => {
+      latestSharedRecords = { ...loadLocalSharedHistory(), ...((snapshot.val() || {}) as Record<string, SharedProjectRecord>) };
+      void renderSharedProjects(latestSharedRecords);
+    }));
+  }
+  $("#project-search").addEventListener("input", () => {
+    void renderProjects(latestRecords);
+    void renderSharedProjects(latestSharedRecords);
+  });
 }
 
 function templateDeck(kind: string): Deck {
@@ -691,6 +846,7 @@ async function openProject(): Promise<void> {
   resetHistoryBaseline();
 
   startRecordListener();
+  startCommentsListener();
   if (role === "owner") {
     showEditor();
     startOwnerCollaborationListener();
@@ -770,12 +926,17 @@ function renderJoinActivePreview(): void {
 }
 
 async function enterSharedProject(): Promise<void> {
+  const selectedAuth = (document.querySelector<HTMLInputElement>('input[name="join-auth"]:checked')?.value || "anonymous") as "anonymous" | "google";
+  if (selectedAuth === "google") {
+    await signInWithGoogleAccount();
+  }
   const name = ($("#join-name") as HTMLInputElement).value.trim() || participantName;
   participantName = name;
   sessionStorage.setItem("its-presentasi-name", participantName);
   localStorage.setItem("its-presentasi-anonymous-name", participantName);
   if (($("#join-remember") as HTMLInputElement).checked) localStorage.setItem("its-presentasi-name", participantName);
   else localStorage.removeItem("its-presentasi-name");
+  await rememberSharedProject(role);
   joinedSharedProject = true;
   if (role === "viewer") {
     showAudience();
@@ -941,6 +1102,255 @@ function renderPresence(records: Record<string, PresenceRecord>): void {
   $("#share-presence").textContent = `${active.length} orang sedang membuka presentasi ini.`;
   renderAudiencePeople();
   renderRemoteCursors();
+}
+
+function commentTime(value: CommentRecord): number {
+  return typeof value.createdAt === "number" ? value.createdAt : 0;
+}
+
+function activeCommentRecords(): CommentRecord[] {
+  return activeComments
+    .filter((comment) => comment && !comment.deleted)
+    .sort((a, b) => commentTime(a) - commentTime(b));
+}
+
+function commentsForElement(elementId: string, slideIndex = currentSlide): CommentRecord[] {
+  return activeCommentRecords().filter((comment) => comment.elementId === elementId && Number(comment.slide) === slideIndex);
+}
+
+function unresolvedComments(): CommentRecord[] {
+  return activeCommentRecords().filter((comment) => !comment.resolved);
+}
+
+function elementById(slideIndex: number, elementId: string): SlideElement | null {
+  return deck.slides[slideIndex]?.elements.find((element) => element.id === elementId) || null;
+}
+
+function startCommentsListener(): void {
+  commentsUnsubscribe?.();
+  if (localMode) {
+    activeComments = [];
+    renderCommentBadges();
+    return;
+  }
+  commentsUnsubscribe = onValue(ref(db, `presentationComments/${projectId}`), (snapshot) => {
+    activeComments = Object.entries((snapshot.val() || {}) as Record<string, CommentRecord>)
+      .map(([id, value]) => ({ ...value, id: value?.id || id }))
+      .filter((comment) => Boolean(comment.elementId));
+    renderCommentBadges();
+    if (($("#comment-dialog") as HTMLDialogElement).open && activeCommentElementId) renderCommentDialog();
+  }, (error) => toast(`Komentar gagal dimuat: ${friendlyError(error)}`));
+}
+
+function renderCommentBadges(): void {
+  const unresolved = unresolvedComments();
+  const alert = $("#comment-alert") as HTMLButtonElement;
+  alert.hidden = role !== "owner" || unresolved.length === 0;
+  $("span", alert).textContent = String(unresolved.length);
+  document.querySelectorAll<HTMLElement>(".slide-element").forEach((node) => {
+    const elementId = node.dataset.elementId || "";
+    const comments = commentsForElement(elementId, currentSlide);
+    node.classList.toggle("has-comments", comments.some((comment) => !comment.resolved));
+    node.querySelector(".comment-marker-stack")?.remove();
+    if (!comments.length) return;
+    const marker = document.createElement("button");
+    marker.type = "button";
+    marker.className = "comment-marker-stack";
+    marker.title = `${comments.length} komentar`;
+    comments.slice(-3).forEach((comment) => {
+      const avatar = document.createElement("span");
+      avatar.className = "comment-marker";
+      avatar.style.background = comment.authorColor || randomColor(comment.authorName);
+      avatar.textContent = shortInitials(comment.authorName);
+      marker.append(avatar);
+    });
+    if (comments.length > 3) {
+      const more = document.createElement("span");
+      more.className = "comment-marker more";
+      more.textContent = `+${comments.length - 3}`;
+      marker.append(more);
+    }
+    marker.addEventListener("click", (event) => {
+      event.stopPropagation();
+      event.preventDefault();
+      openCommentDialogForElement(elementId, currentSlide);
+    });
+    node.append(marker);
+  });
+}
+
+function commentPreviewHtml(element: SlideElement | null): string {
+  if (!element) return "<strong>Elemen tidak ditemukan</strong><p>Elemen ini mungkin sudah dihapus.</p>";
+  if (element.type === "text") return `<strong>${escapeHtml(elementLabel(element))}</strong><p>${escapeHtml(element.text || "")}</p>`;
+  if (element.type === "shape") return `<strong>${escapeHtml(elementLabel(element))}</strong><p>${escapeHtml(element.text || element.shape)}</p>`;
+  if (element.type === "image" || element.type === "canvas") return `<strong>${escapeHtml(elementLabel(element))}</strong><img src="${escapeAttribute(element.src)}" alt="">`;
+  if (element.type === "phone") return `<strong>Mockup HP</strong><p>${escapeHtml(element.deviceLabel || getDeviceLabel(element.deviceSerial) || "Perangkat mobile")}</p>`;
+  return `<strong>${escapeHtml(elementLabel(element))}</strong>`;
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char] || char));
+}
+
+function escapeAttribute(value: string): string {
+  return escapeHtml(value).replace(/`/g, "&#96;");
+}
+
+function openElementContextMenu(elementId: string, slideIndex: number, x: number, y: number): void {
+  let menu = document.getElementById("element-context-menu");
+  if (!menu) {
+    menu = document.createElement("div");
+    menu.id = "element-context-menu";
+    menu.className = "element-context-menu";
+    document.body.append(menu);
+  }
+  menu.innerHTML = "";
+  const addComment = document.createElement("button");
+  addComment.type = "button";
+  addComment.textContent = "Tambahkan komentar";
+  addComment.addEventListener("click", () => {
+    menu!.hidden = true;
+    openCommentDialogForElement(elementId, slideIndex);
+  });
+  menu.append(addComment);
+  const existing = commentsForElement(elementId, slideIndex).length;
+  if (existing) {
+    const open = document.createElement("button");
+    open.type = "button";
+    open.textContent = `Lihat ${existing} komentar`;
+    open.addEventListener("click", () => {
+      menu!.hidden = true;
+      openCommentDialogForElement(elementId, slideIndex);
+    });
+    menu.append(open);
+  }
+  menu.style.left = `${Math.min(x, innerWidth - 230)}px`;
+  menu.style.top = `${Math.min(y, innerHeight - 120)}px`;
+  menu.hidden = false;
+}
+
+function closeElementContextMenu(): void {
+  const menu = document.getElementById("element-context-menu");
+  if (menu) menu.hidden = true;
+}
+
+function openCommentDialogForElement(elementId: string, slideIndex: number): void {
+  activeCommentElementId = elementId;
+  activeCommentSlide = slideIndex;
+  renderCommentDialog();
+  const dialog = $("#comment-dialog") as HTMLDialogElement;
+  dialog.classList.add("audience-rail-dialog");
+  resetDialogMotion(dialog);
+  for (const other of [$("#segment-dialog") as HTMLDialogElement, $("#people-dialog") as HTMLDialogElement]) {
+    if (other.open) other.close();
+  }
+  if (!dialog.open) dialog.show();
+  syncAudienceRailState();
+}
+
+function renderCommentDialog(): void {
+  const element = elementById(activeCommentSlide, activeCommentElementId);
+  $("#comment-title").textContent = `Komentar untuk ${elementLabel(element)} pada slide ${activeCommentSlide + 1}`;
+  $("#comment-preview").innerHTML = commentPreviewHtml(element);
+  const avatar = $("#comment-author-avatar");
+  avatar.textContent = shortInitials(participantName);
+  avatar.setAttribute("style", `background:${randomColor(participantName)}`);
+  const list = $("#comment-list");
+  list.innerHTML = "";
+  const comments = commentsForElement(activeCommentElementId, activeCommentSlide);
+  if (!comments.length) {
+    list.innerHTML = '<p class="empty-people">Belum ada komentar untuk elemen ini.</p>';
+  }
+  comments.forEach((comment) => {
+    const row = document.createElement("article");
+    row.className = `comment-row${comment.resolved ? " resolved" : ""}`;
+    row.innerHTML = '<span class="presence-avatar"></span><div class="comment-row-body"><strong></strong><p></p><time></time><div class="comment-actions"></div></div>';
+    const marker = $(".presence-avatar", row);
+    marker.textContent = shortInitials(comment.authorName);
+    marker.setAttribute("style", `background:${comment.authorColor || randomColor(comment.authorName)}`);
+    $("strong", row).textContent = comment.authorName;
+    $("p", row).textContent = comment.text;
+    $("time", row).textContent = comment.resolved ? `Selesai · ${formatDateTime(commentTime(comment))}` : formatDateTime(commentTime(comment));
+    const actions = $(".comment-actions", row);
+    if (role === "owner" || comment.authorUid === firebaseUser.uid) {
+      const removeButton = document.createElement("button");
+      removeButton.type = "button";
+      removeButton.textContent = "× Hapus";
+      removeButton.addEventListener("click", () => void deleteComment(comment.id));
+      actions.append(removeButton);
+    }
+    if (role === "owner") {
+      const resolveButton = document.createElement("button");
+      resolveButton.type = "button";
+      resolveButton.textContent = comment.resolved ? "Buka lagi" : "✓ Selesai";
+      resolveButton.addEventListener("click", () => void resolveComment(comment.id, !comment.resolved));
+      actions.append(resolveButton);
+    }
+    list.append(row);
+  });
+  const replaceButton = $("#replace-comment-image") as HTMLButtonElement;
+  replaceButton.hidden = !(role === "owner" && element?.type === "image");
+}
+
+async function submitComment(): Promise<void> {
+  const element = elementById(activeCommentSlide, activeCommentElementId);
+  const input = $("#comment-input") as HTMLTextAreaElement;
+  const text = input.value.trim();
+  if (!element || !text) return;
+  const id = uid("comment");
+  const record: CommentRecord = {
+    id,
+    slide: activeCommentSlide,
+    elementId: element.id,
+    elementLabel: elementLabel(element),
+    elementKind: element.type,
+    authorUid: firebaseUser.uid,
+    authorName: participantName,
+    authorColor: randomColor(participantName),
+    text,
+    createdAt: serverTimestamp(),
+  };
+  if (element.type === "text") record.elementText = element.text.slice(0, 400);
+  if (element.type === "shape" && element.text) record.elementText = element.text.slice(0, 400);
+  if (element.type === "image" || element.type === "canvas") record.elementImage = element.src.slice(0, 600);
+  input.value = "";
+  if (localMode) {
+    activeComments.push({ ...record, createdAt: Date.now() });
+    renderCommentBadges();
+    renderCommentDialog();
+    return;
+  }
+  await set(ref(db, `presentationComments/${projectId}/${id}`), record);
+  if (role !== "owner") toast("Komentar dikirim ke pemilik.");
+}
+
+async function deleteComment(id: string): Promise<void> {
+  if (!id) return;
+  if (localMode) activeComments = activeComments.filter((comment) => comment.id !== id);
+  else await update(ref(db, `presentationComments/${projectId}/${id}`), { deleted: true, deletedAt: serverTimestamp() });
+  renderCommentBadges();
+  renderCommentDialog();
+}
+
+async function resolveComment(id: string, resolved: boolean): Promise<void> {
+  if (!id || role !== "owner") return;
+  if (localMode) {
+    activeComments = activeComments.map((comment) => comment.id === id ? { ...comment, resolved, resolvedAt: Date.now() } : comment);
+  } else {
+    await update(ref(db, `presentationComments/${projectId}/${id}`), { resolved, resolvedAt: serverTimestamp() });
+  }
+  renderCommentBadges();
+  renderCommentDialog();
+}
+
+function openFirstUnresolvedComment(): void {
+  const first = unresolvedComments()[0];
+  if (!first) return;
+  currentSlide = clamp(Number(first.slide) || 0, 0, deck.slides.length - 1);
+  selectedElementId = first.elementId;
+  if (!isAudienceOpen()) renderAll();
+  else renderAudienceSlide();
+  openCommentDialogForElement(first.elementId, currentSlide);
 }
 
 function startOwnerCollaborationListener(): void {
@@ -1309,6 +1719,7 @@ function renderCanvas(): void {
   }
   for (const element of current().elements) canvas.append(createElementNode(element, false));
   renderRemoteCursors();
+  renderCommentBadges();
 }
 
 function applyTextStyle(node: HTMLElement, element: Pick<TextElement, "fontFamily" | "fontSize" | "color" | "bold" | "italic" | "underline" | "variant" | "align" | "insetLeft" | "insetRight" | "insetTop" | "insetBottom" | "lineHeight">): void {
@@ -1351,6 +1762,50 @@ function isNearElementEdge(event: PointerEvent, node: HTMLElement): boolean {
 function updateElementCursor(event: PointerEvent, node: HTMLElement): void {
   if (!selectedElementId || node.dataset.elementId !== selectedElementId) return;
   node.classList.toggle("edge-hover", isNearElementEdge(event, node));
+}
+
+function bindCommentInteractions(node: HTMLElement, element: SlideElement, audience: boolean): void {
+  let longPressTimer = 0;
+  let longPressOpenedAt = 0;
+  const slideIndex = currentSlide;
+  node.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    openElementContextMenu(element.id, slideIndex, event.clientX, event.clientY);
+  });
+  node.addEventListener("click", (event) => {
+    if (Date.now() - longPressOpenedAt < 700) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    if ((event.target as HTMLElement).closest('[contenteditable="true"], .resize-handle')) return;
+    if (!commentsForElement(element.id, slideIndex).length) return;
+    event.preventDefault();
+    event.stopPropagation();
+    openCommentDialogForElement(element.id, slideIndex);
+  });
+  node.addEventListener("pointerdown", (event) => {
+    if (event.pointerType !== "touch") return;
+    clearTimeout(longPressTimer);
+    longPressTimer = window.setTimeout(() => {
+      openElementContextMenu(element.id, slideIndex, event.clientX, event.clientY);
+      longPressOpenedAt = Date.now();
+    }, 560);
+  });
+  node.addEventListener("pointermove", () => {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      longPressTimer = 0;
+    }
+  });
+  node.addEventListener("pointerup", () => {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      longPressTimer = 0;
+    }
+  });
+  if (audience) node.tabIndex = 0;
 }
 
 function createElementNode(element: SlideElement, audience: boolean): HTMLDivElement {
@@ -1443,6 +1898,7 @@ function createElementNode(element: SlideElement, audience: boolean): HTMLDivEle
     node.addEventListener("pointermove", (event) => updateElementCursor(event, node));
     node.addEventListener("pointerleave", () => node.classList.remove("edge-hover"));
   }
+  bindCommentInteractions(node, element, audience);
   return node;
 }
 
@@ -1855,6 +2311,19 @@ function addImageFromDataUrl(src: string, alt = "Gambar"): void {
 async function addImageFile(file: File): Promise<void> {
   if (!file.type.startsWith("image/")) { toast("File gambar tidak dikenali."); return; }
   const src = await readFileAsDataUrl(file);
+  if (pendingReplaceImageElementId) {
+    const element = elementById(activeCommentSlide, pendingReplaceImageElementId);
+    pendingReplaceImageElementId = "";
+    if (element?.type === "image") {
+      element.src = src;
+      element.alt = file.name;
+      recordHistory();
+      renderAll();
+      scheduleSave("Mengganti gambar...");
+      toast("Gambar elemen diganti.");
+      return;
+    }
+  }
   addImageFromDataUrl(src, file.name);
 }
 
@@ -2868,6 +3337,7 @@ function renderAudienceSlide(): void {
   resizeAudienceSlide();
   renderAudienceChrome();
   renderRemoteCursors();
+  renderCommentBadges();
 }
 
 function renderAudienceChrome(): void {
@@ -2946,7 +3416,7 @@ function showAudienceChrome(): void {
 }
 
 function syncAudienceRailState(): void {
-  const open = ($("#segment-dialog") as HTMLDialogElement).open || ($("#people-dialog") as HTMLDialogElement).open;
+  const open = ($("#segment-dialog") as HTMLDialogElement).open || ($("#people-dialog") as HTMLDialogElement).open || ($("#comment-dialog") as HTMLDialogElement).open;
   $("#audience-view").classList.toggle("rail-open", open && isAudienceOpen());
   resizeAudienceSlide();
 }
@@ -2958,7 +3428,7 @@ function resetDialogMotion(dialog: HTMLDialogElement): void {
 }
 
 function openAudienceRailDialog(dialog: HTMLDialogElement): void {
-  for (const other of [$("#segment-dialog") as HTMLDialogElement, $("#people-dialog") as HTMLDialogElement]) {
+  for (const other of [$("#segment-dialog") as HTMLDialogElement, $("#people-dialog") as HTMLDialogElement, $("#comment-dialog") as HTMLDialogElement]) {
     if (other !== dialog && other.open) {
       resetDialogMotion(other);
       other.close();
@@ -3915,6 +4385,7 @@ async function deleteProject(id: string): Promise<void> {
       remove(ref(db, `presentationPresence/${id}`)),
       remove(ref(db, `presentationRtc/${id}`)),
       remove(ref(db, `presentationCollab/${id}`)),
+      remove(ref(db, `presentationComments/${id}`)),
     ]);
     await Promise.all([
       remove(ref(db, `presentations/${id}`)),
@@ -3932,12 +4403,15 @@ function cleanupProjectRuntime(): void {
   remoteUnsubscribe?.(); remoteUnsubscribe = null;
   presenceUnsubscribe?.(); presenceUnsubscribe = null;
   collaborationUnsubscribe?.(); collaborationUnsubscribe = null;
+  commentsUnsubscribe?.(); commentsUnsubscribe = null;
   presenterRequestUnsubscribe?.(); presenterRequestUnsubscribe = null;
   runtimeUnsubscribers.splice(0).forEach((unsubscribe) => unsubscribe());
   activePresencePath = "";
   presenceSessionId = "";
   lastCursorPoint = null;
   joinedSharedProject = false;
+  activeComments = [];
+  activeCommentElementId = "";
   clearInterval(presenceTimer);
   clearInterval(broadcastTimer);
 }
@@ -4026,8 +4500,64 @@ function bindSwipeRightToClose(target: HTMLElement, close: () => void): void {
   });
 }
 
+function bindSwipeDownToClose(target: HTMLElement, close: () => void): void {
+  let startY = 0;
+  let startX = 0;
+  let dragging = false;
+  const reset = () => {
+    target.style.transition = "";
+    target.style.transform = "";
+    target.style.opacity = "";
+  };
+  target.addEventListener("pointerdown", (event) => {
+    startY = event.clientY;
+    startX = event.clientX;
+    dragging = true;
+    target.style.transition = "none";
+  });
+  target.addEventListener("pointermove", (event) => {
+    if (!dragging) return;
+    const dy = Math.max(0, event.clientY - startY);
+    const dx = Math.abs(event.clientX - startX);
+    if (dy > 5 && dx < 90) {
+      target.style.transform = `translateY(${dy}px)`;
+      target.style.opacity = String(Math.max(0.45, 1 - dy / 360));
+    }
+  });
+  target.addEventListener("pointerup", (event) => {
+    const dy = event.clientY - startY;
+    const dx = Math.abs(event.clientX - startX);
+    dragging = false;
+    if (dy > 86 && dx < 70 && matchMedia("(max-width: 760px)").matches && !isAudienceOpen()) {
+      target.style.transition = "transform .2s ease, opacity .2s ease";
+      target.style.transform = "translateY(110%)";
+      target.style.opacity = "0";
+      window.setTimeout(() => { close(); reset(); }, 205);
+    } else reset();
+  });
+  target.addEventListener("pointercancel", () => {
+    dragging = false;
+    reset();
+  });
+}
+
+function openLegalDialog(kind: "terms" | "privacy"): void {
+  $("#legal-title").textContent = kind === "terms" ? "Ketentuan Layanan" : "Kebijakan Privasi";
+  $("#legal-body").innerHTML = kind === "terms"
+    ? `<p>ITS Presentasi digunakan untuk membuat, mengimpor, membagikan, dan mempresentasikan dokumen secara realtime.</p><h3>Akun</h3><p>Anda dapat masuk sebagai Anonymous atau Google. Pemilik bertanggung jawab atas link editor dan viewer yang dibagikan.</p><h3>Konten</h3><p>Jangan mengunggah materi yang melanggar hukum, hak cipta, atau privasi pihak lain. Komentar kolaborasi terlihat oleh orang yang memiliki akses ke presentasi.</p><h3>ADB</h3><p>Fitur WebUSB ADB hanya berjalan setelah izin perangkat diberikan di browser dan digunakan untuk kebutuhan mockup/mirror presentasi.</p>`
+    : `<p>ITS Presentasi menyimpan data yang diperlukan untuk menjalankan fitur realtime: identitas masuk, nama tampilan, histori project, slide, komentar, presence, dan posisi pointer.</p><h3>Penyimpanan</h3><p>Data project dan komentar tersimpan di Firebase Realtime Database. Preferensi seperti nama dan histori share juga dapat tersimpan di browser agar Anda tidak perlu masuk ulang.</p><h3>Kontrol</h3><p>Pemilik dapat menghapus project. Viewer dapat menghapus histori share dari halaman depan tanpa menghapus project asli.</p>`;
+  ($("#legal-dialog") as HTMLDialogElement).showModal();
+}
+
+async function handleHubGoogleLogin(): Promise<void> {
+  await signInWithGoogleAccount();
+  await showProjectHub();
+}
+
 function bindUi(): void {
   $("#create-project").addEventListener("click", () => void createProject().catch((error) => toast(friendlyError(error))));
+  $("#hub-google-login").addEventListener("click", () => void handleHubGoogleLogin().catch((error) => toast(friendlyError(error))));
+  $("#refresh-shared-projects").addEventListener("click", () => void renderSharedProjects(latestSharedRecords));
   document.querySelectorAll<HTMLElement>("[data-template]").forEach((button) => {
     button.addEventListener("click", () => void createProject(button.dataset.template || "").catch((error) => toast(friendlyError(error))));
   });
@@ -4055,6 +4585,16 @@ function bindUi(): void {
   $("#present-button").addEventListener("click", () => void togglePresentation());
   $("#share-button").addEventListener("click", openShareDialog);
   $("#presence-button").addEventListener("click", openPeopleDialog);
+  $("#comment-alert").addEventListener("click", openFirstUnresolvedComment);
+  $("#join-google").addEventListener("click", () => {
+    const googleRadio = document.querySelector<HTMLInputElement>('input[name="join-auth"][value="google"]');
+    if (googleRadio) googleRadio.checked = true;
+    void signInWithGoogleAccount()
+      .then(() => { ($("#join-name") as HTMLInputElement).value = participantName; })
+      .catch((error) => toast(friendlyError(error)));
+  });
+  $("#open-terms").addEventListener("click", () => openLegalDialog("terms"));
+  $("#open-privacy").addEventListener("click", () => openLegalDialog("privacy"));
   $("#join-card").addEventListener("submit", (event) => {
     event.preventDefault();
     void enterSharedProject().catch((error) => toast(friendlyError(error)));
@@ -4073,6 +4613,11 @@ function bindUi(): void {
   });
   $("#copy-viewer").addEventListener("click", () => void copyInput("viewer-link", "Link viewer"));
   $("#copy-editor").addEventListener("click", () => void copyInput("editor-link", "Link editor"));
+  $("#send-comment").addEventListener("click", () => void submitComment().catch((error) => toast(friendlyError(error))));
+  $("#replace-comment-image").addEventListener("click", () => {
+    pendingReplaceImageElementId = activeCommentElementId;
+    ($("#image-input") as HTMLInputElement).click();
+  });
   $("#rotate-editor-link").addEventListener("click", () => {
     const token = getOrCreateEditorToken(true);
     ($("#editor-link") as HTMLInputElement).value = buildUrl({ edit: token });
@@ -4097,15 +4642,18 @@ function bindUi(): void {
   document.addEventListener("fullscreenchange", handleFullscreenChange);
   ($("#people-dialog") as HTMLDialogElement).addEventListener("close", syncAudienceRailState);
   ($("#segment-dialog") as HTMLDialogElement).addEventListener("close", syncAudienceRailState);
+  ($("#comment-dialog") as HTMLDialogElement).addEventListener("close", syncAudienceRailState);
   document.querySelectorAll<HTMLElement>(".inspector-tabs button").forEach((button) => button.addEventListener("click", () => switchInspector(button.dataset.tab === "properties" ? "properties" : "device")));
   bindSwipeRightToClose($("#inspector"), () => switchInspector("properties"));
   bindSwipeRightToClose($("#people-dialog"), () => ($("#people-dialog") as HTMLDialogElement).close());
   bindSwipeRightToClose($("#segment-dialog"), () => ($("#segment-dialog") as HTMLDialogElement).close());
+  bindSwipeRightToClose($("#comment-dialog"), () => ($("#comment-dialog") as HTMLDialogElement).close());
+  bindSwipeDownToClose($("#comment-dialog"), () => ($("#comment-dialog") as HTMLDialogElement).close());
   document.querySelectorAll<HTMLElement>("[data-menu]").forEach((button) => button.addEventListener("click", (event) => {
     event.stopPropagation();
     openMenu(button);
   }));
-  document.addEventListener("click", () => { closeMenu(); closeSlideContextMenu(); });
+  document.addEventListener("click", () => { closeMenu(); closeSlideContextMenu(); closeElementContextMenu(); });
   ($("#zoom-select") as HTMLSelectElement).addEventListener("change", () => {
     const value = ($("#zoom-select") as HTMLSelectElement).value;
     setZoom(value === "fit" ? fitZoom : Number(value), value === "fit");
