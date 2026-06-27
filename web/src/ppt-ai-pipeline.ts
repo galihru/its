@@ -233,6 +233,9 @@ type LocalOcrPipeline = ((input: string, options?: Record<string, unknown>) => P
 };
 
 let localOcrPipelinePromise: Promise<LocalOcrPipeline> | null = null;
+let localOcrSkipUntil = 0;
+const LOCAL_OCR_BOOT_TIMEOUT_MS = 3500;
+const LOCAL_OCR_RETRY_DELAY_MS = 60000;
 
 function normalizeOcrText(output: unknown): string {
   const first = Array.isArray(output) ? output[0] : output;
@@ -262,6 +265,37 @@ async function getLocalOcrPipeline(onProgress: (message: string) => void): Promi
   return localOcrPipelinePromise;
 }
 
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(() => reject(new Error("OCR lokal belum siap")), ms);
+    promise.then(
+      (value) => {
+        window.clearTimeout(timeout);
+        resolve(value);
+      },
+      (error: unknown) => {
+        window.clearTimeout(timeout);
+        reject(error);
+      },
+    );
+  });
+}
+
+async function getReadyLocalOcrPipeline(onProgress: (message: string) => void): Promise<LocalOcrPipeline> {
+  if (Date.now() < localOcrSkipUntil) throw new Error("OCR lokal dilewati sementara");
+  let active = true;
+  try {
+    return await withTimeout(getLocalOcrPipeline((message) => {
+      if (active) onProgress(message);
+    }), LOCAL_OCR_BOOT_TIMEOUT_MS);
+  } catch (error) {
+    localOcrSkipUntil = Date.now() + LOCAL_OCR_RETRY_DELAY_MS;
+    throw error;
+  } finally {
+    active = false;
+  }
+}
+
 async function runLocalOcrOnImages(slide: Slide, onProgress: (message: string) => void): Promise<Slide> {
   const fixed = cloneSlide(slide);
   const images = fixed.elements
@@ -270,7 +304,7 @@ async function runLocalOcrOnImages(slide: Slide, onProgress: (message: string) =
     .slice(0, 4);
   if (!images.length) return fixed;
   try {
-    const ocr = await getLocalOcrPipeline(onProgress);
+    const ocr = await getReadyLocalOcrPipeline(onProgress);
     for (const image of images) {
       if (image.alt && image.alt.length > 10 && !/^(gambar|image|img|foto)/i.test(image.alt)) continue;
       const text = normalizeOcrText(await ocr(image.src, { max_new_tokens: 80 }));

@@ -2255,12 +2255,20 @@ function pptxLineHeight(pPr: Element | null, fontSize: number): number | undefin
   return undefined;
 }
 
+function pptxFontSizes(txBody: ParentNode): number[] {
+  return descendants(txBody, "rPr")
+    .concat(descendants(txBody, "defRPr"), descendants(txBody, "endParaRPr"))
+    .map((item) => Number(item.getAttribute("sz") || 0) / 100)
+    .filter((value) => Number.isFinite(value) && value > 0);
+}
+
 function extractPptxTextStyle(scope: ParentNode): PptxRunStyle {
   const txBody = firstDescendant(scope, "txBody") || scope;
   const pPr = firstDescendant(txBody, "pPr");
   const rPr = firstDescendant(txBody, "rPr") || firstDescendant(txBody, "defRPr");
   const latin = firstDescendant(rPr || txBody, "latin");
-  const fontSize = Number(rPr?.getAttribute("sz") || 0) / 100;
+  const sizes = pptxFontSizes(txBody);
+  const fontSize = sizes.length ? Math.max(...sizes) : Number(rPr?.getAttribute("sz") || 0) / 100;
   const style: PptxRunStyle = {};
   const fontFamily = cleanFontFamily(latin?.getAttribute("typeface"));
   const color = pptxColor(rPr || txBody);
@@ -2444,37 +2452,31 @@ async function importPptxFile(file: File): Promise<void> {
   try {
     deckImages.clear();
 
-    // ── STEP 1: Parse PPTX seperti biasa ──────────────────────────────
+    // STEP 1: Parse PPTX langsung di browser.
     const rawDeck = await deckFromPptx(file);
 
-    // ── STEP 2: Jalankan AI pipeline ──────────────────────────────────
-    // Setiap AI punya 1 skill spesifik:
-    //   - Layout Fix   → PP-DocLayoutV3 (ONNX browser, RT-DETR based)
-    //   - OCR          → microsoft/trocr-base-printed (HuggingFace API)
-    //   - Typo Fix     → rule-based + facebook/bart-large-mnli
-    //   - Academic     → mistralai/Mistral-7B-Instruct (HuggingFace API)
-    //   - Notes        → facebook/bart-large-cnn (HuggingFace API)
+    // STEP 2: Jalankan pipeline AI lokal/best-effort.
+    // Tidak ada API key, endpoint berbayar, atau batas inference server.
+    // OCR model-based dilewati sementara bila aset model lokal belum siap,
+    // sehingga import PPTX tetap cepat dan stabil.
 
     setSaveState("saving", "AI memeriksa layout...");
 
     const { deck: enhancedDeck, stats } = await runPptAiPipeline(rawDeck, {
-      // Callback progress — tampil di UI save state
+      // Callback progress tampil di UI save state.
       onProgress: (percent, message) => {
         setSaveState("saving", `${message} (${percent}%)`);
       },
 
-      // Token HuggingFace — opsional, tanpa token tetap jalan
-      // Buat token gratis di: https://huggingface.co/settings/tokens
       enableOcr: true,
 
-      // Toggle fitur — semua aktif by default
       enableLayoutFix: true,   // PP-DocLayoutV3: perbaiki posisi elemen yang berantakan
       enableTypoFix: true,
       enableAcademic: true,
-      language: "id",           // Bahasa Indonesia — pengaruhi prompt LLM
+      language: "id",
     });
 
-    // ── STEP 3: Terapkan hasil ke deck ────────────────────────────────
+    // STEP 3: Terapkan hasil ke deck.
     setSaveState("saving", "Merender slide menjadi canvas HD...");
     deck = await rasterizeDeckForImport(enhancedDeck);
     currentSlide = 0;
@@ -2949,12 +2951,22 @@ function syncAudienceRailState(): void {
   resizeAudienceSlide();
 }
 
+function resetDialogMotion(dialog: HTMLDialogElement): void {
+  dialog.style.transition = "";
+  dialog.style.transform = "";
+  dialog.style.opacity = "";
+}
+
 function openAudienceRailDialog(dialog: HTMLDialogElement): void {
   for (const other of [$("#segment-dialog") as HTMLDialogElement, $("#people-dialog") as HTMLDialogElement]) {
-    if (other !== dialog && other.open) other.close();
+    if (other !== dialog && other.open) {
+      resetDialogMotion(other);
+      other.close();
+    }
   }
   dialog.classList.add("audience-rail-dialog");
-  if (!dialog.open) dialog.showModal();
+  resetDialogMotion(dialog);
+  if (!dialog.open) dialog.show();
   syncAudienceRailState();
   showAudienceChrome();
 }
@@ -3029,8 +3041,26 @@ function syncFullscreenButton(): void {
   button.setAttribute("aria-label", button.title);
 }
 
+function returnOwnerToEditorFromAudience(): void {
+  if (role !== "owner" || !isAudienceOpen()) return;
+  $("#audience-view").setAttribute("hidden", "");
+  $("#editor-app").removeAttribute("hidden");
+  renderAll();
+  requestAnimationFrame(fitWorkspace);
+}
+
+function handleFullscreenChange(): void {
+  syncFullscreenButton();
+  if (!document.fullscreenElement && role === "owner" && presentationState.presenting && isAudienceOpen()) {
+    returnOwnerToEditorFromAudience();
+  }
+}
+
 async function toggleAudienceFullscreen(): Promise<void> {
-  if (document.fullscreenElement) await document.exitFullscreen().catch(() => undefined);
+  if (document.fullscreenElement) {
+    await document.exitFullscreen().catch(() => undefined);
+    if (role === "owner") returnOwnerToEditorFromAudience();
+  }
   else if (document.fullscreenEnabled) await document.documentElement.requestFullscreen().catch(() => undefined);
   syncFullscreenButton();
 }
@@ -3415,6 +3445,116 @@ function slideTextDigest(slide: Slide): string {
     .trim();
 }
 
+function isSlideBackgroundElement(element: SlideElement): boolean {
+  return element.type === "shape"
+    && element.shape === "rect"
+    && element.x <= 2
+    && element.y <= 2
+    && element.w >= SLIDE_WIDTH - 4
+    && element.h >= SLIDE_HEIGHT - 4;
+}
+
+function inferredImportFontSize(element: TextElement): number {
+  const lines = Math.max(1, element.text.split("\n").length);
+  const insetTop = element.insetTop ?? 3.6;
+  const insetBottom = element.insetBottom ?? 3.6;
+  const availableHeight = Math.max(8, element.h - insetTop - insetBottom);
+  const heightSize = availableHeight / lines / (element.lineHeight || 1.12);
+  const textLength = Math.max(1, element.text.replace(/\s+/g, " ").trim().length);
+  const widthSize = element.w / Math.min(52, Math.max(10, textLength)) * 1.8;
+  const base = Math.min(heightSize, widthSize || heightSize);
+  return clamp(base, element.variant === "title" ? 18 : 10.5, element.variant === "title" ? 54 : 30);
+}
+
+let importTextMeasureContext: CanvasRenderingContext2D | null = null;
+
+function measuredImportTextWidth(text: string, element: TextElement | ShapeElement, fontSize: number): number {
+  if (!importTextMeasureContext) {
+    importTextMeasureContext = document.createElement("canvas").getContext("2d");
+  }
+  const fallback = text.length * fontSize * 0.55;
+  if (!importTextMeasureContext) return fallback;
+  const italic = element.italic ? "italic " : "";
+  const weight = element.bold ? "700 " : "400 ";
+  importTextMeasureContext.font = `${italic}${weight}${fontSize}px ${element.fontFamily || "Arial"}`;
+  return importTextMeasureContext.measureText(text).width || fallback;
+}
+
+function estimateImportTextLines(element: TextElement | ShapeElement, fontSize: number): number {
+  const text = element.type === "shape" ? element.text || "" : element.text;
+  const insetLeft = element.insetLeft ?? 7.2;
+  const insetRight = element.insetRight ?? 7.2;
+  const contentWidth = Math.max(12, element.w - insetLeft - insetRight);
+  return text.split("\n").reduce((total, paragraph) => {
+    const words = paragraph.trim().split(/\s+/).filter(Boolean);
+    if (!words.length) return total + 1;
+    let lines = 1;
+    let currentWidth = 0;
+    for (const word of words) {
+      const wordWidth = measuredImportTextWidth(`${word} `, element, fontSize);
+      if (wordWidth > contentWidth) {
+        lines += Math.max(0, Math.ceil(wordWidth / contentWidth) - 1);
+        currentWidth = wordWidth % contentWidth;
+      } else if (currentWidth > 0 && currentWidth + wordWidth > contentWidth) {
+        lines += 1;
+        currentWidth = wordWidth;
+      } else {
+        currentWidth += wordWidth;
+      }
+    }
+    return total + lines;
+  }, 0);
+}
+
+function expandImportTextBox(element: TextElement | ShapeElement): void {
+  const text = element.type === "shape" ? element.text || "" : element.text;
+  if (!text) return;
+  const fontSize = element.fontSize || 12;
+  const insetLeft = element.insetLeft ?? 7.2;
+  const insetRight = element.insetRight ?? 7.2;
+  const insetTop = element.insetTop ?? 3.6;
+  const insetBottom = element.insetBottom ?? 3.6;
+  const longestWord = text
+    .split(/\s+/)
+    .reduce((longest, word) => Math.max(longest, measuredImportTextWidth(word, element, fontSize)), 0);
+  const neededWidth = Math.ceil(longestWord + insetLeft + insetRight + 6);
+  element.w = Math.min(SLIDE_WIDTH - element.x, Math.max(element.w, neededWidth));
+  const lines = estimateImportTextLines(element, fontSize);
+  const lineHeight = element.lineHeight || 1.18;
+  const neededHeight = Math.ceil(lines * fontSize * lineHeight + insetTop + insetBottom + 4);
+  element.h = Math.min(SLIDE_HEIGHT - element.y, Math.max(element.h, neededHeight));
+}
+
+function normalizeImportOverlayElement(element: SlideElement): SlideElement | null {
+  if (isSlideBackgroundElement(element)) return null;
+  const clone = structuredClone(element);
+  if (clone.type === "text") {
+    if (!clone.fontSize || clone.fontSize < 7) clone.fontSize = inferredImportFontSize(clone);
+    else if (clone.variant === "body") clone.fontSize = clamp(clone.fontSize, 10.5, 42);
+    else clone.fontSize = clamp(clone.fontSize, 16, 64);
+    expandImportTextBox(clone);
+  }
+  if (clone.type === "shape" && clone.text) {
+    if (!clone.fontSize || clone.fontSize < 7) {
+      const asText: TextElement = { ...clone, type: "text", variant: "body", text: clone.text };
+      clone.fontSize = inferredImportFontSize(asText);
+    } else {
+      clone.fontSize = clamp(clone.fontSize, 10.5, 42);
+    }
+    expandImportTextBox(clone);
+  }
+  return clone;
+}
+
+function drawImportCanvasBackground(context: CanvasRenderingContext2D, slide: Slide, scale: number): void {
+  context.setTransform(scale, 0, 0, scale, 0, 0);
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, SLIDE_WIDTH, SLIDE_HEIGHT);
+  for (const element of slide.elements) {
+    if (isSlideBackgroundElement(element) && element.type === "shape") drawShapeElement(context, element);
+  }
+}
+
 async function rasterizeDeckForImport(source: Deck): Promise<Deck> {
   const slides: Slide[] = [];
   for (const [index, slide] of source.slides.entries()) {
@@ -3428,9 +3568,12 @@ async function rasterizeDeckForImport(source: Deck): Promise<Deck> {
       slides.push(slide);
       continue;
     }
-    drawSlideToContext(context, slide, scale);
+    drawImportCanvasBackground(context, slide, scale);
     const animation = slide.elements.find((element) => element.animation)?.animation || "";
     const textDigest = slideTextDigest(slide);
+    const overlayElements = slide.elements
+      .map(normalizeImportOverlayElement)
+      .filter((element): element is SlideElement => Boolean(element));
     slides.push({
       id: slide.id || uid("slide"),
       name: slide.name || `Slide ${index + 1}`,
@@ -3447,7 +3590,7 @@ async function rasterizeDeckForImport(source: Deck): Promise<Deck> {
         src: canvas.toDataURL("image/webp", 0.97),
         alt: textDigest || `Canvas slide ${index + 1}`,
         ...(animation ? { animation } : {}),
-      }],
+      }, ...overlayElements],
     });
   }
   return sanitizeDeck({ title: source.title, slides });
@@ -3655,6 +3798,7 @@ async function stopPresentation(): Promise<void> {
   const button = $("#present-button");
   button.classList.remove("live");
   button.innerHTML = "<span>▶</span><span>Presentasikan</span>";
+  if (isAudienceOpen()) returnOwnerToEditorFromAudience();
   toast("Presentasi live dihentikan.");
 }
 
@@ -3950,7 +4094,7 @@ function bindUi(): void {
   $("#slide-canvas").addEventListener("pointerleave", hidePresenceCursor);
   $("#audience-stage").addEventListener("pointermove", (event) => updatePointerFromSurface(event, $("#audience-stage")));
   $("#audience-stage").addEventListener("pointerleave", hidePresenceCursor);
-  document.addEventListener("fullscreenchange", syncFullscreenButton);
+  document.addEventListener("fullscreenchange", handleFullscreenChange);
   ($("#people-dialog") as HTMLDialogElement).addEventListener("close", syncAudienceRailState);
   ($("#segment-dialog") as HTMLDialogElement).addEventListener("close", syncAudienceRailState);
   document.querySelectorAll<HTMLElement>(".inspector-tabs button").forEach((button) => button.addEventListener("click", () => switchInspector(button.dataset.tab === "properties" ? "properties" : "device")));
