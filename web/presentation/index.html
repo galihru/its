@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#f8f9fa" />
+  <meta name="description" content="ITS Presentasi untuk membuat, mengimpor, dan membagikan presentasi realtime." />
+  <title>ITS Presentasi</title>
+</head>
+<body>
+  <div id="boot-screen" class="boot-screen" role="status">
+    <div class="app-logo large"><img src="/its.png" alt="" /></div>
+    <strong>Menyiapkan presentasi</strong>
+    <span id="boot-note">Menghubungkan penyimpanan realtime</span>
+  </div>
+
+  <section id="project-hub" class="project-hub" hidden>
+    <header class="hub-header">
+      <button class="hub-menu" type="button" title="Menu">&#9776;</button>
+      <div class="brand-lockup"><div class="app-logo"><img src="/its.png" alt="" /></div><span>ITS Presentasi</span></div>
+      <label class="hub-search" aria-label="Telusuri presentasi"><span>&#8981;</span><input id="project-search" placeholder="Telusuri" /></label>
+      <div class="identity-pill"><span class="presence-dot"></span><span id="hub-user-name">Anonim</span></div>
+    </header>
+    <main class="hub-main">
+      <section class="template-band" aria-label="Mulai presentasi baru">
+        <div class="template-heading"><h2>Mulai presentasi baru</h2><span>Galeri template</span></div>
+        <div class="template-strip">
+          <button id="create-project" class="template-card blank-template" type="button" title="Presentasi kosong">
+            <span class="template-preview blank-preview"><span class="google-plus"><i></i><i></i><i></i><i></i></span></span>
+            <strong>Presentasi kosong</strong>
+          </button>
+          <button class="template-card" type="button" data-template="photo"><span class="template-preview photo-template"></span><strong>Album Foto</strong></button>
+          <button class="template-card" type="button" data-template="wedding"><span class="template-preview wedding-template"></span><strong>Pernikahan</strong></button>
+          <button class="template-card" type="button" data-template="portfolio"><span class="template-preview portfolio-template"></span><strong>Portofolio</strong></button>
+          <button class="template-card" type="button" data-template="collection"><span class="template-preview collection-template"></span><strong>Buku Koleksi</strong></button>
+          <button class="template-card" type="button" data-template="pitch"><span class="template-preview pitch-template"></span><strong>Pitch</strong></button>
+        </div>
+      </section>
+      <div class="recent-heading">
+        <h2>Presentasi terkini</h2>
+        <div class="recent-tools"><button type="button" title="Tampilan daftar">&#9638;</button><button type="button" title="Urutkan">A&#8595;</button><button type="button" title="Folder">&#9633;</button></div>
+      </div>
+      <div id="project-list" class="project-grid"></div>
+      <div id="empty-projects" class="empty-projects" hidden>
+        <div class="empty-illustration">&#9633;</div><h2>Belum ada presentasi</h2>
+        <p>Project yang dibuat akan tersimpan di Firebase dan tetap dapat diedit saat Anda kembali.</p>
+      </div>
+    </main>
+  </section>
+
+  <div id="editor-app" class="editor-app" hidden>
+    <header class="top-area">
+      <div class="title-row">
+        <button id="back-home" class="icon-button app-logo" title="Kembali ke daftar project"><img src="/its.png" alt="" /></button>
+        <div class="document-head">
+          <input id="deck-title" class="deck-title" value="Presentasi tanpa judul" aria-label="Judul presentasi" />
+          <nav class="menu-row" aria-label="Menu presentasi">
+            <button data-menu="file">File</button><button data-menu="home">Home</button><button data-menu="insert">Insert</button>
+            <button data-menu="draw">Draw</button><button data-menu="design">Design</button><button data-menu="transitions">Transitions</button>
+            <button data-menu="animations">Animations</button><button data-menu="slideshow">Slide Show</button><button data-menu="record">Record</button>
+            <button data-menu="review">Review</button><button data-menu="view">View</button><button data-menu="developer">Developer</button>
+            <button data-menu="tools">Alat</button><button data-menu="extensions">Ekstensi</button>
+          </nav>
+        </div>
+        <div class="title-actions">
+          <span id="save-state" class="save-state"><span class="status-dot"></span><span>Tersimpan</span></span>
+          <button id="presence-button" class="presence-button" type="button" title="Kolaborator"><span id="presence-list" class="presence-list" aria-label="Pengunjung aktif"></span></button>
+          <button id="present-button" class="present-button"><span>&#9654;</span><span>Slideshow</span></button>
+          <button id="share-button" class="share-button">Bagikan</button>
+        </div>
+      </div>
+      <div class="toolbar-row">
+        <button id="add-slide" class="tool-button with-caret" title="Slide baru">+</button>
+        <span class="toolbar-separator"></span>
+        <button id="undo" class="tool-button icon-only" title="Urungkan" disabled>&#8630;</button>
+        <button id="redo" class="tool-button icon-only" title="Ulangi" disabled>&#8631;</button>
+        <span class="toolbar-separator"></span>
+        <button id="select-tool" class="tool-button active" title="Pilih">&#8598;</button>
+        <button id="add-title" class="tool-button" title="Tambahkan judul">Tt</button>
+        <button id="add-text" class="tool-button" title="Tambahkan teks">T</button>
+        <button id="add-phone" class="tool-button phone-tool" title="Tambahkan mockup HP">&#9647;</button>
+        <button id="delete-element" class="tool-button danger" title="Hapus elemen">&#9003;</button>
+        <span class="toolbar-separator"></span>
+        <label class="zoom-select"><span>Zoom</span><select id="zoom-select"><option value="fit">Pas</option><option value="0.5">50%</option><option value="0.75">75%</option><option value="1">100%</option><option value="1.25">125%</option></select></label>
+        <span class="toolbar-spacer"></span>
+        <span id="role-badge" class="role-badge">Editor</span>
+      </div>
+    </header>
+
+    <aside class="slide-sidebar">
+      <div id="slide-list" class="slide-list"></div>
+      <button id="add-slide-bottom" class="add-slide-bottom">+ Tambah slide</button>
+    </aside>
+
+    <main id="workspace" class="workspace">
+      <div class="ruler ruler-horizontal"></div><div class="ruler ruler-vertical"></div>
+      <div id="slide-shell" class="slide-shell"><div id="slide-canvas" class="slide-canvas"></div></div>
+      <div id="drop-overlay" class="drop-overlay" hidden><strong>Drop PPTX untuk replace presentasi</strong><span>Atau drop gambar untuk menambahkannya ke slide aktif.</span></div>
+      <div class="zoom-controls"><button id="zoom-out" title="Perkecil">-</button><span id="zoom-label">Pas</span><button id="zoom-in" title="Perbesar">+</button></div>
+    </main>
+
+    <aside id="inspector" class="inspector adb-hidden">
+      <div class="inspector-tabs"><button class="active" data-tab="device" title="Perangkat">&#9647;</button><button data-tab="properties" title="Properti">&#9881;</button></div>
+      <div id="device-panel" class="inspector-panel active">
+        <div class="panel-section">
+          <div class="section-heading"><div><span class="eyebrow">WEBUSB ADB</span><h2>Perangkat Mobile</h2></div><span id="usb-indicator" class="connection-badge warning">Belum tersambung</span></div>
+          <button id="connect-usb" class="primary-button full mobile-connect-button">Hubungkan Perangkat Mobile</button>
+          <button id="refresh-usb" class="secondary-button" hidden>Refresh izin</button><button id="diagnose-usb" class="secondary-button" hidden>Diagnosa</button>
+        </div>
+        <div class="panel-section grow">
+          <div class="section-heading compact"><h3>Perangkat tersedia</h3><span id="device-count">0</span></div>
+          <div id="device-list" class="device-list"><div class="empty-device">Belum ada perangkat ADB.</div></div>
+        </div>
+        <div class="panel-section">
+          <label class="field"><span>Perangkat untuk mockup terpilih</span><select id="device-select"><option value="">Pilih mockup terlebih dahulu</option></select></label>
+          <div class="split-actions"><button id="start-mirror" class="success-button">Mulai mirror</button><button id="stop-mirror" class="danger-button">Hentikan</button></div>
+        </div>
+        <details class="diagnostic-box" hidden><summary>Log koneksi</summary><div id="connection-log" class="connection-log"></div></details>
+      </div>
+      <div id="properties-panel" class="inspector-panel">
+        <div class="panel-section">
+          <div class="section-heading"><div><span class="eyebrow">ELEMEN</span><h2 id="property-title">Tidak ada pilihan</h2></div></div>
+          <div class="property-grid"><label class="field"><span>X</span><input id="prop-x" type="number" /></label><label class="field"><span>Y</span><input id="prop-y" type="number" /></label><label class="field"><span>Lebar</span><input id="prop-w" type="number" /></label><label class="field"><span>Tinggi</span><input id="prop-h" type="number" /></label></div>
+          <label id="text-property" class="field"><span>Isi teks</span><textarea id="prop-text" rows="5"></textarea></label>
+          <button id="delete-from-properties" class="danger-button full">Hapus elemen</button>
+        </div>
+      </div>
+    </aside>
+
+    <footer class="speaker-notes"><span id="slide-counter">Slide 1 / 1</span><input id="speaker-note" placeholder="Klik untuk menambahkan catatan pembicara" /></footer>
+  </div>
+
+  <section id="share-entry" class="share-entry" hidden>
+    <div class="share-preview-pane">
+      <div class="share-brand"><div class="app-logo"><img src="/its.png" alt="" /></div><div><span>ITS Presentasi</span><strong id="join-title">Presentasi tanpa judul</strong></div></div>
+      <div id="join-preview-list" class="join-preview-list" aria-label="Preview slide"></div>
+      <div id="join-meta" class="join-meta">1 halaman</div>
+    </div>
+    <form id="join-card" class="join-card">
+      <div class="join-handle"></div>
+      <span id="join-mode-label" class="eyebrow">VIEWER</span>
+      <h1 id="join-role-title">Pilih lihat sebagai apa</h1>
+      <label class="join-option"><input name="join-role" type="radio" checked /><span>Anonymous</span></label>
+      <label class="join-field"><span>Nama</span><input id="join-name" autocomplete="name" placeholder="Nama Anda" /></label>
+      <label class="remember-row"><input id="join-remember" type="checkbox" /><span>Ingat saya</span></label>
+      <button id="join-enter" class="primary-button full" type="submit">Masuk</button>
+    </form>
+  </section>
+
+  <section id="audience-view" class="audience-view" hidden>
+    <div id="audience-stage" class="audience-stage"><div id="audience-slide" class="audience-slide"></div><video id="live-video" autoplay playsinline muted hidden></video></div>
+    <header id="audience-header" class="audience-header">
+      <div class="audience-title"><div class="app-logo"><img src="/its.png" alt="" /></div><strong id="audience-title-text">Presentasi tanpa judul</strong></div>
+      <button id="audience-people-button" class="audience-people-button" type="button" title="Audiens"><span id="audience-avatars" class="audience-avatars"></span><span id="audience-more"></span></button>
+    </header>
+    <div id="audience-control-layer" class="audience-control-layer">
+      <div id="audience-segments" class="audience-segments"></div>
+      <div class="audience-bottom-bar">
+        <button id="audience-live-toggle" class="audience-live-toggle" type="button"><strong id="audience-slide-index">1 / 1</strong><span id="audience-live-state">Live</span></button>
+        <button id="audience-segment-button" class="audience-segment-button" type="button">Intro</button>
+        <span class="audience-control-spacer"></span>
+        <button id="audience-next" class="audience-next" type="button"><span id="audience-next-label">Slide selanjutnya</span><div id="audience-next-thumb" class="audience-next-thumb"></div></button>
+        <button id="audience-fullscreen" class="audience-fullscreen-button" type="button" title="Layar penuh" aria-label="Layar penuh"></button>
+      </div>
+    </div>
+    <div id="audience-status" class="audience-status"><span class="live-dot"></span><span>Menunggu presenter...</span></div>
+  </section>
+
+  <dialog id="segment-dialog" class="segment-dialog">
+    <form method="dialog">
+      <div class="dialog-title"><div><span class="eyebrow">SEGMENT</span><h2>Pilih bagian presentasi</h2></div><button class="icon-button" value="cancel" aria-label="Tutup">&times;</button></div>
+      <div id="segment-list" class="segment-list"></div>
+    </form>
+  </dialog>
+
+  <dialog id="people-dialog" class="people-dialog">
+    <form method="dialog">
+      <div class="dialog-title"><div><span class="eyebrow">AUDIENS</span><h2>Sedang membuka</h2></div><button class="icon-button" value="cancel" aria-label="Tutup">&times;</button></div>
+      <div id="people-list" class="people-list"></div>
+    </form>
+  </dialog>
+
+  <dialog id="share-dialog" class="share-dialog">
+    <form method="dialog">
+      <div class="dialog-title"><div><span class="eyebrow">BAGIKAN PRESENTASI</span><h2>Orang lain dapat bergabung</h2></div><button class="icon-button" value="cancel" aria-label="Tutup">&times;</button></div>
+      <div class="share-block"><label>Link viewer</label><p>Penonton melihat slide dan layar HP secara live, tetapi tidak dapat mengubah isi.</p><div class="copy-row"><input id="viewer-link" readonly /><button id="copy-viewer" type="button">Salin</button></div></div>
+      <div class="share-block editor-share"><label>Link editor kolaborasi</label><p>Editor mengirim perubahan ke pemilik. Perubahan disimpan replace-only tanpa histori.</p><div class="copy-row"><input id="editor-link" readonly /><button id="copy-editor" type="button">Salin</button></div><button id="rotate-editor-link" class="text-button" type="button">Buat ulang link editor</button></div>
+      <div id="share-presence" class="share-presence"></div>
+    </form>
+  </dialog>
+
+  <dialog id="confirm-dialog" class="confirm-dialog"><form method="dialog"><h2>Hapus presentasi?</h2><p>Project akan dihapus dari database dan link viewer tidak bisa dibuka lagi. Tindakan ini tidak membuat histori pemulihan.</p><div><button value="cancel" class="secondary-button">Batal</button><button id="confirm-delete" value="default" class="danger-button">Hapus permanen</button></div></form></dialog>
+  <input id="pptx-input" type="file" accept=".pptx,.ppt,application/vnd.openxmlformats-officedocument.presentationml.presentation" hidden />
+  <input id="image-input" type="file" accept="image/*" hidden />
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <canvas id="broadcast-canvas" width="960" height="540" hidden></canvas>
+  <script type="module" src="/src/presentation.ts"></script>
+</body>
+</html>
