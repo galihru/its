@@ -314,6 +314,7 @@ let joinCarouselTimer = 0;
 
 const usbManager = AdbDaemonWebUsbDeviceManager.BROWSER;
 const credentialStore = new AdbWebCredentialStore(`PrezADB@${location.hostname}`);
+const PRESENTATION_RECENTS_KEY = "its-presentasi-recent-shortcuts:v1";
 
 function defaultDeck(): Deck {
   return {
@@ -633,8 +634,87 @@ function getOrCreateEditorToken(rotate = false): string {
   return token;
 }
 
+type PresentationShortcutItem = { title: string; url: string; updatedAt: number };
+
+function loadPresentationRecents(): PresentationShortcutItem[] {
+  try {
+    const value = JSON.parse(localStorage.getItem(PRESENTATION_RECENTS_KEY) || "[]") as PresentationShortcutItem[];
+    return Array.isArray(value)
+      ? value.filter((item) => item?.url && item?.title).sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0)).slice(0, 6)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function currentPresentationShortcutUrl(): string {
+  if (!projectId) return "/presentation/?source=pwa";
+  const url = new URL("/presentation/", location.origin);
+  url.searchParams.set("p", projectId);
+  if (role === "viewer") url.searchParams.set("view", "1");
+  if (role === "editor" && editorToken) url.searchParams.set("edit", editorToken);
+  return `${url.pathname}${url.search}`;
+}
+
+function syncPresentationShortcutsToServiceWorker(): void {
+  const items = loadPresentationRecents().slice(0, 3).map((item) => ({ title: item.title, url: item.url }));
+  const message = { type: "ITS_PRESENTATION_RECENTS", items };
+  if (!("serviceWorker" in navigator)) return;
+  navigator.serviceWorker.controller?.postMessage(message);
+  void navigator.serviceWorker.ready.then((registration) => registration.active?.postMessage(message)).catch(() => undefined);
+}
+
+function rememberPresentationShortcut(): void {
+  if (!projectId) return;
+  const url = currentPresentationShortcutUrl();
+  const item: PresentationShortcutItem = {
+    title: (deck.title || "Presentasi tanpa judul").trim().slice(0, 64),
+    url,
+    updatedAt: Date.now(),
+  };
+  const next = [item, ...loadPresentationRecents().filter((recent) => recent.url !== url)].slice(0, 6);
+  localStorage.setItem(PRESENTATION_RECENTS_KEY, JSON.stringify(next));
+  syncPresentationShortcutsToServiceWorker();
+}
+
+function redirectToLastPresentationIfNeeded(): boolean {
+  if (params.get("last") !== "1" || projectId) return false;
+  const [latest] = loadPresentationRecents();
+  if (!latest?.url) return false;
+  location.replace(latest.url);
+  return true;
+}
+
+function setNamedMeta(selector: string, value: string): void {
+  const element = document.head.querySelector<HTMLMetaElement>(selector);
+  if (element) element.content = value;
+}
+
+function updatePresentationMetadata(): void {
+  const title = deck.title || "ITS Presentasi";
+  const description = `${title} - buka presentasi realtime dengan viewer, komentar, dan WebUSB ADB.`;
+  const absoluteUrl = projectId ? new URL(currentPresentationShortcutUrl(), location.origin).href : "https://itstelkom.web.app/presentation/";
+  document.title = `${title} | ITS Presentasi`;
+  setNamedMeta('meta[name="description"]', description);
+  setNamedMeta('meta[property="og:title"]', title);
+  setNamedMeta('meta[property="og:description"]', description);
+  setNamedMeta('meta[property="og:url"]', absoluteUrl);
+  setNamedMeta('meta[name="twitter:title"]', title);
+  setNamedMeta('meta[name="twitter:description"]', description);
+}
+
+function registerPresentationServiceWorker(): void {
+  if (!("serviceWorker" in navigator)) return;
+  addEventListener("load", () => {
+    void navigator.serviceWorker.register("/sw.js")
+      .then(() => syncPresentationShortcutsToServiceWorker())
+      .catch((error) => console.warn("[PWA] Presentation Service Worker registration failed", error));
+  }, { once: true });
+}
+
 async function boot(): Promise<void> {
   try {
+    if (redirectToLastPresentationIfNeeded()) return;
     if (localMode) {
       firebaseUser = { uid: "local-presentasi-user" } as User;
       projectId ||= "local";
@@ -880,6 +960,8 @@ async function openProject(): Promise<void> {
 
 function showEditor(): void {
   stopJoinCarousel();
+  updatePresentationMetadata();
+  rememberPresentationShortcut();
   $("#boot-screen").setAttribute("hidden", "");
   $("#project-hub").setAttribute("hidden", "");
   $("#audience-view").setAttribute("hidden", "");
@@ -900,6 +982,8 @@ function showEditor(): void {
 
 function showAudience(): void {
   stopJoinCarousel();
+  updatePresentationMetadata();
+  rememberPresentationShortcut();
   $("#boot-screen").setAttribute("hidden", "");
   $("#project-hub").setAttribute("hidden", "");
   $("#editor-app").setAttribute("hidden", "");
@@ -919,6 +1003,8 @@ function showAudience(): void {
 }
 
 function showJoinGate(nextRole: Role): void {
+  updatePresentationMetadata();
+  rememberPresentationShortcut();
   $("#boot-screen").setAttribute("hidden", "");
   $("#project-hub").setAttribute("hidden", "");
   $("#editor-app").setAttribute("hidden", "");
@@ -1527,6 +1613,8 @@ async function persistDeck(): Promise<void> {
   saveTimer = 0;
   const cleanDeck = serializableDeck();
   const now = Date.now();
+  updatePresentationMetadata();
+  rememberPresentationShortcut();
   if (localMode) {
     try {
       localStorage.setItem(`its-presentasi-local:${projectId}`, JSON.stringify({ deck: cleanDeck, updatedAt: now }));
@@ -4674,18 +4762,117 @@ async function copyInput(id: string, label: string): Promise<void> {
   toast(`${label} disalin.`);
 }
 
+function safeFilename(value: string): string {
+  return (value || "ITS Presentasi").replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, "-").slice(0, 60) || "ITS-Presentasi";
+}
+
+function loadStandaloneImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error(`Gagal memuat gambar ${src}`));
+    image.src = src;
+  });
+}
+
+function canvasToBlob(canvas: HTMLCanvasElement, type = "image/png", quality?: number): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("Canvas tidak bisa dibuat menjadi gambar.")), type, quality);
+  });
+}
+
+async function generatePresentationShareImageBlob(): Promise<Blob> {
+  const slide = deck.slides[0] || defaultDeck().slides[0];
+  await waitForSlideImages(slide);
+  const width = 1200;
+  const height = 630;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Canvas share tidak tersedia.");
+  const colors = sampleSlideColors(slide);
+  const gradient = context.createLinearGradient(0, 0, width, height);
+  gradient.addColorStop(0, colors[0]);
+  gradient.addColorStop(.48, colors[2]);
+  gradient.addColorStop(1, colors[1]);
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, width, height);
+  context.fillStyle = "rgba(255,255,255,.08)";
+  context.beginPath();
+  context.arc(1040, 80, 220, 0, Math.PI * 2);
+  context.fill();
+
+  const slideW = 1000;
+  const slideH = Math.round(slideW * 9 / 16);
+  const slideX = Math.round((width - slideW) / 2);
+  const slideY = 34;
+  const slideCanvas = document.createElement("canvas");
+  const slideScale = slideW / SLIDE_WIDTH;
+  slideCanvas.width = slideW;
+  slideCanvas.height = slideH;
+  const slideContext = slideCanvas.getContext("2d");
+  if (!slideContext) throw new Error("Canvas slide tidak tersedia.");
+  drawSlideToContext(slideContext, slide, slideScale);
+  context.save();
+  context.shadowColor = "rgba(0,0,0,.26)";
+  context.shadowBlur = 28;
+  context.shadowOffsetY = 14;
+  roundedRect(context, slideX, slideY, slideW, slideH, 18);
+  context.fillStyle = "#ffffff";
+  context.fill();
+  context.restore();
+  context.save();
+  roundedRect(context, slideX, slideY, slideW, slideH, 18);
+  context.clip();
+  context.drawImage(slideCanvas, slideX, slideY, slideW, slideH);
+  context.restore();
+
+  const logo = await loadStandaloneImage("/its-presentasi.png").catch(() => null);
+  if (logo) {
+    const badge = 78;
+    const badgeX = slideX + slideW - badge - 18;
+    const badgeY = slideY + slideH - badge - 18;
+    context.save();
+    context.fillStyle = "rgba(255,255,255,.92)";
+    roundedRect(context, badgeX, badgeY, badge, badge, 20);
+    context.fill();
+    context.drawImage(logo, badgeX + 15, badgeY + 8, badge - 30, badge - 16);
+    context.restore();
+  }
+
+  return canvasToBlob(canvas, "image/png");
+}
+
 async function shareAudiencePresentation(): Promise<void> {
   const url = projectId ? buildUrl({ view: true }) : location.href;
   const title = deck.title || "ITS Presentasi";
-  const shareData = { title, text: title, url };
-  const canShare = "share" in navigator && (!("canShare" in navigator) || navigator.canShare?.(shareData));
-  if (canShare) await navigator.share(shareData).catch((error) => {
-    if (!String(error?.name || error).includes("Abort")) throw error;
-  });
-  else {
-    await navigator.clipboard.writeText(url);
-    toast("Link viewer disalin.");
+  updatePresentationMetadata();
+  const shareData: ShareData = { title, text: title, url };
+  if ("share" in navigator) {
+    try {
+      const image = await generatePresentationShareImageBlob();
+      const file = new File([image], `${safeFilename(title)}-preview.png`, { type: "image/png" });
+      const fileShareData = { ...shareData, files: [file] } as ShareData;
+      if (!("canShare" in navigator) || navigator.canShare?.(fileShareData)) {
+        await navigator.share(fileShareData).catch((error) => {
+          if (!String(error?.name || error).includes("Abort")) throw error;
+        });
+        return;
+      }
+    } catch (error) {
+      console.warn("[ITS Presentasi] Share image fallback:", error);
+    }
+    const canShare = !("canShare" in navigator) || navigator.canShare?.(shareData);
+    if (canShare) {
+      await navigator.share(shareData).catch((error) => {
+        if (!String(error?.name || error).includes("Abort")) throw error;
+      });
+      return;
+    }
   }
+  await navigator.clipboard.writeText(url);
+  toast("Link viewer disalin.");
 }
 
 function downloadAudiencePresentation(): void {
@@ -4995,14 +5182,19 @@ function bindUi(): void {
   });
   $("#join-more-button").addEventListener("click", (event) => {
     event.stopPropagation();
-    $("#join-more-menu").toggleAttribute("hidden");
+    const menu = $("#join-more-menu");
+    const nextOpen = menu.hasAttribute("hidden");
+    menu.toggleAttribute("hidden", !nextOpen);
+    $("#join-more-button").setAttribute("aria-expanded", String(nextOpen));
   });
   $("#join-share-action").addEventListener("click", () => {
     $("#join-more-menu").setAttribute("hidden", "");
+    $("#join-more-button").setAttribute("aria-expanded", "false");
     void shareAudiencePresentation().catch((error) => toast(friendlyError(error)));
   });
   $("#join-download-action").addEventListener("click", () => {
     $("#join-more-menu").setAttribute("hidden", "");
+    $("#join-more-button").setAttribute("aria-expanded", "false");
     downloadAudiencePresentation();
   });
   $("#pptx-input").addEventListener("change", (event) => {
@@ -5068,7 +5260,7 @@ function bindUi(): void {
     event.stopPropagation();
     openMenu(button);
   }));
-  document.addEventListener("click", () => { closeMenu(); closeSlideContextMenu(); closeElementContextMenu(); $("#join-more-menu").setAttribute("hidden", ""); });
+  document.addEventListener("click", () => { closeMenu(); closeSlideContextMenu(); closeElementContextMenu(); $("#join-more-menu").setAttribute("hidden", ""); $("#join-more-button").setAttribute("aria-expanded", "false"); });
   ($("#zoom-select") as HTMLSelectElement).addEventListener("change", () => {
     const value = ($("#zoom-select") as HTMLSelectElement).value;
     setZoom(value === "fit" ? fitZoom : Number(value), value === "fit");
@@ -5110,5 +5302,6 @@ function bindUi(): void {
   bindFileDrop();
 }
 
+registerPresentationServiceWorker();
 bindUi();
 void boot();

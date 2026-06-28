@@ -2,10 +2,30 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#f8f9fa" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#1f2933" />
   <meta name="description" content="ITS Presentasi untuk membuat, mengimpor, dan membagikan presentasi realtime." />
   <title>ITS Presentasi</title>
+  <link rel="manifest" href="/presentation-manifest.webmanifest" />
+  <link rel="canonical" href="https://itstelkom.web.app/presentation/" />
+  <link rel="icon" type="image/png" sizes="96x96" href="/icons/presentation-96.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/presentation-192.png" />
+  <link rel="apple-touch-icon" href="/icons/presentation-192.png" />
+  <meta name="application-name" content="ITS Presentasi" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="ITS Presentasi" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta property="og:site_name" content="ITS Presentasi" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="ITS Presentasi" />
+  <meta property="og:description" content="Buka presentasi realtime dengan viewer, komentar, dan WebUSB ADB." />
+  <meta property="og:url" content="https://itstelkom.web.app/presentation/" />
+  <meta property="og:image" content="https://itstelkom.web.app/screenshots/presentation/og-default.png" />
+  <meta property="og:image:alt" content="Preview slide pertama ITS Presentasi" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="ITS Presentasi" />
+  <meta name="twitter:description" content="Buka presentasi realtime dengan viewer, komentar, dan WebUSB ADB." />
+  <meta name="twitter:image" content="https://itstelkom.web.app/screenshots/presentation/og-default.png" />
 </head>
 <body>
   <div id="boot-screen" class="boot-screen" role="status">
@@ -16,7 +36,7 @@
 
   <section id="project-hub" class="project-hub" hidden>
     <header class="hub-header">
-      <button class="hub-menu" type="button" title="Menu">&#9776;</button>
+      <button class="hub-menu" type="button" title="Menu" aria-label="Menu">&#9776;</button>
       <div class="brand-lockup"><div class="app-logo"><img src="/its-presentasi.png" alt="" /></div><span>ITS Presentasi</span></div>
       <label class="hub-search" aria-label="Telusuri presentasi"><span>&#8981;</span><input id="project-search" placeholder="Telusuri" /></label>
       <div class="identity-actions">
@@ -141,18 +161,18 @@
       </div>
     </aside>
 
-    <footer class="speaker-notes"><span id="slide-counter">Slide 1 / 1</span><input id="speaker-note" placeholder="Klik untuk menambahkan catatan pembicara" /></footer>
+    <footer class="speaker-notes"><span id="slide-counter">Slide 1 / 1</span><input id="speaker-note" aria-label="Catatan pembicara" placeholder="Klik untuk menambahkan catatan pembicara" /></footer>
   </div>
 
   <section id="share-entry" class="share-entry" hidden>
     <div class="share-preview-pane">
       <div class="join-top-actions">
-        <button id="join-more-button" class="audience-icon-button" type="button" title="Menu" aria-label="Menu share dan download">
+        <button id="join-more-button" class="audience-icon-button" type="button" title="Menu" aria-label="Menu share dan download" aria-haspopup="menu" aria-expanded="false" aria-controls="join-more-menu">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.2a1.8 1.8 0 1 0 0-3.6 1.8 1.8 0 0 0 0 3.6ZM12 13.8a1.8 1.8 0 1 0 0-3.6 1.8 1.8 0 0 0 0 3.6ZM12 19.4a1.8 1.8 0 1 0 0-3.6 1.8 1.8 0 0 0 0 3.6Z"/></svg>
         </button>
-        <div id="join-more-menu" class="floating-action-menu" hidden>
-          <button id="join-share-action" type="button">Bagikan link</button>
-          <button id="join-download-action" type="button">Download presentasi</button>
+        <div id="join-more-menu" class="floating-action-menu" role="menu" hidden>
+          <button id="join-share-action" type="button" role="menuitem">Bagikan link</button>
+          <button id="join-download-action" type="button" role="menuitem">Download presentasi</button>
         </div>
       </div>
       <div class="share-brand"><div class="app-logo"><img src="/its-presentasi.png" alt="" /></div><div><span>ITS Presentasi</span><strong id="join-title">Presentasi tanpa judul</strong></div></div>
@@ -238,7 +258,7 @@
       <div id="comment-list" class="comment-list"></div>
       <div class="comment-composer">
         <span id="comment-author-avatar" class="presence-avatar"></span>
-        <textarea id="comment-input" rows="3" placeholder="Tulis komentar"></textarea>
+        <textarea id="comment-input" rows="3" aria-label="Tulis komentar" placeholder="Tulis komentar"></textarea>
         <button id="send-comment" class="primary-button" type="button">Kirim</button>
       </div>
       <button id="replace-comment-image" class="secondary-button full" type="button" hidden>Ganti gambar elemen</button>
@@ -260,8 +280,8 @@
   </dialog>
 
   <dialog id="confirm-dialog" class="confirm-dialog"><form method="dialog"><h2>Hapus presentasi?</h2><p>Project akan dihapus dari database dan link viewer tidak bisa dibuka lagi. Tindakan ini tidak membuat histori pemulihan.</p><div><button value="cancel" class="secondary-button">Batal</button><button id="confirm-delete" value="default" class="danger-button">Hapus permanen</button></div></form></dialog>
-  <input id="pptx-input" type="file" accept=".pptx,.ppt,application/vnd.openxmlformats-officedocument.presentationml.presentation" hidden />
-  <input id="image-input" type="file" accept="image/*" hidden />
+  <input id="pptx-input" type="file" accept=".pptx,.ppt,application/vnd.openxmlformats-officedocument.presentationml.presentation" aria-label="Impor file PPT atau PPTX" hidden />
+  <input id="image-input" type="file" accept="image/*" aria-label="Pilih gambar" hidden />
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <canvas id="broadcast-canvas" width="960" height="540" hidden></canvas>
   <script type="module" src="/src/presentation.ts"></script>
