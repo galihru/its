@@ -157,6 +157,7 @@
     <div class="share-preview-pane">
       <div class="share-brand"><div class="app-logo"><img src="/its.png" alt="" /></div><div><span>ITS Presentasi</span><strong id="join-title">Presentasi tanpa judul</strong></div></div>
       <div id="join-preview-list" class="join-preview-list" aria-label="Preview slide"></div>
+      <div id="join-preview-dots" class="join-preview-dots" aria-hidden="true"></div>
       <div id="join-meta" class="join-meta">1 halaman</div>
     </div>
     <form id="join-card" class="join-card">
@@ -241,6 +242,13 @@
         <button id="send-comment" class="primary-button" type="button">Kirim</button>
       </div>
       <button id="replace-comment-image" class="secondary-button full" type="button" hidden>Ganti gambar elemen</button>
+    </form>
+  </dialog>
+
+  <dialog id="comment-action-sheet" class="comment-action-sheet">
+    <form method="dialog">
+      <div class="join-handle"></div>
+      <button id="comment-action-add" type="button">Tambahkan komentar</button>
     </form>
   </dialog>
 

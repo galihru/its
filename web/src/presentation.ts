@@ -304,6 +304,7 @@ let activePresenceRecords: PresenceRecord[] = [];
 let activeComments: CommentRecord[] = [];
 let activeCommentElementId = "";
 let activeCommentSlide = 0;
+let pendingCommentAction: { elementId: string; slideIndex: number } | null = null;
 let pendingReplaceImageElementId = "";
 let latestSharedRecords: Record<string, SharedProjectRecord> = {};
 let audienceFillMode: "contain" | "cover" = "contain";
@@ -924,9 +925,11 @@ function showJoinGate(nextRole: Role): void {
   $("#join-role-title").textContent = nextRole === "editor" ? "Pilih editor sebagai apa" : "Pilih lihat sebagai apa";
   ($("#join-name") as HTMLInputElement).value = participantName;
   ($("#join-remember") as HTMLInputElement).checked = Boolean(localStorage.getItem("its-presentasi-name"));
-  $("#join-meta").textContent = `${deck.slides.length} halaman · Dibuat ${formatDateTime(projectCreatedAt)}`;
+  $("#join-meta").textContent = `${deck.slides.length} halaman - Dibuat ${formatDateTime(projectCreatedAt)}`;
   const previewList = $("#join-preview-list");
+  const previewDots = $("#join-preview-dots");
   previewList.innerHTML = "";
+  previewDots.innerHTML = "";
   deck.slides.slice(0, 3).forEach((slide, index) => {
     const item = document.createElement("button");
     item.type = "button";
@@ -937,12 +940,17 @@ function showJoinGate(nextRole: Role): void {
     item.append(label);
     item.addEventListener("click", () => { currentSlide = index; renderJoinActivePreview(); });
     previewList.append(item);
+    const dot = document.createElement("span");
+    previewDots.append(dot);
   });
   renderJoinActivePreview();
 }
 
 function renderJoinActivePreview(): void {
-  document.querySelectorAll<HTMLElement>(".join-preview-card").forEach((item, index) => item.classList.toggle("active", index === currentSlide));
+  const cards = [...document.querySelectorAll<HTMLElement>(".join-preview-card")];
+  const activeIndex = currentSlide < cards.length ? currentSlide : 0;
+  cards.forEach((item, index) => item.classList.toggle("active", index === activeIndex));
+  document.querySelectorAll<HTMLElement>(".join-preview-dots span").forEach((item, index) => item.classList.toggle("active", index === activeIndex));
 }
 
 async function enterSharedProject(): Promise<void> {
@@ -1260,13 +1268,31 @@ function openCommentDialogForElement(elementId: string, slideIndex: number): voi
   activeCommentSlide = slideIndex;
   renderCommentDialog();
   const dialog = $("#comment-dialog") as HTMLDialogElement;
-  dialog.classList.toggle("audience-rail-dialog", isAudienceOpen());
-  resetDialogMotion(dialog);
-  for (const other of [$("#segment-dialog") as HTMLDialogElement, $("#people-dialog") as HTMLDialogElement]) {
-    if (other.open) other.close();
+  const actionSheet = $("#comment-action-sheet") as HTMLDialogElement;
+  if (actionSheet.open) actionSheet.close();
+  if (isAudienceOpen()) {
+    openAudienceRailDialog(dialog);
+  } else {
+    dialog.classList.remove("audience-rail-dialog");
+    resetDialogMotion(dialog);
+    if (!dialog.open) dialog.showModal();
   }
-  if (!dialog.open) dialog.show();
-  syncAudienceRailState();
+}
+
+function openCommentActionSheet(elementId: string, slideIndex: number): void {
+  pendingCommentAction = { elementId, slideIndex };
+  const sheet = $("#comment-action-sheet") as HTMLDialogElement;
+  resetDialogMotion(sheet);
+  if (!sheet.open) sheet.showModal();
+}
+
+function submitCommentActionSheet(): void {
+  if (!pendingCommentAction) return;
+  const { elementId, slideIndex } = pendingCommentAction;
+  pendingCommentAction = null;
+  const sheet = $("#comment-action-sheet") as HTMLDialogElement;
+  if (sheet.open) sheet.close();
+  openCommentDialogForElement(elementId, slideIndex);
 }
 
 function isCompactAudienceLayout(): boolean {
@@ -1814,7 +1840,7 @@ function bindCommentInteractions(node: HTMLElement, element: SlideElement, audie
     if (event.pointerType !== "touch") return;
     clearTimeout(longPressTimer);
     longPressTimer = window.setTimeout(() => {
-      if (isAudienceOpen() && isCompactAudienceLayout()) openCommentDialogForElement(element.id, slideIndex);
+      if (isAudienceOpen() && isCompactAudienceLayout()) openCommentActionSheet(element.id, slideIndex);
       else openElementContextMenu(element.id, slideIndex, event.clientX, event.clientY);
       longPressOpenedAt = Date.now();
     }, 560);
@@ -1868,7 +1894,7 @@ function bindSurfaceCommentInteractions(surface: HTMLElement): void {
         if (element) {
           event.preventDefault();
           event.stopPropagation();
-          openCommentDialogForElement(element.id, currentSlide);
+          openCommentActionSheet(element.id, currentSlide);
         }
       } else {
         openElementContextMenuFromSurface(event, surface);
@@ -4909,6 +4935,7 @@ function bindUi(): void {
   $("#copy-viewer").addEventListener("click", () => void copyInput("viewer-link", "Link viewer"));
   $("#copy-editor").addEventListener("click", () => void copyInput("editor-link", "Link editor"));
   $("#send-comment").addEventListener("click", () => void submitComment().catch((error) => toast(friendlyError(error))));
+  $("#comment-action-add").addEventListener("click", submitCommentActionSheet);
   $("#replace-comment-image").addEventListener("click", () => {
     pendingReplaceImageElementId = activeCommentElementId;
     ($("#image-input") as HTMLInputElement).click();
@@ -4950,7 +4977,7 @@ function bindUi(): void {
   bindSwipeRightToClose($("#people-dialog"), () => ($("#people-dialog") as HTMLDialogElement).close());
   bindSwipeRightToClose($("#segment-dialog"), () => ($("#segment-dialog") as HTMLDialogElement).close());
   bindSwipeRightToClose($("#comment-dialog"), () => ($("#comment-dialog") as HTMLDialogElement).close());
-  bindSwipeDownToClose($("#comment-dialog"), () => ($("#comment-dialog") as HTMLDialogElement).close());
+  bindSwipeDownToClose($("#comment-action-sheet"), () => ($("#comment-action-sheet") as HTMLDialogElement).close());
   document.querySelectorAll<HTMLElement>("[data-menu]").forEach((button) => button.addEventListener("click", (event) => {
     event.stopPropagation();
     openMenu(button);
