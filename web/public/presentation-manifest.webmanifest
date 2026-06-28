@@ -41,14 +41,14 @@
   "screenshots": [
     {
       "src": "/screenshots/presentation/welcome-desktop.png",
-      "sizes": "1366x768",
+      "sizes": "1365x768",
       "type": "image/png",
       "form_factor": "wide",
       "label": "Welcome desktop ITS Presentasi"
     },
     {
       "src": "/screenshots/presentation/welcome-mobile.png",
-      "sizes": "390x844",
+      "sizes": "780x1688",
       "type": "image/png",
       "form_factor": "narrow",
       "label": "Welcome mobile ITS Presentasi"

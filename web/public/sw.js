@@ -1,4 +1,4 @@
-const CACHE_NAME = 'its-maps-cache-v12';
+const CACHE_NAME = 'its-maps-cache-v13';
 const OFFLINE_URLS = [
   '/',
   '/index.html',
@@ -30,11 +30,16 @@ const OFFLINE_URLS = [
   '/screenshots/pwa/desktop-1.png',
   '/screenshots/pwa/desktop-2.png',
   '/screenshots/pwa/desktop-3.png',
+  '/screenshots/presentation/welcome-desktop.png',
+  '/screenshots/presentation/welcome-mobile.png',
+  '/screenshots/presentation/og-default.png',
   '/app-update.json'
 ];
 const PRESENTATION_SHORTCUTS_URL = '/presentation-recent-shortcuts.json';
 
 function basePresentationManifest(recent = []) {
+  const primary = recent[0]?.backgroundColor || '#111315';
+  const theme = recent[0]?.themeColor || '#1f2933';
   const recentShortcuts = recent.slice(0, 3).map((item, index) => ({
     name: item.title || `Presentasi terakhir ${index + 1}`,
     short_name: (item.title || 'Terakhir').slice(0, 12),
@@ -51,8 +56,8 @@ function basePresentationManifest(recent = []) {
     scope: '/presentation/',
     display: 'standalone',
     display_override: ['standalone', 'minimal-ui'],
-    background_color: '#111315',
-    theme_color: '#1f2933',
+    background_color: primary,
+    theme_color: theme,
     orientation: 'any',
     categories: ['productivity', 'education', 'utilities'],
     prefer_related_applications: false,
@@ -63,8 +68,8 @@ function basePresentationManifest(recent = []) {
       { src: '/icons/presentation-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' }
     ],
     screenshots: [
-      { src: '/screenshots/presentation/welcome-desktop.png', sizes: '1366x768', type: 'image/png', form_factor: 'wide', label: 'Welcome desktop ITS Presentasi' },
-      { src: '/screenshots/presentation/welcome-mobile.png', sizes: '390x844', type: 'image/png', form_factor: 'narrow', label: 'Welcome mobile ITS Presentasi' }
+      { src: '/screenshots/presentation/welcome-desktop.png', sizes: '1365x768', type: 'image/png', form_factor: 'wide', label: 'Welcome desktop ITS Presentasi' },
+      { src: '/screenshots/presentation/welcome-mobile.png', sizes: '780x1688', type: 'image/png', form_factor: 'narrow', label: 'Welcome mobile ITS Presentasi' }
     ],
     shortcuts: [
       ...recentShortcuts,
@@ -160,7 +165,9 @@ self.addEventListener('message', (event) => {
   if (data.type !== 'ITS_PRESENTATION_RECENTS' || !Array.isArray(data.items)) return;
   const items = data.items.slice(0, 3).map((item) => ({
     title: String(item.title || 'Presentasi').slice(0, 64),
-    url: String(item.url || '/presentation/?last=1&source=pwa-shortcut')
+    url: String(item.url || '/presentation/?last=1&source=pwa-shortcut'),
+    themeColor: /^#[0-9a-f]{6}$/i.test(String(item.themeColor || '')) ? String(item.themeColor) : undefined,
+    backgroundColor: /^#[0-9a-f]{6}$/i.test(String(item.backgroundColor || '')) ? String(item.backgroundColor) : undefined
   }));
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.put(PRESENTATION_SHORTCUTS_URL, new Response(JSON.stringify(items), {

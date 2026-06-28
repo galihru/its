@@ -52,6 +52,19 @@ type CanvasElement = {
   animation?: ElementAnimation;
 };
 
+type CanvaElement = {
+  id: string;
+  type: "canva";
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  url: string;
+  embedUrl: string;
+  title?: string;
+  animation?: ElementAnimation;
+};
+
 type ShapeElement = {
   id: string;
   type: "shape";
@@ -88,7 +101,7 @@ type PhoneElement = {
   animation?: ElementAnimation;
 };
 
-type SlideElement = TextElement | PhoneElement | ImageElement | CanvasElement | ShapeElement;
+type SlideElement = TextElement | PhoneElement | ImageElement | CanvasElement | CanvaElement | ShapeElement;
 type Slide = { id: string; name: string; notes: string; elements: SlideElement[]; transition?: string; section?: string };
 type Deck = { title: string; slides: Slide[] };
 

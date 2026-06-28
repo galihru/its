@@ -120,6 +120,18 @@ type CanvasElement = {
   alt?: string;
   animation?: ElementAnimation;
 };
+type CanvaElement = {
+  id: string;
+  type: "canva";
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  url: string;
+  embedUrl: string;
+  title?: string;
+  animation?: ElementAnimation;
+};
 type ShapeElement = {
   id: string;
   type: "shape";
@@ -148,7 +160,7 @@ type ShapeElement = {
   tableCol?: number;
   animation?: ElementAnimation;
 };
-type SlideElement = TextElement | PhoneElement | ImageElement | CanvasElement | ShapeElement;
+type SlideElement = TextElement | PhoneElement | ImageElement | CanvasElement | CanvaElement | ShapeElement;
 type Slide = { id: string; name: string; notes: string; elements: SlideElement[]; transition?: string; section?: string };
 type Deck = { title: string; slides: Slide[] };
 type PresentationState = {
@@ -159,6 +171,7 @@ type PresentationState = {
 };
 type PresentationRecord = {
   ownerUid: string;
+  ownerName?: string;
   visibility: "public";
   deck: Deck;
   state: PresentationState;
@@ -285,6 +298,7 @@ let applyingRemote = false;
 let deleteTarget = "";
 let lastAppliedCollaboration = 0;
 let broadcastTimer = 0;
+let presenterCursorTimer = 0;
 let broadcastStream: MediaStream | null = null;
 let presenterRequestUnsubscribe: Unsubscribe | null = null;
 let viewerPeer: RTCPeerConnection | null = null;
@@ -309,12 +323,16 @@ let pendingReplaceImageElementId = "";
 let latestSharedRecords: Record<string, SharedProjectRecord> = {};
 let audienceFillMode: "contain" | "cover" = "contain";
 let audiencePinchDistance = 0;
+let audienceSwipeSuppressClickUntil = 0;
 let joinPreviewIndex = 0;
 let joinCarouselTimer = 0;
+let canvaRefreshTimer = 0;
+let projectOwnerName = "";
 
 const usbManager = AdbDaemonWebUsbDeviceManager.BROWSER;
 const credentialStore = new AdbWebCredentialStore(`PrezADB@${location.hostname}`);
 const PRESENTATION_RECENTS_KEY = "its-presentasi-recent-shortcuts:v1";
+const CANVA_REFRESH_INTERVAL_MS = 90000;
 
 function defaultDeck(): Deck {
   return {
@@ -345,6 +363,26 @@ function cleanFontFamily(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const cleaned = value.replace(/[;"<>]/g, "").trim().slice(0, 80);
   return cleaned || undefined;
+}
+
+function normalizeCanvaUrl(value: string): string | null {
+  try {
+    const url = new URL(value.trim());
+    if (!/(^|\.)canva\.com$/i.test(url.hostname)) return null;
+    if (!/^\/design\/[^/]+/i.test(url.pathname) && !/^\/[^/]+\/[^/]+/i.test(url.pathname)) return null;
+    url.hash = "";
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+
+function canvaEmbedUrl(value: string, refresh = false): string {
+  const normalized = normalizeCanvaUrl(value) || value;
+  const url = new URL(normalized);
+  url.searchParams.set("embed", "");
+  if (refresh) url.searchParams.set("its_refresh", String(Date.now()));
+  return url.href;
 }
 
 function cleanStyleFields(item: Record<string, unknown>): PptxRunStyle & { animation?: ElementAnimation } {
@@ -405,6 +443,20 @@ function sanitizeDeck(input: unknown): Deck {
         if (animation) image.animation = animation;
         return [image];
       }
+      if (item.type === "canva") {
+        const url = normalizeCanvaUrl(typeof item.url === "string" ? item.url : typeof item.embedUrl === "string" ? item.embedUrl : "");
+        if (!url) return [];
+        const animation = cleanAnimation(item.animation);
+        const canva: CanvaElement = {
+          ...base,
+          type: "canva",
+          url,
+          embedUrl: canvaEmbedUrl(url),
+          title: typeof item.title === "string" ? item.title.slice(0, 160) : "Canva",
+        };
+        if (animation) canva.animation = animation;
+        return [canva];
+      }
       if (item.type === "shape") {
         const animation = cleanAnimation(item.animation);
         const shape: ShapeElement = {
@@ -461,6 +513,7 @@ function elementLabel(element: SlideElement | null): string {
     return preview ? `Teks: ${preview}` : "Kotak teks";
   }
   if (element.type === "image" || element.type === "canvas") return element.alt ? `Canvas: ${element.alt.slice(0, 34)}` : "Canvas";
+  if (element.type === "canva") return element.title ? `Canva: ${element.title.slice(0, 34)}` : "Canva embed";
   if (element.type === "phone") return "Mockup HP / ADB";
   return element.text ? `Bentuk: ${element.text.slice(0, 34)}` : `Bentuk ${element.shape}`;
 }
@@ -634,7 +687,7 @@ function getOrCreateEditorToken(rotate = false): string {
   return token;
 }
 
-type PresentationShortcutItem = { title: string; url: string; updatedAt: number };
+type PresentationShortcutItem = { title: string; url: string; updatedAt: number; themeColor?: string; backgroundColor?: string };
 
 function loadPresentationRecents(): PresentationShortcutItem[] {
   try {
@@ -657,7 +710,12 @@ function currentPresentationShortcutUrl(): string {
 }
 
 function syncPresentationShortcutsToServiceWorker(): void {
-  const items = loadPresentationRecents().slice(0, 3).map((item) => ({ title: item.title, url: item.url }));
+  const items = loadPresentationRecents().slice(0, 3).map((item) => ({
+    title: item.title,
+    url: item.url,
+    themeColor: item.themeColor,
+    backgroundColor: item.backgroundColor,
+  }));
   const message = { type: "ITS_PRESENTATION_RECENTS", items };
   if (!("serviceWorker" in navigator)) return;
   navigator.serviceWorker.controller?.postMessage(message);
@@ -667,10 +725,13 @@ function syncPresentationShortcutsToServiceWorker(): void {
 function rememberPresentationShortcut(): void {
   if (!projectId) return;
   const url = currentPresentationShortcutUrl();
+  const colors = sampleSlideColors(deck.slides[0] || defaultDeck().slides[0]);
   const item: PresentationShortcutItem = {
     title: (deck.title || "Presentasi tanpa judul").trim().slice(0, 64),
     url,
     updatedAt: Date.now(),
+    themeColor: colors[1],
+    backgroundColor: colors[0],
   };
   const next = [item, ...loadPresentationRecents().filter((recent) => recent.url !== url)].slice(0, 6);
   localStorage.setItem(PRESENTATION_RECENTS_KEY, JSON.stringify(next));
@@ -692,15 +753,25 @@ function setNamedMeta(selector: string, value: string): void {
 
 function updatePresentationMetadata(): void {
   const title = deck.title || "ITS Presentasi";
-  const description = `${title} - buka presentasi realtime dengan viewer, komentar, dan WebUSB ADB.`;
+  const ownerName = projectOwnerName || (role === "owner" ? authDisplayName(firebaseUser) || participantName : "pemilik presentasi");
+  const description = role === "editor"
+    ? `Bergabung dan berkontribusi di dalam ${title} yang dibuat oleh ${ownerName}.`
+    : role === "viewer"
+      ? `Bergabung di presentasi ${title} yang dibuat oleh ${ownerName}.`
+      : `${title} - presentasi realtime oleh ${ownerName} dengan komentar dan WebUSB ADB.`;
   const absoluteUrl = projectId ? new URL(currentPresentationShortcutUrl(), location.origin).href : "https://itstelkom.web.app/presentation/";
+  const colors = sampleSlideColors(deck.slides[0] || defaultDeck().slides[0]);
   document.title = `${title} | ITS Presentasi`;
   setNamedMeta('meta[name="description"]', description);
+  setNamedMeta('meta[name="theme-color"]', colors[1]);
   setNamedMeta('meta[property="og:title"]', title);
   setNamedMeta('meta[property="og:description"]', description);
   setNamedMeta('meta[property="og:url"]', absoluteUrl);
   setNamedMeta('meta[name="twitter:title"]', title);
   setNamedMeta('meta[name="twitter:description"]', description);
+  document.documentElement.style.setProperty("--ambient-a", colors[0]);
+  document.documentElement.style.setProperty("--ambient-b", colors[1]);
+  document.documentElement.style.setProperty("--ambient-c", colors[2]);
 }
 
 function registerPresentationServiceWorker(): void {
@@ -886,6 +957,7 @@ async function createProject(template = ""): Promise<void> {
   const newDeck = templateDeck(template);
   const record: PresentationRecord = {
     ownerUid: firebaseUser.uid,
+    ownerName: authDisplayName(firebaseUser) || participantName,
     visibility: "public",
     deck: newDeck,
     state: { currentSlide: 0, presenting: false, updatedAt: now },
@@ -897,6 +969,7 @@ async function createProject(template = ""): Promise<void> {
   await set(ref(db, `presentationUsers/${firebaseUser.uid}/projects/${id}`), { title: newDeck.title, createdAt: now, updatedAt: now });
   projectId = id;
   projectCreatedAt = now;
+  projectOwnerName = record.ownerName || participantName;
   getOrCreateEditorToken();
   navigateToProject(id);
 }
@@ -908,6 +981,7 @@ async function createCopyProject(): Promise<void> {
   const copiedDeck = sanitizeDeck({ ...serializableDeck(), title: `${deck.title || "Presentasi"} salinan` });
   const record: PresentationRecord = {
     ownerUid: firebaseUser.uid,
+    ownerName: authDisplayName(firebaseUser) || participantName,
     visibility: "public",
     deck: copiedDeck,
     state: { currentSlide: 0, presenting: false, updatedAt: now },
@@ -917,6 +991,7 @@ async function createCopyProject(): Promise<void> {
   setSaveState("saving", "Membuat salinan...");
   await set(ref(db, `presentations/${id}`), record);
   await set(ref(db, `presentationUsers/${firebaseUser.uid}/projects/${id}`), { title: copiedDeck.title, createdAt: now, updatedAt: now });
+  projectOwnerName = record.ownerName || participantName;
   toast("Salinan presentasi dibuat.");
   navigateToProject(id);
 }
@@ -943,6 +1018,7 @@ async function openProject(): Promise<void> {
   deck = sanitizeDeck(record.deck);
   presentationState = record.state || { currentSlide: 0, presenting: false };
   projectCreatedAt = Number(record.createdAt) || Number(record.updatedAt) || 0;
+  projectOwnerName = (record.ownerName || "").trim() || (role === "owner" ? authDisplayName(firebaseUser) || participantName : "pemilik presentasi");
   currentSlide = clamp(Number(presentationState.currentSlide) || 0, 0, deck.slides.length - 1);
   selectedElementId = null;
   resetHistoryBaseline();
@@ -999,6 +1075,7 @@ function showAudience(): void {
   resizeAudienceSlide();
   syncFullscreenButton();
   showAudienceChrome();
+  ensurePresenterCursorVisible(true);
   if (presentationState.presenting && role !== "owner") void connectViewerRtc();
 }
 
@@ -1243,7 +1320,36 @@ function announceEditing(element: SlideElement | null): void {
 
 function hidePresenceCursor(): void {
   if (!lastCursorPoint) return;
+  if (role === "owner" && presentationState.presenting && isAudienceOpen()) return;
   updatePresenceCursor({ ...lastCursorPoint, visible: false, updatedAt: Date.now() }, true);
+}
+
+function ensurePresenterCursorVisible(force = false): void {
+  if (role !== "owner" || !presentationState.presenting || !isAudienceOpen()) return;
+  const base: CursorPresence = lastCursorPoint && lastCursorPoint.slide === currentSlide ? lastCursorPoint : {
+    x: Math.round(SLIDE_WIDTH * 0.52),
+    y: Math.round(SLIDE_HEIGHT * 0.48),
+    slide: currentSlide,
+    visible: true,
+  };
+  updatePresenceCursor({
+    ...base,
+    slide: currentSlide,
+    visible: true,
+    target: base.target || current().name || `Slide ${currentSlide + 1}`,
+    editing: base.editing || "Mempresentasikan",
+  }, force);
+}
+
+function startPresenterCursorHeartbeat(): void {
+  clearInterval(presenterCursorTimer);
+  presenterCursorTimer = window.setInterval(() => ensurePresenterCursorVisible(true), 1800);
+  ensurePresenterCursorVisible(true);
+}
+
+function stopPresenterCursorHeartbeat(): void {
+  clearInterval(presenterCursorTimer);
+  presenterCursorTimer = 0;
 }
 
 function renderPresence(records: Record<string, PresenceRecord>): void {
@@ -1344,6 +1450,7 @@ function commentPreviewHtml(element: SlideElement | null): string {
   if (element.type === "text") return `<strong>${escapeHtml(elementLabel(element))}</strong><p>${escapeHtml(element.text || "")}</p>`;
   if (element.type === "shape") return `<strong>${escapeHtml(elementLabel(element))}</strong><p>${escapeHtml(element.text || element.shape)}</p>`;
   if (element.type === "image" || element.type === "canvas") return `<strong>${escapeHtml(elementLabel(element))}</strong><img src="${escapeAttribute(element.src)}" alt="">`;
+  if (element.type === "canva") return `<strong>${escapeHtml(elementLabel(element))}</strong><p>${escapeHtml(element.url)}</p>`;
   if (element.type === "phone") return `<strong>Mockup HP</strong><p>${escapeHtml(element.deviceLabel || getDeviceLabel(element.deviceSerial) || "Perangkat mobile")}</p>`;
   return `<strong>${escapeHtml(elementLabel(element))}</strong>`;
 }
@@ -1495,6 +1602,7 @@ async function submitComment(): Promise<void> {
   if (element.type === "text") record.elementText = element.text.slice(0, 400);
   if (element.type === "shape" && element.text) record.elementText = element.text.slice(0, 400);
   if (element.type === "image" || element.type === "canvas") record.elementImage = element.src.slice(0, 600);
+  if (element.type === "canva") record.elementText = element.url.slice(0, 400);
   input.value = "";
   if (localMode) {
     activeComments.push({ ...record, createdAt: Date.now() });
@@ -1682,6 +1790,9 @@ function createSlidePreview(slide: Slide | undefined, className = "mini-slide"):
       image.src = element.src;
       image.alt = "";
       node.append(image);
+    } else if (element.type === "canva") {
+      node.classList.add("mini-canva");
+      node.textContent = "Canva";
     } else if (element.type === "shape") {
       node.classList.add(`mini-shape-${element.shape}`);
       node.style.background = element.shape === "line" ? "transparent" : element.fill || "transparent";
@@ -1904,6 +2015,7 @@ function renderCanvas(): void {
   for (const element of current().elements) canvas.append(createElementNode(element, false));
   renderRemoteCursors();
   renderCommentBadges();
+  refreshVisibleCanvaEmbeds(true);
 }
 
 function applyTextStyle(node: HTMLElement, element: Pick<TextElement, "fontFamily" | "fontSize" | "color" | "bold" | "italic" | "underline" | "variant" | "align" | "insetLeft" | "insetRight" | "insetTop" | "insetBottom" | "lineHeight">): void {
@@ -2054,6 +2166,10 @@ function bindSurfaceCommentInteractions(surface: HTMLElement): void {
 function bindAudienceStageGestures(surface: HTMLElement): void {
   const pointers = new Map<number, PointerEvent>();
   let lastTap = 0;
+  let swipePointerId = -1;
+  let swipeStartX = 0;
+  let swipeStartY = 0;
+  let swiping = false;
   const distance = () => {
     const values = [...pointers.values()];
     if (values.length < 2) return 0;
@@ -2063,6 +2179,10 @@ function bindAudienceStageGestures(surface: HTMLElement): void {
     pointers.set(event.pointerId, event);
     if (pointers.size === 2) audiencePinchDistance = distance();
     if (event.pointerType === "touch" && pointers.size === 1) {
+      swipePointerId = event.pointerId;
+      swipeStartX = event.clientX;
+      swipeStartY = event.clientY;
+      swiping = false;
       const now = Date.now();
       if (now - lastTap < 280) {
         event.preventDefault();
@@ -2074,6 +2194,21 @@ function bindAudienceStageGestures(surface: HTMLElement): void {
   surface.addEventListener("pointermove", (event) => {
     if (!pointers.has(event.pointerId)) return;
     pointers.set(event.pointerId, event);
+    if (event.pointerId === swipePointerId && pointers.size === 1) {
+      const dx = event.clientX - swipeStartX;
+      const dy = event.clientY - swipeStartY;
+      if (!swiping && Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.25) swiping = true;
+      if (swiping) {
+        event.preventDefault();
+        const slide = $("#audience-slide");
+        surface.classList.add("slide-swiping");
+        surface.classList.remove("slide-settling");
+        const atEnd = (dx > 0 && currentSlide >= deck.slides.length - 1) || (dx < 0 && currentSlide <= 0);
+        const damped = atEnd ? dx * 0.28 : dx;
+        slide.style.setProperty("--audience-slide-x", `${damped}px`);
+        slide.style.setProperty("--audience-slide-opacity", String(Math.max(0.64, 1 - Math.abs(dx) / Math.max(360, surface.clientWidth))));
+      }
+    }
     if (pointers.size !== 2 || !audiencePinchDistance) return;
     const next = distance();
     if (Math.abs(next - audiencePinchDistance) < 34) return;
@@ -2081,6 +2216,22 @@ function bindAudienceStageGestures(surface: HTMLElement): void {
     audiencePinchDistance = next;
   });
   const release = (event: PointerEvent) => {
+    if (event.pointerId === swipePointerId) {
+      const dx = event.clientX - swipeStartX;
+      const dy = Math.abs(event.clientY - swipeStartY);
+      if (swiping) {
+        audienceSwipeSuppressClickUntil = Date.now() + 420;
+        const direction = dx > 0 ? 1 : -1;
+        const nextIndex = clamp(currentSlide + direction, 0, deck.slides.length - 1);
+        if (Math.abs(dx) > Math.min(140, surface.clientWidth * 0.18) && dy < 120 && nextIndex !== currentSlide) {
+          animateAudienceSwipeToSlide(nextIndex, direction as 1 | -1);
+        } else {
+          resetAudienceSwipeMotion(true);
+        }
+      }
+      swiping = false;
+      swipePointerId = -1;
+    }
     pointers.delete(event.pointerId);
     if (pointers.size < 2) audiencePinchDistance = 0;
   };
@@ -2153,6 +2304,24 @@ function createElementNode(element: SlideElement, audience: boolean): HTMLDivEle
     if (image.complete && image.naturalWidth) draw();
     else image.addEventListener("load", draw, { once: true });
     node.append(canvas);
+  } else if (element.type === "canva") {
+    const shell = document.createElement("div");
+    shell.className = "canva-element";
+    const iframe = document.createElement("iframe");
+    iframe.src = element.embedUrl || canvaEmbedUrl(element.url);
+    iframe.dataset.canvaUrl = element.url;
+    iframe.dataset.canvaRefreshAt = String(Date.now());
+    iframe.title = element.title || "Canva presentation";
+    iframe.loading = "lazy";
+    iframe.referrerPolicy = "strict-origin-when-cross-origin";
+    iframe.allow = "fullscreen; autoplay; clipboard-read; clipboard-write";
+    const open = document.createElement("a");
+    open.href = element.url;
+    open.target = "_blank";
+    open.rel = "noopener noreferrer";
+    open.textContent = "Buka Canva";
+    shell.append(iframe, open);
+    node.append(shell);
   } else {
     const shape = document.createElement("div");
     shape.className = `shape-element ${element.shape}`;
@@ -2303,6 +2472,7 @@ function renderProperties(): void {
     ? element.type === "phone" ? "Mockup HP"
       : element.type === "image" ? "Gambar"
         : element.type === "canvas" ? "Canvas slide"
+        : element.type === "canva" ? "Canva"
         : element.type === "shape" ? "Bentuk"
           : element.variant === "title" ? "Judul" : "Teks"
     : "Tidak ada pilihan";
@@ -2610,6 +2780,52 @@ async function addImageFile(file: File): Promise<void> {
     }
   }
   addImageFromDataUrl(src, file.name);
+}
+
+function addCanvaLink(url: string): void {
+  if (!isEditableRole()) return;
+  const normalized = normalizeCanvaUrl(url);
+  if (!normalized) {
+    toast("Link Canva tidak valid atau tidak publik.");
+    return;
+  }
+  const title = prompt("Nama embed Canva", "Canva")?.trim() || "Canva";
+  const element: CanvaElement = {
+    id: uid("canva"),
+    type: "canva",
+    x: 92,
+    y: 70,
+    w: 776,
+    h: 436,
+    url: normalized,
+    embedUrl: canvaEmbedUrl(normalized),
+    title,
+  };
+  current().elements.push(element);
+  selectedElementId = element.id;
+  recordHistory();
+  renderAll();
+  scheduleSave("Menyimpan embed Canva...");
+  toast("Embed Canva ditambahkan dan akan auto-refresh.");
+}
+
+function promptCanvaImport(): void {
+  const value = prompt("Tempel link Canva publik", "");
+  if (value === null) return;
+  addCanvaLink(value);
+}
+
+function refreshVisibleCanvaEmbeds(force = false): void {
+  const frames = [...document.querySelectorAll<HTMLIFrameElement>('iframe[data-canva-url]')];
+  if (!frames.length && !force) return;
+  const now = Date.now();
+  for (const frame of frames) {
+    const url = frame.dataset.canvaUrl;
+    const lastRefresh = Number(frame.dataset.canvaRefreshAt || 0);
+    if (!url || (!force && lastRefresh && now - lastRefresh < CANVA_REFRESH_INTERVAL_MS)) continue;
+    frame.dataset.canvaRefreshAt = String(now);
+    frame.src = canvaEmbedUrl(url, true);
+  }
 }
 
 function arrangeSelected(mode: "front" | "back" | "forward" | "backward"): void {
@@ -3323,6 +3539,7 @@ function menuItems(menu: string): MenuItem[] {
       { label: "Baru", shortcut: "Ctrl+Alt+N", action: () => void createProject().catch((error) => toast(friendlyError(error))) },
       { label: "Buka", shortcut: "Ctrl+O", action: () => { location.href = homeUrl(); } },
       { label: "Impor PPTX", action: openPptxPicker },
+      { label: "Import Canva by link", disabled: editable, action: promptCanvaImport },
       { separator: true },
       { label: "Buat salinan", disabled: editable, action: () => void createCopyProject().catch((error) => toast(friendlyError(error))) },
       { label: "Bagikan", disabled: () => role !== "owner", action: openShareDialog },
@@ -3376,6 +3593,7 @@ function menuItems(menu: string): MenuItem[] {
       { label: "Bentuk persegi", action: () => addShape("rect") },
       { label: "Bentuk lingkaran", action: () => addShape("ellipse") },
       { label: "Garis", action: () => addShape("line") },
+      { label: "Canva by link", disabled: editable, action: promptCanvaImport },
       {
         label: "Tabel", items: [
           { label: "Sisipkan tabel...", action: promptAddTable },
@@ -3494,6 +3712,7 @@ function menuItems(menu: string): MenuItem[] {
     extensions: [
       { label: "ADB Live Mirror", action: () => switchInspector("device") },
       { label: "Import PPTX Browser", action: openPptxPicker },
+      { label: "Import Canva by link", disabled: editable, action: promptCanvaImport },
     ],
     developer: [
       { label: "Diagnosa RTDB", action: () => toast(`Project aktif: ${projectId || "lokal"}`) },
@@ -3625,6 +3844,7 @@ function renderAudienceSlide(): void {
   syncAudienceMediaControls();
   renderRemoteCursors();
   renderCommentBadges();
+  refreshVisibleCanvaEmbeds(true);
 }
 
 function renderAudienceChrome(): void {
@@ -3673,6 +3893,32 @@ function setAudienceFillMode(mode: "contain" | "cover"): void {
 function toggleAudienceFillMode(): void {
   setAudienceFillMode(audienceFillMode === "cover" ? "contain" : "cover");
   toast(audienceFillMode === "cover" ? "Slide memenuhi layar." : "Slide kembali pas layar.");
+}
+
+function resetAudienceSwipeMotion(animated = true): void {
+  const stage = document.getElementById("audience-stage");
+  const slide = document.getElementById("audience-slide");
+  if (!stage || !slide) return;
+  stage.classList.toggle("slide-swiping", !animated);
+  stage.classList.toggle("slide-settling", animated);
+  slide.style.setProperty("--audience-slide-x", "0px");
+  slide.style.setProperty("--audience-slide-opacity", "1");
+  if (animated) window.setTimeout(() => stage.classList.remove("slide-settling"), 230);
+}
+
+function animateAudienceSwipeToSlide(nextIndex: number, direction: 1 | -1): void {
+  const stage = $("#audience-stage");
+  const slide = $("#audience-slide");
+  stage.classList.remove("slide-swiping");
+  stage.classList.add("slide-settling");
+  slide.style.setProperty("--audience-slide-x", `${direction * Math.max(220, stage.clientWidth)}px`);
+  slide.style.setProperty("--audience-slide-opacity", "0.2");
+  window.setTimeout(() => {
+    goToAudienceSlide(nextIndex);
+    slide.style.setProperty("--audience-slide-x", `${-direction * Math.max(140, stage.clientWidth * 0.26)}px`);
+    slide.style.setProperty("--audience-slide-opacity", "0.45");
+    requestAnimationFrame(() => resetAudienceSwipeMotion(true));
+  }, 150);
 }
 
 function updateAudienceAmbient(slide: Slide): void {
@@ -3841,6 +4087,11 @@ function isAudienceOpen(): boolean {
 }
 
 function handleAudienceStageClick(event: MouseEvent): void {
+  if (Date.now() < audienceSwipeSuppressClickUntil) {
+    event.preventDefault();
+    event.stopPropagation();
+    return;
+  }
   if ((event.target as HTMLElement).closest(".remote-cursor")) return;
   const stage = $("#audience-stage");
   const element = elementFromSurfaceEvent(event, stage);
@@ -3947,17 +4198,18 @@ function resizeAudienceSlide(): void {
   const scale = audienceFillMode === "cover"
     ? Math.max(stage.clientWidth / SLIDE_WIDTH, stage.clientHeight / SLIDE_HEIGHT)
     : Math.min(stage.clientWidth / SLIDE_WIDTH, stage.clientHeight / SLIDE_HEIGHT);
-  $("#audience-slide").setAttribute("style", `transform:translate(-50%,-50%) scale(${scale})`);
+  $("#audience-slide").style.setProperty("--audience-slide-scale", String(scale));
 }
 
 function cursorRecordsForSlide(slideIndex: number): PresenceRecord[] {
   const now = Date.now();
   return activePresenceRecords.filter((item) => {
     const cursor = item.cursor;
+    const maxAge = item.role === "owner" ? 65000 : 15000;
     return item.sessionId !== presenceSessionId
       && cursor?.visible
       && Number(cursor.slide) === slideIndex
-      && (!cursor.updatedAt || now - Number(cursor.updatedAt) < 10000);
+      && (!cursor.updatedAt || now - Number(cursor.updatedAt) < maxAge);
   });
 }
 
@@ -4256,6 +4508,7 @@ function drawSlideToContext(context: CanvasRenderingContext2D, slide: Slide, sca
     if (element.type === "text") drawTextElement(context, element);
     else if (element.type === "phone") drawPhoneElement(context, element);
     else if (element.type === "image" || element.type === "canvas") drawImageElement(context, element);
+    else if (element.type === "canva") drawCanvaElement(context, element);
     else drawShapeElement(context, element);
   }
 }
@@ -4537,6 +4790,26 @@ function drawImageElement(context: CanvasRenderingContext2D, element: ImageEleme
   context.restore();
 }
 
+function drawCanvaElement(context: CanvasRenderingContext2D, element: CanvaElement): void {
+  context.save();
+  roundedRect(context, element.x, element.y, element.w, element.h, 16);
+  const gradient = context.createLinearGradient(element.x, element.y, element.x + element.w, element.y + element.h);
+  gradient.addColorStop(0, "#00c4cc");
+  gradient.addColorStop(.55, "#7d2ae8");
+  gradient.addColorStop(1, "#ff8b00");
+  context.fillStyle = gradient;
+  context.fill();
+  context.fillStyle = "rgba(255,255,255,.18)";
+  context.fillRect(element.x, element.y, element.w, element.h);
+  context.fillStyle = "#ffffff";
+  context.font = "700 28px Inter, Segoe UI, Arial";
+  context.textAlign = "center";
+  context.fillText(element.title || "Canva", element.x + element.w / 2, element.y + element.h / 2 - 8);
+  context.font = "500 13px Inter, Segoe UI, Arial";
+  context.fillText("Live embed - auto update dari link", element.x + element.w / 2, element.y + element.h / 2 + 22);
+  context.restore();
+}
+
 function drawShapeElement(context: CanvasRenderingContext2D, element: ShapeElement): void {
   context.save();
   context.strokeStyle = element.stroke || "transparent";
@@ -4612,6 +4885,7 @@ async function startPresentation(): Promise<void> {
   const fullscreen = document.fullscreenEnabled && !document.fullscreenElement
     ? document.documentElement.requestFullscreen().catch(() => undefined)
     : Promise.resolve();
+  await waitForSlideImages(current());
   drawBroadcastFrame();
   const canvas = $("#broadcast-canvas") as HTMLCanvasElement;
   broadcastStream = canvas.captureStream(30);
@@ -4627,6 +4901,7 @@ async function startPresentation(): Promise<void> {
   button.innerHTML = "<span>■</span><span>Hentikan</span>";
   await ensureCurrentSlideMirrors();
   showAudience();
+  startPresenterCursorHeartbeat();
   await fullscreen;
   await tryLockLandscape();
   presenterRequestUnsubscribe?.();
@@ -4642,6 +4917,8 @@ async function stopPresentation(): Promise<void> {
   if (!localMode) await set(ref(db, `presentations/${projectId}/state`), presentationState);
   presenterRequestUnsubscribe?.();
   presenterRequestUnsubscribe = null;
+  stopPresenterCursorHeartbeat();
+  hidePresenceCursor();
   for (const [id] of presenterPeers) cleanupPresenterPeer(id);
   broadcastStream?.getTracks().forEach((track) => track.stop());
   broadcastStream = null;
@@ -4660,6 +4937,7 @@ async function publishSlideState(): Promise<void> {
   presentationState.updatedAt = Date.now();
   if (!localMode) await set(ref(db, `presentations/${projectId}/state`), presentationState);
   updatePresenceSlide();
+  ensurePresenterCursorVisible(true);
   await ensureCurrentSlideMirrors();
   drawBroadcastFrame();
 }
@@ -4704,11 +4982,16 @@ async function connectViewerRtc(): Promise<void> {
   $("span:last-child", status).textContent = "Menghubungkan stream presenter...";
   peer.ontrack = (event) => {
     video.srcObject = event.streams[0];
-    video.removeAttribute("hidden");
-    $("#audience-slide").setAttribute("hidden", "");
     status.classList.add("live");
     $("span:last-child", status).textContent = "LIVE - peer-to-peer";
     syncAudienceMediaControls();
+    const revealVideo = () => {
+      if (!video.videoWidth && !video.videoHeight) return;
+      video.removeAttribute("hidden");
+      $("#audience-slide").setAttribute("hidden", "");
+    };
+    video.addEventListener("loadeddata", revealVideo, { once: true });
+    video.addEventListener("playing", revealVideo, { once: true });
     void video.play().catch(() => undefined);
   };
   peer.onicecandidate = (event) => { if (event.candidate) void push(ref(db, `${base}/viewerCandidates`), event.candidate.toJSON()); };
@@ -4716,6 +4999,8 @@ async function connectViewerRtc(): Promise<void> {
     if (peer.connectionState === "failed") {
       $("span:last-child", status).textContent = "Koneksi P2P gagal - jaringan mungkin memerlukan TURN";
       status.classList.remove("live");
+      video.setAttribute("hidden", "");
+      $("#audience-slide").removeAttribute("hidden");
     }
   };
   await set(ref(db, `${base}/request`), { uid: firebaseUser.uid, name: participantName, createdAt: serverTimestamp() });
@@ -4948,6 +5233,8 @@ function cleanupProjectRuntime(): void {
   activeCommentElementId = "";
   clearInterval(presenceTimer);
   clearInterval(broadcastTimer);
+  clearInterval(presenterCursorTimer);
+  presenterCursorTimer = 0;
 }
 
 async function handleDroppedFiles(fileList: FileList | File[]): Promise<void> {
@@ -5135,6 +5422,8 @@ async function handleHubGoogleLogin(): Promise<void> {
 }
 
 function bindUi(): void {
+  clearInterval(canvaRefreshTimer);
+  canvaRefreshTimer = window.setInterval(() => refreshVisibleCanvaEmbeds(), 90000);
   $("#create-project").addEventListener("click", () => void createProject().catch((error) => toast(friendlyError(error))));
   $("#hub-google-login").addEventListener("click", () => void handleHubGoogleLogin().catch((error) => toast(friendlyError(error))));
   $("#owner-google-login").addEventListener("click", () => void signInWithGoogleAccount().catch((error) => toast(friendlyError(error))));
@@ -5255,6 +5544,7 @@ function bindUi(): void {
   bindSwipeRightToClose($("#segment-dialog"), () => ($("#segment-dialog") as HTMLDialogElement).close());
   bindSwipeRightToClose($("#comment-dialog"), () => ($("#comment-dialog") as HTMLDialogElement).close());
   bindSwipeDownToClose($("#comment-action-sheet"), () => ($("#comment-action-sheet") as HTMLDialogElement).close());
+  bindSwipeDownToClose($("#legal-dialog"), () => ($("#legal-dialog") as HTMLDialogElement).close());
   bindElasticSwipe($("#join-card"));
   document.querySelectorAll<HTMLElement>("[data-menu]").forEach((button) => button.addEventListener("click", (event) => {
     event.stopPropagation();
