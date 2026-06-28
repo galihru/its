@@ -309,6 +309,8 @@ let pendingReplaceImageElementId = "";
 let latestSharedRecords: Record<string, SharedProjectRecord> = {};
 let audienceFillMode: "contain" | "cover" = "contain";
 let audiencePinchDistance = 0;
+let joinPreviewIndex = 0;
+let joinCarouselTimer = 0;
 
 const usbManager = AdbDaemonWebUsbDeviceManager.BROWSER;
 const credentialStore = new AdbWebCredentialStore(`PrezADB@${location.hostname}`);
@@ -713,6 +715,7 @@ async function signInWithGoogleAccount(): Promise<User> {
 }
 
 async function showProjectHub(): Promise<void> {
+  stopJoinCarousel();
   cleanupProjectRuntime();
   $("#boot-screen").setAttribute("hidden", "");
   $("#editor-app").setAttribute("hidden", "");
@@ -876,6 +879,7 @@ async function openProject(): Promise<void> {
 }
 
 function showEditor(): void {
+  stopJoinCarousel();
   $("#boot-screen").setAttribute("hidden", "");
   $("#project-hub").setAttribute("hidden", "");
   $("#audience-view").setAttribute("hidden", "");
@@ -895,6 +899,7 @@ function showEditor(): void {
 }
 
 function showAudience(): void {
+  stopJoinCarousel();
   $("#boot-screen").setAttribute("hidden", "");
   $("#project-hub").setAttribute("hidden", "");
   $("#editor-app").setAttribute("hidden", "");
@@ -926,6 +931,7 @@ function showJoinGate(nextRole: Role): void {
   ($("#join-name") as HTMLInputElement).value = participantName;
   ($("#join-remember") as HTMLInputElement).checked = Boolean(localStorage.getItem("its-presentasi-name"));
   $("#join-meta").textContent = `${deck.slides.length} halaman - Dibuat ${formatDateTime(projectCreatedAt)}`;
+  joinPreviewIndex = clamp(currentSlide, 0, Math.min(2, Math.max(0, deck.slides.length - 1)));
   const previewList = $("#join-preview-list");
   const previewDots = $("#join-preview-dots");
   previewList.innerHTML = "";
@@ -938,20 +944,45 @@ function showJoinGate(nextRole: Role): void {
     const label = document.createElement("span");
     label.textContent = `Slide ${index + 1}`;
     item.append(label);
-    item.addEventListener("click", () => { currentSlide = index; renderJoinActivePreview(); });
+    item.addEventListener("click", () => {
+      joinPreviewIndex = index;
+      renderJoinActivePreview();
+      restartJoinCarousel();
+    });
     previewList.append(item);
     const dot = document.createElement("span");
     previewDots.append(dot);
   });
   renderJoinActivePreview();
+  restartJoinCarousel();
 }
 
 function renderJoinActivePreview(): void {
   const cards = [...document.querySelectorAll<HTMLElement>(".join-preview-card")];
-  const activeIndex = currentSlide < cards.length ? currentSlide : 0;
+  const activeIndex = joinPreviewIndex < cards.length ? joinPreviewIndex : 0;
   cards.forEach((item, index) => item.classList.toggle("active", index === activeIndex));
   document.querySelectorAll<HTMLElement>(".join-preview-dots span").forEach((item, index) => item.classList.toggle("active", index === activeIndex));
+  cards[activeIndex]?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
   updateJoinAmbient(activeIndex);
+}
+
+function stopJoinCarousel(): void {
+  clearInterval(joinCarouselTimer);
+  joinCarouselTimer = 0;
+}
+
+function restartJoinCarousel(): void {
+  stopJoinCarousel();
+  const count = Math.min(3, deck.slides.length);
+  if (count <= 1) return;
+  joinCarouselTimer = window.setInterval(() => {
+    if ($("#share-entry").hasAttribute("hidden")) {
+      stopJoinCarousel();
+      return;
+    }
+    joinPreviewIndex = (joinPreviewIndex + 1) % count;
+    renderJoinActivePreview();
+  }, 4200);
 }
 
 function updateJoinAmbient(slideIndex: number): void {

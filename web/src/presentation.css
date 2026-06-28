@@ -341,7 +341,7 @@ dialog::backdrop { background: rgba(32,33,36,.32); backdrop-filter: blur(2px); }
 .project-slide-preview, .join-slide-preview, .next-slide-preview, .segment-slide-preview { width: 100%; height: 100%; }
 .slide-thumb-frame .mini-slide { border-radius: 2px; }
 
-.share-entry { position: fixed; inset: 0; z-index: 460; display: grid; grid-template-columns: minmax(360px, 620px) minmax(320px, 390px); align-items: stretch; justify-content: center; gap: 0; padding: 32px; background: radial-gradient(circle at 18% 18%, color-mix(in srgb, var(--join-ambient-a) 70%, transparent), transparent 34%), radial-gradient(circle at 84% 30%, color-mix(in srgb, var(--join-ambient-b) 62%, transparent), transparent 36%), linear-gradient(135deg, color-mix(in srgb, var(--join-ambient-c) 82%, #050607), #111315); overflow: auto; transition: background .42s ease; }
+.share-entry { position: fixed; inset: 0; z-index: 460; display: grid; grid-template-columns: minmax(360px, 620px) minmax(320px, 390px); grid-template-rows: minmax(520px, clamp(520px, calc(100dvh - 64px), 720px)); align-content: center; align-items: stretch; justify-content: center; gap: 0; padding: 32px; background: radial-gradient(circle at 18% 18%, color-mix(in srgb, var(--join-ambient-a) 70%, transparent), transparent 34%), radial-gradient(circle at 84% 30%, color-mix(in srgb, var(--join-ambient-b) 62%, transparent), transparent 36%), linear-gradient(135deg, color-mix(in srgb, var(--join-ambient-c) 82%, #050607), #111315); overflow: auto; transition: background .42s ease; }
 .join-top-actions { position: absolute; right: 18px; top: 16px; z-index: 3; }
 .floating-action-menu { position: absolute; right: 0; top: 46px; min-width: 190px; padding: 7px; border: 1px solid rgba(255,255,255,.34); border-radius: 14px; background: rgba(255,255,255,.78); box-shadow: none; backdrop-filter: blur(24px) saturate(1.22); }
 .floating-action-menu button { width: 100%; min-height: 38px; border: 0; border-radius: 10px; background: transparent; padding: 0 12px; text-align: left; cursor: pointer; font-size: 13px; }
@@ -349,8 +349,8 @@ dialog::backdrop { background: rgba(32,33,36,.32); backdrop-filter: blur(2px); }
 .share-preview-pane { position: relative; min-width: 0; display: flex; flex-direction: column; gap: 0; padding: 22px 22px 0; border: 1px solid rgba(255,255,255,.28); border-right: 0; border-radius: 24px 0 0 24px; background: linear-gradient(145deg, color-mix(in srgb, var(--join-ambient-c) 76%, rgba(15,16,19,.72)), color-mix(in srgb, var(--join-ambient-a) 50%, rgba(12,13,16,.58))); color: #fff; overflow: hidden; box-shadow: none; backdrop-filter: blur(24px) saturate(1.18); transition: background .42s ease, border-color .24s ease; }
 .share-preview-pane::before { content: ""; position: absolute; inset: 0; background: linear-gradient(135deg, color-mix(in srgb, var(--join-ambient-a) 24%, transparent), transparent 46%, color-mix(in srgb, var(--join-ambient-b) 18%, transparent)); pointer-events: none; transition: background .42s ease; }
 .share-brand { position: relative; z-index: 1; min-height: 34px; display: flex; align-items: center; gap: 10px; margin: 0 54px 20px 0; color: rgba(255,255,255,.82); }
-.share-brand .app-logo { width: 34px; height: 34px; border-radius: 10px; background: rgba(255,255,255,.9); overflow: hidden; }
-.share-brand .app-logo img { padding: 5px 4px 3px; object-position: 50% 54%; }
+.share-brand .app-logo { width: 34px; height: 34px; border-radius: 10px; background: rgba(255,255,255,.9); overflow: visible; }
+.share-brand .app-logo img { padding: 3px 4px 5px; object-position: 50% 48%; transform: translateY(-1px); }
 .share-brand span { display: none; }
 .share-brand strong { display: block; margin-top: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: clamp(18px, 2.2vw, 28px); line-height: 1.25; font-weight: 700; color: #fff; }
 .join-preview-list { position: relative; z-index: 1; display: flex; gap: 12px; padding: 0 0 14px; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x proximity; scrollbar-width: none; }
@@ -626,4 +626,107 @@ dialog.audience-rail-dialog .dialog-title { position: sticky; top: 0; z-index: 2
   .audience-view.rail-open .audience-header, .audience-view.rail-open .audience-control-layer { right: calc(var(--audience-rail-width) + 18px - var(--rail-swipe-offset)); }
   dialog.audience-rail-dialog[open] { inset: 0 0 0 auto; width: var(--audience-rail-width); max-width: calc(100vw - 18px); height: 100dvh; max-height: none; border-radius: 18px 0 0 18px; animation: audienceRailIn .22s ease both; }
   dialog.audience-rail-dialog form { height: 100%; max-height: none; }
+}
+
+@keyframes joinAmbientDrift {
+  from { background-position: 0% 35%, 100% 50%, 0% 50%; }
+  to { background-position: 22% 18%, 72% 76%, 100% 50%; }
+}
+
+.share-entry {
+  background-size: 145% 145%, 150% 150%, 120% 120%;
+  animation: joinAmbientDrift 18s ease-in-out infinite alternate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .share-entry { animation: none; }
+}
+
+@media (min-width: 900px) and (min-height: 720px) {
+  .share-entry::after {
+    content: "";
+    position: fixed;
+    z-index: 0;
+    right: 10px;
+    bottom: 0;
+    width: min(15vw, 210px);
+    height: min(42vh, 430px);
+    background: url("./image/splashwelpre-cutout.png") bottom center / contain no-repeat;
+    opacity: .72;
+    filter: drop-shadow(0 18px 36px rgba(0,0,0,.22));
+    pointer-events: none;
+  }
+  .share-preview-pane,
+  .join-card,
+  .join-top-actions { z-index: 1; }
+}
+
+@media (max-width: 760px) {
+  .share-entry {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    width: 100vw;
+    min-height: 100dvh;
+    padding: 8px;
+    overflow: auto;
+  }
+  .share-preview-pane,
+  .join-card {
+    width: min(460px, calc(100vw - 16px));
+  }
+  .share-preview-pane {
+    flex: 0 0 auto;
+    min-height: clamp(276px, 38dvh, 342px);
+    padding: 18px 18px 0;
+    border-radius: 24px 24px 0 0;
+  }
+  .share-brand {
+    min-height: 38px;
+    margin: 0 54px 16px 0;
+  }
+  .share-brand .app-logo {
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
+  }
+  .share-brand .app-logo img {
+    padding: 2px 5px 8px;
+    object-position: 50% 44%;
+    transform: translateY(-2px);
+  }
+  .join-preview-list {
+    gap: 10px;
+    padding-bottom: 13px;
+  }
+  .join-preview-card {
+    flex: 0 0 min(255px, 72vw);
+  }
+  .join-preview-dots {
+    padding-bottom: 18px;
+  }
+  .join-meta {
+    margin-inline: -18px;
+    padding-inline: 18px;
+  }
+  .join-card {
+    flex: 1 0 auto;
+    min-height: max(420px, calc(100dvh - clamp(286px, 38dvh, 352px) - 16px));
+    border-left: 1px solid rgba(255,255,255,.34);
+    border-top: 0;
+    border-radius: 0 0 24px 24px;
+    padding: 0 18px 24px;
+    overflow: visible;
+  }
+  .join-handle {
+    width: 48px;
+    height: 5px;
+    margin: 22px auto 22px;
+    padding-top: 0;
+  }
+  .join-card h1 {
+    margin-bottom: 18px;
+    font-size: clamp(22px, 6vw, 28px);
+  }
 }
