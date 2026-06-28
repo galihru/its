@@ -951,6 +951,20 @@ function renderJoinActivePreview(): void {
   const activeIndex = currentSlide < cards.length ? currentSlide : 0;
   cards.forEach((item, index) => item.classList.toggle("active", index === activeIndex));
   document.querySelectorAll<HTMLElement>(".join-preview-dots span").forEach((item, index) => item.classList.toggle("active", index === activeIndex));
+  updateJoinAmbient(activeIndex);
+}
+
+function updateJoinAmbient(slideIndex: number): void {
+  const entry = document.getElementById("share-entry");
+  const slide = deck.slides[clamp(slideIndex, 0, Math.max(0, deck.slides.length - 1))];
+  if (!entry || !slide) return;
+  let colors = sampleSlideColors(slide);
+  if (colors[0] === "#274a5a" && colors[1] === "#4a2638" && colors[2] === "#14151b") {
+    colors = ["#242729", "#37322e", "#101214"];
+  }
+  entry.style.setProperty("--join-ambient-a", colors[0]);
+  entry.style.setProperty("--join-ambient-b", colors[1]);
+  entry.style.setProperty("--join-ambient-c", colors[2]);
 }
 
 async function enterSharedProject(): Promise<void> {
@@ -4790,7 +4804,7 @@ function bindSwipeRightToClose(target: HTMLElement, close: () => void): void {
     if (dx > 4 && dy < 90) {
       target.style.transform = `translateX(${dx}px)`;
       target.style.opacity = String(Math.max(0.45, 1 - dx / 420));
-      if (isAudienceOpen() && target.classList.contains("audience-rail-dialog") && !isCompactAudienceLayout()) {
+      if (isAudienceOpen() && target.classList.contains("audience-rail-dialog")) {
         audienceView()?.style.setProperty("--rail-swipe-offset", `${Math.min(dx, 420)}px`);
       }
     }
@@ -4842,6 +4856,46 @@ function bindSwipeDownToClose(target: HTMLElement, close: () => void): void {
       target.style.opacity = "0";
       window.setTimeout(() => { close(); reset(); }, 205);
     } else reset();
+  });
+  target.addEventListener("pointercancel", () => {
+    dragging = false;
+    reset();
+  });
+}
+
+function bindElasticSwipe(target: HTMLElement): void {
+  let startX = 0;
+  let startY = 0;
+  let dragging = false;
+  const reset = () => {
+    target.style.transition = "transform .22s ease, opacity .22s ease";
+    target.style.transform = "";
+    target.style.opacity = "";
+    window.setTimeout(() => { target.style.transition = ""; }, 230);
+  };
+  target.addEventListener("pointerdown", (event) => {
+    if (!(event.target as HTMLElement).closest(".join-handle")) return;
+    startX = event.clientX;
+    startY = event.clientY;
+    dragging = true;
+    target.style.transition = "none";
+    target.setPointerCapture?.(event.pointerId);
+  });
+  target.addEventListener("pointermove", (event) => {
+    if (!dragging) return;
+    const dx = event.clientX - startX;
+    const dy = event.clientY - startY;
+    if (Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
+    const compact = matchMedia("(max-width: 760px)").matches;
+    const translate = compact ? Math.max(0, dy) : Math.max(0, dx);
+    if (!translate) return;
+    target.style.transform = compact ? `translateY(${Math.min(translate, 86)}px)` : `translateX(${Math.min(translate, 120)}px)`;
+    target.style.opacity = String(Math.max(0.72, 1 - translate / 520));
+  });
+  target.addEventListener("pointerup", () => {
+    if (!dragging) return;
+    dragging = false;
+    reset();
   });
   target.addEventListener("pointercancel", () => {
     dragging = false;
@@ -4978,6 +5032,7 @@ function bindUi(): void {
   bindSwipeRightToClose($("#segment-dialog"), () => ($("#segment-dialog") as HTMLDialogElement).close());
   bindSwipeRightToClose($("#comment-dialog"), () => ($("#comment-dialog") as HTMLDialogElement).close());
   bindSwipeDownToClose($("#comment-action-sheet"), () => ($("#comment-action-sheet") as HTMLDialogElement).close());
+  bindElasticSwipe($("#join-card"));
   document.querySelectorAll<HTMLElement>("[data-menu]").forEach((button) => button.addEventListener("click", (event) => {
     event.stopPropagation();
     openMenu(button);
