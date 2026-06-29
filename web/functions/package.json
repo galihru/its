@@ -1,0 +1,12 @@
+{
+  "name": "its-presentasi-functions",
+  "private": true,
+  "engines": {
+    "node": "20"
+  },
+  "main": "index.cjs",
+  "dependencies": {
+    "firebase-functions": "^6.4.0",
+    "its-maps-web": "file:.."
+  }
+}

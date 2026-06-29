@@ -45,6 +45,8 @@ const MIRROR_INTERVAL = 260;
 const PPTX_EMU_PER_INCH = 914400;
 const PPTX_FONT_SCALE = 1;
 const DEFAULT_PPTX_SLIDE = { cx: 12192000, cy: 6858000 };
+const CANVA_IMPORT_ENDPOINT = "/api/canva/import";
+const CANVA_AUTO_UPDATE_INTERVAL = 180_000;
 const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
   png: "image/png",
   jpg: "image/jpeg",
@@ -162,7 +164,42 @@ type ShapeElement = {
 };
 type SlideElement = TextElement | PhoneElement | ImageElement | CanvasElement | CanvaElement | ShapeElement;
 type Slide = { id: string; name: string; notes: string; elements: SlideElement[]; transition?: string; section?: string };
-type Deck = { title: string; slides: Slide[] };
+type DeckSource = {
+  type: "canva";
+  url: string;
+  resolvedUrl?: string;
+  viewUrl?: string;
+  signature?: string;
+  version?: string;
+  timestamp?: number;
+  pageCount?: number;
+  importedAt?: number;
+  lastCheckedAt?: number;
+  autoUpdate?: boolean;
+};
+type Deck = { title: string; slides: Slide[]; source?: DeckSource };
+type CanvaImportSlide = {
+  page: number;
+  pageHash?: number;
+  width?: number;
+  height?: number;
+  mime?: string;
+  src: string;
+};
+type CanvaImportResult = {
+  ok?: boolean;
+  title: string;
+  sourceUrl: string;
+  resolvedUrl?: string;
+  viewUrl?: string;
+  importedAt?: number;
+  version?: string;
+  timestamp?: number;
+  pageCount?: number;
+  pageHashes?: number[];
+  signature?: string;
+  slides: CanvaImportSlide[];
+};
 type PresentationState = {
   currentSlide: number;
   presenting: boolean;
@@ -328,13 +365,14 @@ let audiencePinchDistance = 0;
 let audienceSwipeSuppressClickUntil = 0;
 let joinPreviewIndex = 0;
 let joinCarouselTimer = 0;
-let canvaRefreshTimer = 0;
 let projectOwnerName = "";
+let canvaAutoTimer = 0;
+let canvaAutoKey = "";
+let canvaAutoInFlight = false;
 
 const usbManager = AdbDaemonWebUsbDeviceManager.BROWSER;
 const credentialStore = new AdbWebCredentialStore(`PrezADB@${location.hostname}`);
 const PRESENTATION_RECENTS_KEY = "its-presentasi-recent-shortcuts:v1";
-const CANVA_REFRESH_INTERVAL_MS = 90000;
 
 function defaultDeck(): Deck {
   return {
@@ -365,6 +403,30 @@ function cleanFontFamily(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const cleaned = value.replace(/[;"<>]/g, "").trim().slice(0, 80);
   return cleaned || undefined;
+}
+
+function sanitizeDeckSource(value: unknown): DeckSource | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const item = value as Partial<DeckSource> & Record<string, unknown>;
+  if (item.type !== "canva") return undefined;
+  const url = normalizeCanvaUrl(typeof item.url === "string" ? item.url : typeof item.resolvedUrl === "string" ? item.resolvedUrl : "");
+  if (!url) return undefined;
+  const source: DeckSource = {
+    type: "canva",
+    url,
+    autoUpdate: item.autoUpdate !== false,
+  };
+  const resolvedUrl = normalizeCanvaUrl(typeof item.resolvedUrl === "string" ? item.resolvedUrl : "");
+  const viewUrl = normalizeCanvaUrl(typeof item.viewUrl === "string" ? item.viewUrl : "");
+  if (resolvedUrl) source.resolvedUrl = resolvedUrl;
+  if (viewUrl) source.viewUrl = viewUrl;
+  if (typeof item.signature === "string") source.signature = item.signature.slice(0, 600);
+  if (typeof item.version === "string") source.version = item.version.slice(0, 120);
+  for (const key of ["timestamp", "pageCount", "importedAt", "lastCheckedAt"] as const) {
+    const numberValue = Number(item[key]);
+    if (Number.isFinite(numberValue)) source[key] = numberValue;
+  }
+  return source;
 }
 
 function normalizeCanvaUrl(value: string): string | null {
@@ -399,24 +461,121 @@ function canvaEmbedUrl(value: string, refresh = false): string {
   return url.href;
 }
 
-async function resolveCanvaUrlForEmbed(value: string): Promise<string | null> {
-  const normalized = normalizeCanvaUrl(value);
-  if (!normalized) return null;
-  try {
-    const host = new URL(normalized).hostname.toLowerCase();
-    if (host === "canva.link" || host.endsWith(".canva.link")) {
-      const response = await fetch(normalized, { method: "GET", redirect: "follow" });
-      if (response.url) return normalizeCanvaUrl(response.url) || normalized;
-    }
-  } catch {
-    try {
-      const response = await fetch(normalized, { mode: "no-cors", redirect: "follow" });
-      if (response.url) return normalizeCanvaUrl(response.url) || normalized;
-    } catch {
-      // Browser CORS/Cloudflare can block short-link redirect reads; keep the original link.
-    }
+async function importCanvaByLink(url: string): Promise<void> {
+  if (!isEditableRole()) return;
+  const normalized = normalizeCanvaUrl(url);
+  if (!normalized) {
+    toast("Link Canva tidak valid atau tidak publik.");
+    return;
   }
-  return normalized;
+
+  setSaveState("saving", "Mengimpor Canva tanpa iframe...");
+  try {
+    const result = await requestCanvaImport(normalized);
+    deck = deckFromCanvaImport(result);
+    currentSlide = 0;
+    selectedElementId = null;
+    recordHistory();
+    renderAll();
+    scheduleSave("Menyimpan hasil import Canva...");
+    toast(`${deck.slides.length} slide Canva berhasil diimpor tanpa iframe.`);
+  } catch (error) {
+    console.warn("[ITS Presentasi] Canva import failed", error);
+    setSaveState("error", "Import Canva gagal");
+    toast(`Import Canva gagal: ${friendlyError(error)}`);
+  }
+}
+
+async function requestCanvaImport(url: string): Promise<CanvaImportResult> {
+  const endpoint = new URL(CANVA_IMPORT_ENDPOINT, location.origin);
+  endpoint.searchParams.set("url", url);
+  endpoint.searchParams.set("maxSlides", "100");
+  const response = await fetch(endpoint.href, {
+    cache: "no-store",
+    credentials: "same-origin",
+    headers: { accept: "application/json" },
+  });
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    throw new Error("Worker import Canva belum aktif di hosting ini.");
+  }
+  const data = await response.json() as Partial<CanvaImportResult> & { error?: string };
+  if (!response.ok || data.ok === false) throw new Error(data.error || `HTTP ${response.status} dari worker Canva.`);
+  if (!Array.isArray(data.slides) || !data.slides.length) throw new Error("Worker Canva tidak mengirim slide.");
+  return data as CanvaImportResult;
+}
+
+function deckFromCanvaImport(result: CanvaImportResult): Deck {
+  const title = (result.title || "Presentasi Canva").trim();
+  const sourceUrl = normalizeCanvaUrl(result.sourceUrl || result.resolvedUrl || "") || result.sourceUrl || "";
+  const source: DeckSource = {
+    type: "canva",
+    url: sourceUrl,
+    resolvedUrl: normalizeCanvaUrl(result.resolvedUrl || "") || sourceUrl,
+    viewUrl: normalizeCanvaUrl(result.viewUrl || "") || undefined,
+    signature: result.signature || "",
+    version: result.version || "",
+    timestamp: Number(result.timestamp) || 0,
+    pageCount: Number(result.pageCount) || result.slides.length,
+    importedAt: Number(result.importedAt) || Date.now(),
+    lastCheckedAt: Date.now(),
+    autoUpdate: true,
+  };
+  const slides: Slide[] = result.slides.map((slide, index) => {
+    const page = Number(slide.page) || index + 1;
+    const canvas: CanvasElement = {
+      id: uid("canvas"),
+      type: "canvas",
+      x: 0,
+      y: 0,
+      w: SLIDE_WIDTH,
+      h: SLIDE_HEIGHT,
+      src: slide.src,
+      alt: `Canva slide ${page}`,
+    };
+    return {
+      id: uid("slide"),
+      name: `Slide ${page}`,
+      section: page === 1 ? "Intro" : "",
+      notes: `Diimpor dari Canva halaman ${page}`,
+      elements: [canvas],
+    };
+  });
+  return sanitizeDeck({ title, source, slides });
+}
+
+async function refreshCanvaSource(silent = false): Promise<void> {
+  const source = deck.source;
+  if (!source || source.type !== "canva" || source.autoUpdate === false || !isWritableOwner()) return;
+  if (canvaAutoInFlight) return;
+  canvaAutoInFlight = true;
+  try {
+    if (!silent) setSaveState("saving", "Mengecek update Canva...");
+    const result = await requestCanvaImport(source.url);
+    if (result.signature && source.signature && result.signature === source.signature) {
+      deck.source = { ...source, lastCheckedAt: Date.now() };
+      if (!silent) {
+        setSaveState("saved");
+        toast("Canva belum berubah.");
+      }
+      return;
+    }
+    const keepSlide = currentSlide;
+    deck = deckFromCanvaImport(result);
+    currentSlide = clamp(keepSlide, 0, deck.slides.length - 1);
+    selectedElementId = null;
+    recordHistory();
+    renderAll();
+    scheduleSave("Menyimpan update Canva...");
+    toast(`${deck.slides.length} slide Canva diperbarui otomatis.`);
+  } catch (error) {
+    if (!silent) {
+      setSaveState("error", "Update Canva gagal");
+      toast(`Update Canva gagal: ${friendlyError(error)}`);
+    }
+  } finally {
+    canvaAutoInFlight = false;
+  }
 }
 
 function cleanStyleFields(item: Record<string, unknown>): PptxRunStyle & { animation?: ElementAnimation } {
@@ -524,7 +683,13 @@ function sanitizeDeck(input: unknown): Deck {
       elements,
     };
   }) : [];
-  return { title: typeof raw.title === "string" ? raw.title.slice(0, 200) : "Presentasi tanpa judul", slides: slides.length ? slides : defaultDeck().slides };
+  const cleanDeck: Deck = {
+    title: typeof raw.title === "string" ? raw.title.slice(0, 200) : "Presentasi tanpa judul",
+    slides: slides.length ? slides : defaultDeck().slides,
+  };
+  const source = sanitizeDeckSource((raw as Record<string, unknown>).source);
+  if (source) cleanDeck.source = source;
+  return cleanDeck;
 }
 
 function serializableDeck(): Deck {
@@ -1810,6 +1975,30 @@ function renderAll(): void {
   syncInspectorMode();
   renderCounterAndNotes();
   updateHistoryButtons();
+  syncCanvaAutoUpdate();
+}
+
+function syncCanvaAutoUpdate(): void {
+  const source = deck.source;
+  const nextKey = source?.type === "canva" && source.autoUpdate !== false && isWritableOwner() && !localMode
+    ? `${projectId}:${source.url}`
+    : "";
+  if (!nextKey) {
+    stopCanvaAutoUpdate();
+    return;
+  }
+  if (canvaAutoTimer && canvaAutoKey === nextKey) return;
+  stopCanvaAutoUpdate();
+  canvaAutoKey = nextKey;
+  canvaAutoTimer = window.setInterval(() => {
+    void refreshCanvaSource(true);
+  }, CANVA_AUTO_UPDATE_INTERVAL);
+}
+
+function stopCanvaAutoUpdate(): void {
+  if (canvaAutoTimer) window.clearInterval(canvaAutoTimer);
+  canvaAutoTimer = 0;
+  canvaAutoKey = "";
 }
 
 function createSlidePreview(slide: Slide | undefined, className = "mini-slide"): HTMLElement {
@@ -2065,7 +2254,6 @@ function renderCanvas(): void {
   for (const element of current().elements) canvas.append(createElementNode(element, false));
   renderRemoteCursors();
   renderCommentBadges();
-  refreshVisibleCanvaEmbeds(true);
 }
 
 function applyTextStyle(node: HTMLElement, element: Pick<TextElement, "fontFamily" | "fontSize" | "color" | "bold" | "italic" | "underline" | "variant" | "align" | "insetLeft" | "insetRight" | "insetTop" | "insetBottom" | "lineHeight">): void {
@@ -2357,20 +2545,15 @@ function createElementNode(element: SlideElement, audience: boolean): HTMLDivEle
   } else if (element.type === "canva") {
     const shell = document.createElement("div");
     shell.className = "canva-element";
-    const iframe = document.createElement("iframe");
-    iframe.src = element.embedUrl || canvaEmbedUrl(element.url);
-    iframe.dataset.canvaUrl = element.url;
-    iframe.dataset.canvaRefreshAt = String(Date.now());
-    iframe.title = element.title || "Canva presentation";
-    iframe.loading = "lazy";
-    iframe.referrerPolicy = "strict-origin-when-cross-origin";
-    iframe.allow = "fullscreen; autoplay; clipboard-read; clipboard-write";
+    const message = document.createElement("div");
+    message.className = "canva-import-note";
+    message.innerHTML = "<strong>Canva belum diekstrak</strong><span>Gunakan export PPTX dari Canva atau worker server-side ITS. Elemen ini bukan iframe.</span>";
     const open = document.createElement("a");
     open.href = element.url;
     open.target = "_blank";
     open.rel = "noopener noreferrer";
     open.textContent = "Buka Canva";
-    shell.append(iframe, open);
+    shell.append(message, open);
     node.append(shell);
   } else {
     const shape = document.createElement("div");
@@ -2834,32 +3017,7 @@ async function addImageFile(file: File): Promise<void> {
 
 async function addCanvaLink(url: string): Promise<void> {
   if (!isEditableRole()) return;
-  setSaveState("saving", "Mengecek link Canva...");
-  const normalized = await resolveCanvaUrlForEmbed(url);
-  if (!normalized) {
-    toast("Link Canva tidak valid atau tidak publik.");
-    setSaveState("saved");
-    return;
-  }
-  const title = prompt("Nama embed Canva", "Canva")?.trim() || "Canva";
-  const element: CanvaElement = {
-    id: uid("canva"),
-    type: "canva",
-    x: 92,
-    y: 70,
-    w: 776,
-    h: 436,
-    url: normalized,
-    embedUrl: canvaEmbedUrl(normalized),
-    title,
-  };
-  current().elements.push(element);
-  selectedElementId = element.id;
-  recordHistory();
-  renderAll();
-  scheduleSave("Menyimpan embed Canva...");
-  const host = new URL(normalized).hostname.toLowerCase();
-  toast(host.endsWith("canva.link") ? "Link Canva ditambahkan. Jika embed kosong, buka Canva lalu tempel URL /view final." : "Embed Canva ditambahkan dan akan auto-refresh.");
+  await importCanvaByLink(url);
 }
 
 function promptCanvaImport(): void {
@@ -2869,19 +3027,6 @@ function promptCanvaImport(): void {
     setSaveState("error");
     toast(`Gagal import Canva: ${friendlyError(error)}`);
   });
-}
-
-function refreshVisibleCanvaEmbeds(force = false): void {
-  const frames = [...document.querySelectorAll<HTMLIFrameElement>('iframe[data-canva-url]')];
-  if (!frames.length && !force) return;
-  const now = Date.now();
-  for (const frame of frames) {
-    const url = frame.dataset.canvaUrl;
-    const lastRefresh = Number(frame.dataset.canvaRefreshAt || 0);
-    if (!url || (!force && lastRefresh && now - lastRefresh < CANVA_REFRESH_INTERVAL_MS)) continue;
-    frame.dataset.canvaRefreshAt = String(now);
-    frame.src = canvaEmbedUrl(url, true);
-  }
 }
 
 function arrangeSelected(mode: "front" | "back" | "forward" | "backward"): void {
@@ -3596,6 +3741,7 @@ function menuItems(menu: string): MenuItem[] {
       { label: "Buka", shortcut: "Ctrl+O", action: () => { location.href = homeUrl(); } },
       { label: "Impor PPTX", action: openPptxPicker },
       { label: "Import Canva by link", disabled: editable, action: promptCanvaImport },
+      { label: "Perbarui Canva", disabled: () => deck.source?.type !== "canva" || !isWritableOwner(), action: () => void refreshCanvaSource(false) },
       { separator: true },
       { label: "Buat salinan", disabled: editable, action: () => void createCopyProject().catch((error) => toast(friendlyError(error))) },
       { label: "Bagikan", disabled: () => role !== "owner", action: openShareDialog },
@@ -3900,7 +4046,6 @@ function renderAudienceSlide(): void {
   syncAudienceMediaControls();
   renderRemoteCursors();
   renderCommentBadges();
-  refreshVisibleCanvaEmbeds(true);
 }
 
 function renderAudienceChrome(): void {
@@ -4861,9 +5006,9 @@ function drawCanvaElement(context: CanvasRenderingContext2D, element: CanvaEleme
   context.fillStyle = "#ffffff";
   context.font = "700 28px Inter, Segoe UI, Arial";
   context.textAlign = "center";
-  context.fillText(element.title || "Canva", element.x + element.w / 2, element.y + element.h / 2 - 8);
+  context.fillText(element.title || "Canva belum diekstrak", element.x + element.w / 2, element.y + element.h / 2 - 8);
   context.font = "500 13px Inter, Segoe UI, Arial";
-  context.fillText("Live embed - auto update dari link", element.x + element.w / 2, element.y + element.h / 2 + 22);
+  context.fillText("Export PPTX atau aktifkan worker ekstraksi ITS", element.x + element.w / 2, element.y + element.h / 2 + 22);
   context.restore();
 }
 
@@ -5546,16 +5691,45 @@ function toggleAudienceMediaMute(): void {
 async function deleteProject(id: string): Promise<void> {
   if (!id) return;
   try {
-    await Promise.all([
+    if (localMode) {
+      localStorage.removeItem(`its-presentasi-local:${id}`);
+      const local = loadLocalSharedHistory();
+      delete local[id];
+      saveLocalSharedHistory(local);
+      toast("Presentasi lokal dihapus.");
+      if (projectId === id) setTimeout(() => { location.href = homeUrl(); }, 500);
+      return;
+    }
+    const ownerSnapshot = await get(ref(db, `presentations/${id}/ownerUid`));
+    const ownerUid = ownerSnapshot.exists() ? String(ownerSnapshot.val() || "") : "";
+    if (!ownerUid) {
+      await Promise.allSettled([
+        remove(ref(db, `presentationUsers/${firebaseUser.uid}/projects/${id}`)),
+        remove(ref(db, `presentationUsers/${firebaseUser.uid}/shared/${id}`)),
+      ]);
+      await removeSharedHistory(id);
+      toast("Catatan presentasi dihapus dari histori. File asli sudah tidak ditemukan.");
+      return;
+    }
+    if (ownerUid !== firebaseUser.uid) {
+      await removeSharedHistory(id);
+      toast("Dihapus dari histori Anda. File asli tetap milik owner.");
+      return;
+    }
+    await Promise.allSettled([
       remove(ref(db, `presentationPresence/${id}`)),
       remove(ref(db, `presentationRtc/${id}`)),
       remove(ref(db, `presentationCollab/${id}`)),
       remove(ref(db, `presentationComments/${id}`)),
     ]);
-    await Promise.all([
-      remove(ref(db, `presentations/${id}`)),
+    await remove(ref(db, `presentations/${id}`));
+    await Promise.allSettled([
       remove(ref(db, `presentationUsers/${firebaseUser.uid}/projects/${id}`)),
+      remove(ref(db, `presentationUsers/${firebaseUser.uid}/shared/${id}`)),
     ]);
+    const local = loadLocalSharedHistory();
+    delete local[id];
+    saveLocalSharedHistory(local);
     localStorage.removeItem(`prezadb-edit-token:${firebaseUser.uid}:${id}`);
     toast("Presentasi dihapus permanen.");
     if (projectId === id) setTimeout(() => { location.href = homeUrl(); }, 500);
@@ -5768,8 +5942,6 @@ async function handleHubGoogleLogin(): Promise<void> {
 }
 
 function bindUi(): void {
-  clearInterval(canvaRefreshTimer);
-  canvaRefreshTimer = window.setInterval(() => refreshVisibleCanvaEmbeds(), 90000);
   $("#create-project").addEventListener("click", () => void createProject().catch((error) => toast(friendlyError(error))));
   $("#hub-google-login").addEventListener("click", () => void handleHubGoogleLogin().catch((error) => toast(friendlyError(error))));
   $("#owner-google-login").addEventListener("click", () => void signInWithGoogleAccount().catch((error) => toast(friendlyError(error))));
