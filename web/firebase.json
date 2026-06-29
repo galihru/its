@@ -2,10 +2,6 @@
   "database": {
     "rules": "database.rules.json"
   },
-  "functions": {
-    "source": "functions",
-    "runtime": "nodejs20"
-  },
   "hosting": {
     "site": "itstelkom",
     "public": "dist",
@@ -17,13 +13,6 @@
       "**/*.idsig"
     ],
     "rewrites": [
-      {
-        "source": "/api/canva/import",
-        "function": {
-          "functionId": "canvaImport",
-          "region": "asia-southeast1"
-        }
-      },
       {
         "source": "**",
         "destination": "/index.html"

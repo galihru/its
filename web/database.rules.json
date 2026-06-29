@@ -77,7 +77,15 @@
         ".read": true,
         "$commentId": {
           ".write": "auth != null && (newData.child('authorUid').val() === auth.uid || data.child('authorUid').val() === auth.uid || root.child('presentations').child($projectId).child('ownerUid').val() === auth.uid)",
-          ".validate": "!newData.exists() || (newData.hasChildren(['id', 'slide', 'elementId', 'elementLabel', 'elementKind', 'authorUid', 'authorName', 'authorColor', 'text', 'createdAt']) && newData.child('id').isString() && newData.child('elementId').isString() && newData.child('authorUid').isString() && newData.child('text').isString())"
+          ".validate": "!newData.exists() || (newData.hasChildren(['id', 'slide', 'elementId', 'elementLabel', 'elementKind', 'authorUid', 'authorName', 'authorColor', 'text', 'createdAt']) && newData.child('id').isString() && newData.child('elementId').isString() && newData.child('authorUid').isString() && newData.child('text').isString())",
+          "reactions": {
+            "like": {
+              "$uid": {
+                ".write": "auth != null && auth.uid === $uid",
+                ".validate": "newData.isBoolean()"
+              }
+            }
+          }
         }
       }
     },

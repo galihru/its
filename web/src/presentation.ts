@@ -45,7 +45,7 @@ const MIRROR_INTERVAL = 260;
 const PPTX_EMU_PER_INCH = 914400;
 const PPTX_FONT_SCALE = 1;
 const DEFAULT_PPTX_SLIDE = { cx: 12192000, cy: 6858000 };
-const CANVA_IMPORT_ENDPOINT = "/api/canva/import";
+const CANVA_BROWSER_IMPORT_BLOCKED = "Canva tidak memberi izin CORS untuk membaca data desain langsung dari browser. Agar tetap 100% gratis tanpa Firebase Functions/API key, export desain Canva ke PPTX lalu drag & drop atau pilih file PPTX di ITS Presentasi.";
 const CANVA_AUTO_UPDATE_INTERVAL = 180_000;
 const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
   png: "image/png",
@@ -243,6 +243,10 @@ type CommentRecord = {
   authorColor: string;
   text: string;
   createdAt: number | object;
+  parentId?: string;
+  reactions?: {
+    like?: Record<string, boolean>;
+  };
   resolved?: boolean;
   resolvedAt?: number | object;
   deleted?: boolean;
@@ -359,6 +363,8 @@ let activeComments: CommentRecord[] = [];
 let activeCommentElementId = "";
 let activeCommentSlide = 0;
 let pendingCommentAction: { elementId: string; slideIndex: number } | null = null;
+let replyTargetCommentId = "";
+let replyTargetCommentName = "";
 let pendingReplaceImageElementId = "";
 let latestSharedRecords: Record<string, SharedProjectRecord> = {};
 let audienceFillMode: "contain" | "cover" = "contain";
@@ -469,41 +475,16 @@ async function importCanvaByLink(url: string): Promise<void> {
     toast("Link Canva tidak valid atau tidak publik.");
     return;
   }
-
-  setSaveState("saving", "Mengimpor Canva tanpa iframe...");
-  try {
-    const result = await requestCanvaImport(normalized);
-    deck = deckFromCanvaImport(result);
-    currentSlide = 0;
-    selectedElementId = null;
-    recordHistory();
-    renderAll();
-    scheduleSave("Menyimpan hasil import Canva...");
-    toast(`${deck.slides.length} slide Canva berhasil diimpor tanpa iframe.`);
-  } catch (error) {
-    console.warn("[ITS Presentasi] Canva import failed", error);
-    setSaveState("error", "Import Canva gagal");
-    toast(`Import Canva gagal: ${friendlyError(error)}`);
-  }
+  console.warn("[ITS Presentasi] Canva browser import blocked by Canva CORS:", normalized);
+  setSaveState("error", "Import Canva perlu file PPTX");
+  toast(CANVA_BROWSER_IMPORT_BLOCKED);
+  const pickFile = confirm(`${CANVA_BROWSER_IMPORT_BLOCKED}\n\nPilih file PPTX Canva sekarang?`);
+  if (pickFile) openPptxPicker();
 }
 
 async function requestCanvaImport(url: string): Promise<CanvaImportResult> {
-  const endpoint = new URL(CANVA_IMPORT_ENDPOINT, location.origin);
-  endpoint.searchParams.set("url", url);
-  endpoint.searchParams.set("maxSlides", "100");
-  const response = await fetch(endpoint.href, {
-    cache: "no-store",
-    credentials: "same-origin",
-    headers: { accept: "application/json" },
-  });
-  const contentType = response.headers.get("content-type") || "";
-  if (!contentType.includes("application/json")) {
-    throw new Error("Worker import Canva belum aktif di hosting ini.");
-  }
-  const data = await response.json() as Partial<CanvaImportResult> & { error?: string };
-  if (!response.ok || data.ok === false) throw new Error(data.error || `HTTP ${response.status} dari worker Canva.`);
-  if (!Array.isArray(data.slides) || !data.slides.length) throw new Error("Worker Canva tidak mengirim slide.");
-  return data as CanvaImportResult;
+  console.warn("[ITS Presentasi] Canva import requested without backend:", url);
+  throw new Error(CANVA_BROWSER_IMPORT_BLOCKED);
 }
 
 function deckFromCanvaImport(result: CanvaImportResult): Deck {
@@ -1596,6 +1577,22 @@ function commentsForElement(elementId: string, slideIndex = currentSlide): Comme
   return activeCommentRecords().filter((comment) => comment.elementId === elementId && Number(comment.slide) === slideIndex);
 }
 
+function topLevelCommentsForElement(elementId: string, slideIndex = currentSlide): CommentRecord[] {
+  return commentsForElement(elementId, slideIndex).filter((comment) => !comment.parentId);
+}
+
+function repliesForComment(parentId: string): CommentRecord[] {
+  return activeCommentRecords().filter((comment) => comment.parentId === parentId);
+}
+
+function likeCount(comment: CommentRecord): number {
+  return Object.values(comment.reactions?.like || {}).filter(Boolean).length;
+}
+
+function userLiked(comment: CommentRecord): boolean {
+  return Boolean(firebaseUser?.uid && comment.reactions?.like?.[firebaseUser.uid]);
+}
+
 function unresolvedComments(): CommentRecord[] {
   return activeCommentRecords().filter((comment) => !comment.resolved);
 }
@@ -1716,6 +1713,8 @@ function closeElementContextMenu(): void {
 function openCommentDialogForElement(elementId: string, slideIndex: number): void {
   activeCommentElementId = elementId;
   activeCommentSlide = slideIndex;
+  replyTargetCommentId = "";
+  replyTargetCommentName = "";
   renderCommentDialog();
   const dialog = $("#comment-dialog") as HTMLDialogElement;
   const actionSheet = $("#comment-action-sheet") as HTMLDialogElement;
@@ -1758,9 +1757,16 @@ function renderCommentDialog(): void {
   avatar.setAttribute("style", `background:${randomColor(participantName)}`);
   const list = $("#comment-list");
   list.innerHTML = "";
-  const comments = commentsForElement(activeCommentElementId, activeCommentSlide);
+  const comments = topLevelCommentsForElement(activeCommentElementId, activeCommentSlide);
   if (!comments.length) {
     list.innerHTML = '<p class="empty-people">Belum ada komentar untuk elemen ini.</p>';
+  }
+  {
+    if (comments.length) comments.forEach((comment) => list.append(renderCommentRow(comment)));
+    updateReplyTargetUi();
+    const threadedReplaceButton = $("#replace-comment-image") as HTMLButtonElement;
+    threadedReplaceButton.hidden = !(role === "owner" && element?.type === "image");
+    return;
   }
   comments.forEach((comment) => {
     const row = document.createElement("article");
@@ -1793,6 +1799,76 @@ function renderCommentDialog(): void {
   replaceButton.hidden = !(role === "owner" && element?.type === "image");
 }
 
+function renderCommentRow(comment: CommentRecord, depth = 0): HTMLElement {
+  const row = document.createElement("article");
+  row.className = `comment-row${comment.resolved ? " resolved" : ""}${depth ? " reply" : ""}`;
+  row.innerHTML = '<span class="presence-avatar"></span><div class="comment-row-body"><div class="comment-meta"><strong></strong><time></time></div><p></p><div class="comment-actions"></div><div class="comment-replies"></div></div>';
+  const marker = $(".presence-avatar", row);
+  marker.textContent = shortInitials(comment.authorName);
+  marker.setAttribute("style", `background:${comment.authorColor || randomColor(comment.authorName)}`);
+  $("strong", row).textContent = comment.authorName;
+  $("p", row).textContent = comment.text;
+  $("time", row).textContent = comment.resolved ? `Selesai - ${formatDateTime(commentTime(comment))}` : formatDateTime(commentTime(comment));
+  const actions = $(".comment-actions", row);
+
+  const likeButton = document.createElement("button");
+  likeButton.type = "button";
+  likeButton.className = userLiked(comment) ? "active" : "";
+  likeButton.textContent = `Suka ${likeCount(comment) || ""}`.trim();
+  likeButton.addEventListener("click", () => void toggleCommentLike(comment.id));
+  actions.append(likeButton);
+
+  const replyButton = document.createElement("button");
+  replyButton.type = "button";
+  replyButton.textContent = "Balas";
+  replyButton.addEventListener("click", () => setReplyTarget(comment));
+  actions.append(replyButton);
+
+  if (role === "owner" || comment.authorUid === firebaseUser.uid) {
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.textContent = "Hapus";
+    removeButton.addEventListener("click", () => void deleteComment(comment.id));
+    actions.append(removeButton);
+  }
+  if (role === "owner") {
+    const resolveButton = document.createElement("button");
+    resolveButton.type = "button";
+    resolveButton.textContent = comment.resolved ? "Buka lagi" : "Selesai";
+    resolveButton.addEventListener("click", () => void resolveComment(comment.id, !comment.resolved));
+    actions.append(resolveButton);
+  }
+
+  const repliesWrap = $(".comment-replies", row);
+  repliesForComment(comment.id).forEach((reply) => repliesWrap.append(renderCommentRow(reply, depth + 1)));
+  return row;
+}
+
+function setReplyTarget(comment: CommentRecord): void {
+  replyTargetCommentId = comment.id;
+  replyTargetCommentName = comment.authorName;
+  updateReplyTargetUi();
+  ($("#comment-input") as HTMLTextAreaElement).focus();
+}
+
+function updateReplyTargetUi(): void {
+  const target = $("#comment-reply-target");
+  if (!replyTargetCommentId) {
+    target.hidden = true;
+    target.innerHTML = "";
+    ($("#comment-input") as HTMLTextAreaElement).placeholder = "Tulis komentar";
+    return;
+  }
+  target.hidden = false;
+  target.innerHTML = `<span>Membalas ${escapeHtml(replyTargetCommentName)}</span><button type="button" aria-label="Batal balas">x</button>`;
+  $("button", target).addEventListener("click", () => {
+    replyTargetCommentId = "";
+    replyTargetCommentName = "";
+    updateReplyTargetUi();
+  });
+  ($("#comment-input") as HTMLTextAreaElement).placeholder = `Balas ${replyTargetCommentName}`;
+}
+
 async function submitComment(): Promise<void> {
   const element = elementById(activeCommentSlide, activeCommentElementId);
   const input = $("#comment-input") as HTMLTextAreaElement;
@@ -1811,11 +1887,14 @@ async function submitComment(): Promise<void> {
     text,
     createdAt: serverTimestamp(),
   };
+  if (replyTargetCommentId) record.parentId = replyTargetCommentId;
   if (element.type === "text") record.elementText = element.text.slice(0, 400);
   if (element.type === "shape" && element.text) record.elementText = element.text.slice(0, 400);
   if (element.type === "image" || element.type === "canvas") record.elementImage = element.src.slice(0, 600);
   if (element.type === "canva") record.elementText = element.url.slice(0, 400);
   input.value = "";
+  replyTargetCommentId = "";
+  replyTargetCommentName = "";
   if (localMode) {
     activeComments.push({ ...record, createdAt: Date.now() });
     renderCommentBadges();
@@ -1843,6 +1922,26 @@ async function resolveComment(id: string, resolved: boolean): Promise<void> {
   }
   renderCommentBadges();
   renderCommentDialog();
+}
+
+async function toggleCommentLike(id: string): Promise<void> {
+  if (!id || !firebaseUser?.uid) return;
+  const found = activeComments.find((comment) => comment.id === id);
+  if (!found) return;
+  const nextLiked = !userLiked(found);
+  if (localMode) {
+    activeComments = activeComments.map((comment) => {
+      if (comment.id !== id) return comment;
+      const like = { ...(comment.reactions?.like || {}) };
+      if (nextLiked) like[firebaseUser.uid] = true;
+      else delete like[firebaseUser.uid];
+      return { ...comment, reactions: { ...(comment.reactions || {}), like } };
+    });
+    renderCommentBadges();
+    renderCommentDialog();
+    return;
+  }
+  await update(ref(db, `presentationComments/${projectId}/${id}/reactions/like`), { [firebaseUser.uid]: nextLiked ? true : null });
 }
 
 function openFirstUnresolvedComment(): void {
@@ -5976,6 +6075,7 @@ function bindFileDrop(): void {
 }
 
 function bindSwipeRightToClose(target: HTMLElement, close: () => void): void {
+  let pointerId = -1;
   let startX = 0;
   let startY = 0;
   let dragging = false;
@@ -5997,16 +6097,20 @@ function bindSwipeRightToClose(target: HTMLElement, close: () => void): void {
     }, 205);
   };
   target.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || (event.target as HTMLElement).closest("input, textarea, select, button, a")) return;
+    pointerId = event.pointerId;
     startX = event.clientX;
     startY = event.clientY;
     dragging = true;
     target.style.transition = "none";
+    target.setPointerCapture?.(event.pointerId);
   });
   target.addEventListener("pointermove", (event) => {
-    if (!dragging) return;
+    if (!dragging || event.pointerId !== pointerId) return;
     const dx = Math.max(0, event.clientX - startX);
     const dy = Math.abs(event.clientY - startY);
     if (dx > 4 && dy < 90) {
+      event.preventDefault();
       target.style.transform = `translateX(${dx}px)`;
       target.style.opacity = String(Math.max(0.45, 1 - dx / 420));
       if (isAudienceOpen() && target.classList.contains("audience-rail-dialog")) {
@@ -6015,19 +6119,24 @@ function bindSwipeRightToClose(target: HTMLElement, close: () => void): void {
     }
   });
   target.addEventListener("pointerup", (event) => {
+    if (event.pointerId !== pointerId) return;
     const dx = event.clientX - startX;
     const dy = Math.abs(event.clientY - startY);
     dragging = false;
+    pointerId = -1;
+    target.releasePointerCapture?.(event.pointerId);
     if (dx > 86 && dy < 70) closeWithAnimation();
     else reset();
   });
   target.addEventListener("pointercancel", () => {
     dragging = false;
+    pointerId = -1;
     reset();
   });
 }
 
 function bindSwipeDownToClose(target: HTMLElement, close: () => void): void {
+  let pointerId = -1;
   let startY = 0;
   let startX = 0;
   let dragging = false;
@@ -6037,24 +6146,31 @@ function bindSwipeDownToClose(target: HTMLElement, close: () => void): void {
     target.style.opacity = "";
   };
   target.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || (event.target as HTMLElement).closest("input, textarea, select, button, a")) return;
+    pointerId = event.pointerId;
     startY = event.clientY;
     startX = event.clientX;
     dragging = true;
     target.style.transition = "none";
+    target.setPointerCapture?.(event.pointerId);
   });
   target.addEventListener("pointermove", (event) => {
-    if (!dragging) return;
+    if (!dragging || event.pointerId !== pointerId) return;
     const dy = Math.max(0, event.clientY - startY);
     const dx = Math.abs(event.clientX - startX);
     if (dy > 5 && dx < 90) {
+      event.preventDefault();
       target.style.transform = `translateY(${dy}px)`;
       target.style.opacity = String(Math.max(0.45, 1 - dy / 360));
     }
   });
   target.addEventListener("pointerup", (event) => {
+    if (event.pointerId !== pointerId) return;
     const dy = event.clientY - startY;
     const dx = Math.abs(event.clientX - startX);
     dragging = false;
+    pointerId = -1;
+    target.releasePointerCapture?.(event.pointerId);
     if (dy > 86 && dx < 70 && (isCompactAudienceLayout() || !isAudienceOpen())) {
       target.style.transition = "transform .2s ease, opacity .2s ease";
       target.style.transform = "translateY(110%)";
@@ -6064,6 +6180,7 @@ function bindSwipeDownToClose(target: HTMLElement, close: () => void): void {
   });
   target.addEventListener("pointercancel", () => {
     dragging = false;
+    pointerId = -1;
     reset();
   });
 }

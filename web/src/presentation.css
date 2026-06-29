@@ -3594,15 +3594,37 @@ dialog::backdrop {
   display: grid;
   grid-template-columns: 30px minmax(0, 1fr);
   gap: 9px;
-  padding: 10px;
-  border: 1px solid #eceff1;
-  border-radius: 12px;
-  background: #fff;
+  padding: 7px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  position: relative;
 }
 
 .comment-row.resolved {
   opacity: .62;
-  background: #f6f8f6;
+}
+
+.comment-row.reply {
+  margin-left: 15px;
+  padding-left: 12px;
+}
+
+.comment-row.reply::before {
+  content: "";
+  position: absolute;
+  left: -2px;
+  top: -4px;
+  bottom: 7px;
+  width: 1px;
+  background: rgba(95, 99, 104, .28);
+}
+
+.comment-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
 }
 
 .comment-row-body strong {
@@ -3621,25 +3643,39 @@ dialog::backdrop {
 .comment-row-body time {
   color: #6f7782;
   font-size: 10px;
+  white-space: nowrap;
 }
 
 .comment-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
-  margin-top: 8px;
+  margin-top: 6px;
 }
 
 .comment-actions button {
-  min-height: 28px;
-  border: 1px solid #dadce0;
-  border-radius: 8px;
-  background: #fff;
+  min-height: 26px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #5f6368;
   cursor: pointer;
   font-size: 11px;
+  font-weight: 600;
+  padding: 0 8px;
 }
 
 .comment-actions button:hover {
   background: #f1f3f4;
+}
+
+.comment-actions button.active {
+  color: #0b57d0;
+  background: #e8f0fe;
+}
+
+.comment-replies {
+  margin-top: 7px;
 }
 
 .comment-composer {
@@ -3660,6 +3696,32 @@ dialog::backdrop {
   padding: 9px 10px;
   outline: none;
   font-size: 13px;
+}
+
+.comment-reply-target {
+  grid-column: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 32px;
+  border-radius: 9px;
+  background: rgba(232, 240, 254, .9);
+  color: #174ea6;
+  padding: 6px 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.comment-reply-target button {
+  width: 24px;
+  height: 24px;
+  min-height: 24px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
 }
 
 .comment-composer textarea:focus {
@@ -3741,6 +3803,7 @@ dialog.audience-rail-dialog[open] {
   box-shadow: none;
   backdrop-filter: blur(30px) saturate(1.22);
   animation: audienceRailIn .22s ease both;
+  touch-action: pan-y;
 }
 
 dialog.audience-rail-dialog::backdrop {
@@ -3808,6 +3871,7 @@ dialog.audience-rail-dialog .dialog-title .eyebrow {
   box-shadow: none;
   backdrop-filter: blur(26px) saturate(1.2);
   animation: audienceSheetIn .2s ease both;
+  touch-action: pan-x;
 }
 
 .comment-action-sheet::backdrop {
