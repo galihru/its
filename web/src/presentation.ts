@@ -365,6 +365,9 @@ let activeCommentSlide = 0;
 let pendingCommentAction: { elementId: string; slideIndex: number } | null = null;
 let replyTargetCommentId = "";
 let replyTargetCommentName = "";
+let commentsListenerReady = false;
+let seenCommentIds = new Set<string>();
+let commentDeepLinkHandled = false;
 let pendingReplaceImageElementId = "";
 let latestSharedRecords: Record<string, SharedProjectRecord> = {};
 let audienceFillMode: "contain" | "cover" = "contain";
@@ -748,6 +751,11 @@ function shortInitials(name: string): string {
 
 function formatDateTime(value: number | undefined): string {
   return value ? new Date(value).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" }) : "Belum disimpan";
+}
+
+function trimNotificationText(value: string, max = 130): string {
+  const clean = value.replace(/\s+/g, " ").trim();
+  return clean.length > max ? `${clean.slice(0, max - 1)}...` : clean;
 }
 
 function buildUrl(options: { view?: boolean; edit?: string } = {}): string {
@@ -1221,6 +1229,7 @@ async function openProject(): Promise<void> {
     showEditor();
     startOwnerCollaborationListener();
     await startPresence();
+    void requestPresentationNotificationPermission();
   } else {
     showJoinGate(role);
     if (requestedBareOwner) toast("Sesi ini bukan akun pemilik project. Masuk dengan akun pembuat atau buka sebagai viewer/editor.");
@@ -1246,6 +1255,7 @@ function showEditor(): void {
     $("#present-button").textContent = "Preview";
   }
   renderAll();
+  handleCommentDeepLink();
   requestAnimationFrame(fitWorkspace);
 }
 
@@ -1265,6 +1275,7 @@ function showAudience(): void {
   presenterSlide = clamp(Number(presentationState.currentSlide) || 0, 0, deck.slides.length - 1);
   currentSlide = presenterSlide;
   renderAudienceSlide();
+  handleCommentDeepLink();
   resizeAudienceSlide();
   syncFullscreenButton();
   showAudienceChrome();
@@ -1352,6 +1363,10 @@ function updateJoinAmbient(slideIndex: number): void {
   entry.style.setProperty("--join-ambient-a", colors[0]);
   entry.style.setProperty("--join-ambient-b", colors[1]);
   entry.style.setProperty("--join-ambient-c", colors[2]);
+  entry.style.setProperty("--join-readable-on-a", readableTextFor(colors[0]));
+  entry.style.setProperty("--join-readable-muted", readableMutedTextFor(colors[0]));
+  entry.style.setProperty("--join-form-text", "#202124");
+  entry.style.setProperty("--join-form-muted", "#5f6368");
 }
 
 async function enterSharedProject(): Promise<void> {
@@ -1603,18 +1618,131 @@ function elementById(slideIndex: number, elementId: string): SlideElement | null
 
 function startCommentsListener(): void {
   commentsUnsubscribe?.();
+  commentsListenerReady = false;
+  seenCommentIds = new Set();
   if (localMode) {
     activeComments = [];
     renderCommentBadges();
     return;
   }
   commentsUnsubscribe = onValue(ref(db, `presentationComments/${projectId}`), (snapshot) => {
-    activeComments = Object.entries((snapshot.val() || {}) as Record<string, CommentRecord>)
+    const nextComments = Object.entries((snapshot.val() || {}) as Record<string, CommentRecord>)
       .map(([id, value]) => ({ ...value, id: value?.id || id }))
       .filter((comment) => Boolean(comment.elementId));
+    const nextSeen = new Set(nextComments.map((comment) => comment.id));
+    if (commentsListenerReady) {
+      const newComments = nextComments.filter((comment) => !seenCommentIds.has(comment.id) && !comment.deleted);
+      void notifyNewPresentationComments(newComments);
+    } else {
+      commentsListenerReady = true;
+    }
+    seenCommentIds = nextSeen;
+    activeComments = nextComments;
     renderCommentBadges();
     if (($("#comment-dialog") as HTMLDialogElement).open && activeCommentElementId) renderCommentDialog();
+    handleCommentDeepLink();
   }, (error) => toast(`Komentar gagal dimuat: ${friendlyError(error)}`));
+}
+
+async function notifyNewPresentationComments(comments: CommentRecord[]): Promise<void> {
+  if (role !== "owner" || !projectOwnerUid || projectOwnerUid !== firebaseUser?.uid) return;
+  for (const comment of comments) {
+    if (comment.authorUid === firebaseUser.uid) continue;
+    await showPresentationCommentNotification(comment);
+  }
+}
+
+async function requestPresentationNotificationPermission(): Promise<boolean> {
+  if (!("Notification" in window)) return false;
+  if (Notification.permission === "granted") return true;
+  if (Notification.permission === "denied") return false;
+  try {
+    return (await Notification.requestPermission()) === "granted";
+  } catch {
+    return false;
+  }
+}
+
+function commentDeepLink(comment: CommentRecord): string {
+  const url = new URL(currentPresentationShortcutUrl(), location.origin);
+  url.searchParams.set("comment", comment.id);
+  url.searchParams.set("element", comment.elementId);
+  url.searchParams.set("slide", String((Number(comment.slide) || 0) + 1));
+  return `${url.pathname}${url.search}`;
+}
+
+async function commentNotificationImage(comment: CommentRecord): Promise<string | undefined> {
+  const slide = deck.slides[clamp(Number(comment.slide) || 0, 0, deck.slides.length - 1)];
+  if (!slide) return comment.elementImage;
+  await waitForSlideImages(slide).catch(() => undefined);
+  const canvas = document.createElement("canvas");
+  canvas.width = 640;
+  canvas.height = 360;
+  const context = canvas.getContext("2d");
+  if (!context) return comment.elementImage;
+  drawSlideToContext(context, slide, canvas.width / SLIDE_WIDTH);
+  return canvas.toDataURL("image/png");
+}
+
+async function showPresentationCommentNotification(comment: CommentRecord): Promise<void> {
+  if (!(await requestPresentationNotificationPermission())) return;
+  const isReply = Boolean(comment.parentId);
+  const title = isReply
+    ? `Balasan baru di ${deck.title || "ITS Presentasi"}`
+    : `Komentar baru di ${deck.title || "ITS Presentasi"}`;
+  const body = `${comment.authorName}: ${trimNotificationText(comment.text)}`;
+  const data = {
+    url: commentDeepLink(comment),
+    projectId,
+    commentId: comment.id,
+    elementId: comment.elementId,
+    slide: Number(comment.slide) || 0,
+  };
+  const image = await commentNotificationImage(comment).catch(() => comment.elementImage);
+  const options: NotificationOptions & { image?: string } = {
+    body,
+    icon: "/its-presentasi.png",
+    badge: "/icons/icon-96.png",
+    image,
+    tag: `its-presentasi-comment-${projectId}-${comment.id}`,
+    data,
+  };
+  if ("serviceWorker" in navigator) {
+    const registration = await navigator.serviceWorker.ready.catch(() => null);
+    if (registration) {
+      await registration.showNotification(title, options);
+      return;
+    }
+  }
+  new Notification(title, options);
+}
+
+function handleCommentDeepLink(): void {
+  if (commentDeepLinkHandled) return;
+  const commentId = params.get("comment") || "";
+  const elementIdParam = params.get("element") || "";
+  if (!commentId && !elementIdParam) return;
+  const found = commentId ? activeCommentRecords().find((comment) => comment.id === commentId) : null;
+  const elementId = found?.elementId || elementIdParam;
+  const slideIndex = found ? Number(found.slide) || 0 : clamp(Number(params.get("slide") || 1) - 1, 0, deck.slides.length - 1);
+  if (!elementId) return;
+  commentDeepLinkHandled = true;
+  currentSlide = clamp(slideIndex, 0, deck.slides.length - 1);
+  selectedElementId = elementId;
+  if (isAudienceOpen()) renderAudienceSlide();
+  else renderAll();
+  openCommentDialogForElement(elementId, currentSlide);
+  highlightCommentTarget(elementId);
+}
+
+function highlightCommentTarget(elementId: string): void {
+  requestAnimationFrame(() => {
+    const node = document.querySelector<HTMLElement>(`.slide-element[data-element-id="${CSS.escape(elementId)}"], .audience-element[data-element-id="${CSS.escape(elementId)}"]`);
+    if (!node) return;
+    node.classList.add("comment-target-highlight");
+    node.scrollIntoView({ block: "center", inline: "center", behavior: "smooth" });
+    window.setTimeout(() => node.classList.remove("comment-target-highlight"), 3600);
+  });
 }
 
 function renderCommentBadges(): void {
@@ -1761,42 +1889,9 @@ function renderCommentDialog(): void {
   if (!comments.length) {
     list.innerHTML = '<p class="empty-people">Belum ada komentar untuk elemen ini.</p>';
   }
-  {
-    if (comments.length) comments.forEach((comment) => list.append(renderCommentRow(comment)));
-    updateReplyTargetUi();
-    const threadedReplaceButton = $("#replace-comment-image") as HTMLButtonElement;
-    threadedReplaceButton.hidden = !(role === "owner" && element?.type === "image");
-    return;
-  }
-  comments.forEach((comment) => {
-    const row = document.createElement("article");
-    row.className = `comment-row${comment.resolved ? " resolved" : ""}`;
-    row.innerHTML = '<span class="presence-avatar"></span><div class="comment-row-body"><strong></strong><p></p><time></time><div class="comment-actions"></div></div>';
-    const marker = $(".presence-avatar", row);
-    marker.textContent = shortInitials(comment.authorName);
-    marker.setAttribute("style", `background:${comment.authorColor || randomColor(comment.authorName)}`);
-    $("strong", row).textContent = comment.authorName;
-    $("p", row).textContent = comment.text;
-    $("time", row).textContent = comment.resolved ? `Selesai · ${formatDateTime(commentTime(comment))}` : formatDateTime(commentTime(comment));
-    const actions = $(".comment-actions", row);
-    if (role === "owner" || comment.authorUid === firebaseUser.uid) {
-      const removeButton = document.createElement("button");
-      removeButton.type = "button";
-      removeButton.textContent = "× Hapus";
-      removeButton.addEventListener("click", () => void deleteComment(comment.id));
-      actions.append(removeButton);
-    }
-    if (role === "owner") {
-      const resolveButton = document.createElement("button");
-      resolveButton.type = "button";
-      resolveButton.textContent = comment.resolved ? "Buka lagi" : "✓ Selesai";
-      resolveButton.addEventListener("click", () => void resolveComment(comment.id, !comment.resolved));
-      actions.append(resolveButton);
-    }
-    list.append(row);
-  });
-  const replaceButton = $("#replace-comment-image") as HTMLButtonElement;
-  replaceButton.hidden = !(role === "owner" && element?.type === "image");
+  if (comments.length) comments.forEach((comment) => list.append(renderCommentRow(comment)));
+  updateReplyTargetUi();
+  ($("#replace-comment-image") as HTMLButtonElement).hidden = !(role === "owner" && element?.type === "image");
 }
 
 function renderCommentRow(comment: CommentRecord, depth = 0): HTMLElement {
@@ -1814,6 +1909,7 @@ function renderCommentRow(comment: CommentRecord, depth = 0): HTMLElement {
   const likeButton = document.createElement("button");
   likeButton.type = "button";
   likeButton.className = userLiked(comment) ? "active" : "";
+  likeButton.setAttribute("aria-label", userLiked(comment) ? "Batalkan suka komentar" : "Sukai komentar");
   likeButton.textContent = `Suka ${likeCount(comment) || ""}`.trim();
   likeButton.addEventListener("click", () => void toggleCommentLike(comment.id));
   actions.append(likeButton);
@@ -4418,6 +4514,27 @@ function sampleSlideColors(slide: Slide): [string, string, string] {
 
 function rgbToHex(r: number, g: number, b: number): string {
   return `#${[r, g, b].map((value) => clamp(Math.round(value), 0, 255).toString(16).padStart(2, "0")).join("")}`;
+}
+
+function hexToRgb(value: string): [number, number, number] {
+  const hex = /^#?([0-9a-f]{6})$/i.exec(value)?.[1] || "202124";
+  return [parseInt(hex.slice(0, 2), 16), parseInt(hex.slice(2, 4), 16), parseInt(hex.slice(4, 6), 16)];
+}
+
+function relativeLuminance(value: string): number {
+  const [r, g, b] = hexToRgb(value).map((channel) => {
+    const s = channel / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function readableTextFor(color: string): string {
+  return relativeLuminance(color) > 0.46 ? "#202124" : "#ffffff";
+}
+
+function readableMutedTextFor(color: string): string {
+  return relativeLuminance(color) > 0.46 ? "#4b5563" : "rgba(255,255,255,.78)";
 }
 
 function renderAudiencePeople(): void {

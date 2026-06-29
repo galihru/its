@@ -178,7 +178,7 @@ self.addEventListener('message', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const targetUrl = event.notification.data?.url || '/';
+  const targetUrl = new URL(event.notification.data?.url || '/', self.location.origin).href;
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
       const existing = clients.find((client) => 'focus' in client);
@@ -205,6 +205,7 @@ self.addEventListener('push', (event) => {
       body: payload.body || payload.message || 'Pembaruan ITS Maps tersedia.',
       icon: payload.icon || '/icons/icon-192.png',
       badge: payload.badge || '/icons/icon-96.png',
+      image: payload.image,
       tag: payload.tag || 'its-public-update',
       data: { url: targetUrl },
     })
