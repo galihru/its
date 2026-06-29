@@ -185,6 +185,7 @@ type CanvaImportSlide = {
   height?: number;
   mime?: string;
   src: string;
+  elements?: unknown[];
 };
 type CanvaImportResult = {
   ok?: boolean;
@@ -533,12 +534,15 @@ function deckFromCanvaImport(result: CanvaImportResult): Deck {
       src: slide.src,
       alt: `Canva slide ${page}`,
     };
+    const importedElements = Array.isArray(slide.elements)
+      ? sanitizeDeck({ title: "", slides: [{ id: "canva-slide", name: "", notes: "", elements: slide.elements as SlideElement[] }] }).slides[0]?.elements || []
+      : [];
     return {
       id: uid("slide"),
       name: `Slide ${page}`,
       section: page === 1 ? "Intro" : "",
       notes: `Diimpor dari Canva halaman ${page}`,
-      elements: [canvas],
+      elements: [canvas, ...importedElements],
     };
   });
   return sanitizeDeck({ title, source, slides });
@@ -3213,6 +3217,146 @@ function downloadDeckJson(): void {
   URL.revokeObjectURL(url);
 }
 
+async function downloadDeckPptx(): Promise<void> {
+  setSaveState("saving", "Membuat file PPTX...");
+  try {
+    const zip = new JSZip();
+    const title = deck.title || "ITS Presentasi";
+    zip.file("[Content_Types].xml", pptxContentTypes(deck.slides.length));
+    zip.folder("_rels")?.file(".rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="ppt/presentation.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>
+</Relationships>`);
+    zip.folder("docProps")?.file("core.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <dc:title>${escapeHtml(title)}</dc:title>
+  <dc:creator>ITS Presentasi</dc:creator>
+  <dcterms:created xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:created>
+</cp:coreProperties>`);
+    zip.folder("docProps")?.file("app.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>ITS Presentasi</Application><Slides>${deck.slides.length}</Slides></Properties>`);
+    const ppt = zip.folder("ppt");
+    const slidesFolder = ppt?.folder("slides");
+    const slideRelsFolder = slidesFolder?.folder("_rels");
+    const mediaFolder = ppt?.folder("media");
+    ppt?.file("presentation.xml", pptxPresentationXml(deck.slides.length));
+    ppt?.folder("_rels")?.file("presentation.xml.rels", pptxPresentationRels(deck.slides.length));
+    ppt?.folder("theme")?.file("theme1.xml", pptxThemeXml());
+    ppt?.folder("slideMasters")?.file("slideMaster1.xml", pptxSlideMasterXml());
+    ppt?.folder("slideMasters")?.folder("_rels")?.file("slideMaster1.xml.rels", pptxSlideMasterRelsXml());
+    ppt?.folder("slideLayouts")?.file("slideLayout1.xml", pptxSlideLayoutXml());
+    ppt?.folder("slideLayouts")?.folder("_rels")?.file("slideLayout1.xml.rels", pptxSlideLayoutRelsXml());
+    for (const [index, slide] of deck.slides.entries()) {
+      await waitForSlideImages(slide);
+      const canvas = document.createElement("canvas");
+      canvas.width = SLIDE_WIDTH * 2;
+      canvas.height = SLIDE_HEIGHT * 2;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("Canvas export PPTX tidak tersedia.");
+      drawSlideToContext(context, slide, 2);
+      const blob = await canvasToBlob(canvas, "image/png");
+      mediaFolder?.file(`slide${index + 1}.png`, await blob.arrayBuffer());
+      slidesFolder?.file(`slide${index + 1}.xml`, pptxSlideImageXml(index + 1));
+      slideRelsFolder?.file(`slide${index + 1}.xml.rels`, pptxSlideRelsXml(index + 1));
+    }
+    const blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${safeFilename(title)}.pptx`;
+    link.click();
+    URL.revokeObjectURL(url);
+    setSaveState("saved");
+    toast("PPTX berhasil dibuat.");
+  } catch (error) {
+    setSaveState("error", "Export PPTX gagal");
+    toast(`Export PPTX gagal: ${friendlyError(error)}`);
+  }
+}
+
+function pptxContentTypes(count: number): string {
+  const slides = Array.from({ length: count }, (_, index) => `<Override PartName="/ppt/slides/slide${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>`).join("");
+  const media = Array.from({ length: count }, (_, index) => `<Override PartName="/ppt/media/slide${index + 1}.png" ContentType="image/png"/>`).join("");
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  ${media}
+  <Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>
+  <Override PartName="/ppt/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>
+  <Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>
+  <Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>
+  <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
+  <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
+  ${slides}
+</Types>`;
+}
+
+function pptxPresentationXml(count: number): string {
+  const ids = Array.from({ length: count }, (_, index) => `<p:sldId id="${256 + index}" r:id="rId${index + 1}"/>`).join("");
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:presentation xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+  <p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId${count + 1}"/></p:sldMasterIdLst>
+  <p:sldIdLst>${ids}</p:sldIdLst>
+  <p:sldSz cx="12192000" cy="6858000" type="screen16x9"/>
+  <p:notesSz cx="6858000" cy="9144000"/>
+</p:presentation>`;
+}
+
+function pptxPresentationRels(count: number): string {
+  const slides = Array.from({ length: count }, (_, index) => `<Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide${index + 1}.xml"/>`).join("");
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  ${slides}
+  <Relationship Id="rId${count + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="slideMasters/slideMaster1.xml"/>
+  <Relationship Id="rId${count + 2}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="theme/theme1.xml"/>
+</Relationships>`;
+}
+
+function pptxSlideImageXml(index: number): string {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+  <p:cSld><p:spTree>
+    <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>
+    <p:pic><p:nvPicPr><p:cNvPr id="${10 + index}" name="Slide ${index}"/><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="rId1"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="12192000" cy="6858000"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>
+  </p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>
+</p:sld>`;
+}
+
+function pptxSlideRelsXml(index: number): string {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/slide${index}.png"/>
+</Relationships>`;
+}
+
+function pptxThemeXml(): string {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="ITS Presentasi"><a:themeElements><a:clrScheme name="ITS"><a:dk1><a:srgbClr val="111111"/></a:dk1><a:lt1><a:srgbClr val="FFFFFF"/></a:lt1><a:dk2><a:srgbClr val="1F2937"/></a:dk2><a:lt2><a:srgbClr val="F8FAFC"/></a:lt2><a:accent1><a:srgbClr val="1A73E8"/></a:accent1><a:accent2><a:srgbClr val="34A853"/></a:accent2><a:accent3><a:srgbClr val="FBBC04"/></a:accent3><a:accent4><a:srgbClr val="EA4335"/></a:accent4><a:accent5><a:srgbClr val="7C3AED"/></a:accent5><a:accent6><a:srgbClr val="06B6D4"/></a:accent6><a:hlink><a:srgbClr val="1A73E8"/></a:hlink><a:folHlink><a:srgbClr val="7C3AED"/></a:folHlink></a:clrScheme><a:fontScheme name="ITS"><a:majorFont><a:latin typeface="Arial"/></a:majorFont><a:minorFont><a:latin typeface="Arial"/></a:minorFont></a:fontScheme><a:fmtScheme name="ITS"><a:fillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:fillStyleLst><a:lnStyleLst><a:ln w="9525"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln></a:lnStyleLst><a:effectStyleLst><a:effectStyle><a:effectLst/></a:effectStyle></a:effectStyleLst><a:bgFillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:bgFillStyleLst></a:fmtScheme></a:themeElements></a:theme>`;
+}
+
+function pptxSlideMasterXml(): string {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sldMaster xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr></p:spTree></p:cSld><p:clrMap bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" hlink="hlink" folHlink="folHlink"/><p:sldLayoutIdLst><p:sldLayoutId id="2147483649" r:id="rId1"/></p:sldLayoutIdLst><p:txStyles/></p:sldMaster>`;
+}
+
+function pptxSlideMasterRelsXml(): string {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="../theme/theme1.xml"/></Relationships>`;
+}
+
+function pptxSlideLayoutXml(): string {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sldLayout xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" type="blank" preserve="1"><p:cSld name="Blank"><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr></p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sldLayout>`;
+}
+
+function pptxSlideLayoutRelsXml(): string {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="../slideMasters/slideMaster1.xml"/></Relationships>`;
+}
+
 function downloadCurrentSlidePng(): void {
   drawBroadcastFrame();
   const canvas = $("#broadcast-canvas") as HTMLCanvasElement;
@@ -3745,8 +3889,8 @@ function menuItems(menu: string): MenuItem[] {
       { separator: true },
       { label: "Buat salinan", disabled: editable, action: () => void createCopyProject().catch((error) => toast(friendlyError(error))) },
       { label: "Bagikan", disabled: () => role !== "owner", action: openShareDialog },
+      { label: "Download PPTX", action: () => void downloadDeckPptx() },
       { label: "Download slide PNG", action: downloadCurrentSlidePng },
-      { label: "Download JSON", action: downloadDeckJson },
       { label: "Cetak", shortcut: "Ctrl+P", action: () => print() },
     ],
     edit: [
@@ -4213,7 +4357,26 @@ function showAudienceChrome(): void {
   const view = $("#audience-view");
   view.classList.remove("chrome-hidden");
   clearTimeout(audienceChromeTimer);
-  audienceChromeTimer = window.setTimeout(() => view.classList.add("chrome-hidden"), 3600);
+  audienceChromeTimer = window.setTimeout(() => {
+    if (isAudienceChromePinned()) {
+      showAudienceChrome();
+      return;
+    }
+    view.classList.add("chrome-hidden");
+  }, 3600);
+}
+
+function isAudienceChromePinned(): boolean {
+  if (!isAudienceOpen()) return false;
+  if (($("#segment-dialog") as HTMLDialogElement).open || ($("#people-dialog") as HTMLDialogElement).open || ($("#comment-dialog") as HTMLDialogElement).open) return true;
+  return Boolean(
+    document.querySelector("#audience-control-layer:hover")
+    || document.querySelector("#audience-control-layer:focus-within")
+    || document.querySelector("#audience-share-popover:hover")
+    || document.querySelector("#audience-share-popover:focus-within")
+    || document.querySelector(".audience-share-wrap:hover")
+    || document.querySelector(".audience-volume-panel:hover")
+  );
 }
 
 function syncAudienceRailState(): void {
@@ -5652,18 +5815,19 @@ async function shareAudiencePresentation(): Promise<void> {
 }
 
 function downloadAudiencePresentation(): void {
-  downloadDeckJson();
+  void downloadDeckPptx();
 }
 
 function syncAudienceMediaControls(): void {
   const video = $("#live-video") as HTMLVideoElement;
   const stream = video.srcObject instanceof MediaStream ? video.srcObject : null;
-  const hasMedia = Boolean(stream && (stream.getAudioTracks().length || stream.getVideoTracks().length));
-  $("#audience-volume-panel").toggleAttribute("hidden", !hasMedia);
-  if (hasMedia) {
+  const hasAudio = Boolean(stream && stream.getAudioTracks().length);
+  $("#audience-volume-panel").toggleAttribute("hidden", !hasAudio);
+  if (hasAudio) {
     const volume = $("#audience-volume") as HTMLInputElement;
     video.volume = Number(volume.value || 0.9);
     video.muted = video.volume <= 0;
+    updateAudienceVolumeIcon();
   }
 }
 
@@ -5672,6 +5836,7 @@ function updateAudienceVolume(): void {
   const volume = Number(($("#audience-volume") as HTMLInputElement).value || 0);
   video.volume = clamp(volume, 0, 1);
   video.muted = video.volume <= 0;
+  updateAudienceVolumeIcon();
 }
 
 function toggleAudienceMediaMute(): void {
@@ -5686,6 +5851,21 @@ function toggleAudienceMediaMute(): void {
     video.muted = true;
     video.volume = 0;
   }
+  updateAudienceVolumeIcon();
+}
+
+function updateAudienceVolumeIcon(): void {
+  const video = $("#live-video") as HTMLVideoElement;
+  const volume = Number(($("#audience-volume") as HTMLInputElement).value || 0);
+  const muted = video.muted || volume <= 0;
+  const waves = muted
+    ? '<path d="m17 9 4 4m0-4-4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'
+    : volume < 0.4
+      ? '<path d="M16.3 10.2c.6.5.9 1.1.9 1.8s-.3 1.3-.9 1.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'
+      : volume < 0.75
+        ? '<path d="M16 8.5c1.2 1 1.9 2.2 1.9 3.5S17.2 14.6 16 15.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'
+        : '<path d="M16 8.5c1.2 1 1.9 2.2 1.9 3.5S17.2 14.6 16 15.5M18.5 6c1.9 1.6 3 3.6 3 6s-1.1 4.4-3 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>';
+  ($("#audience-volume-button") as HTMLButtonElement).innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h4l5-4.2v13.4l-5-4.2H4Z" fill="currentColor"/>${waves}</svg>`;
 }
 
 async function deleteProject(id: string): Promise<void> {

@@ -17,12 +17,14 @@ async function extractCanvaDeck(inputUrl, options = {}) {
   const bootstrap = extractBootstrap(html);
   const draft = findDraft(bootstrap);
   if (!draft) throw new Error("Data slide Canva tidak ditemukan. Pastikan link dibagikan publik.");
+  const rasterAssets = collectCanvaRasterAssets(bootstrap);
 
   const thumbnailSet = draft.imageSets?.thumbnail;
   const images = Array.isArray(thumbnailSet?.images) ? thumbnailSet.images : [];
   if (!images.length) throw new Error("Render slide Canva tidak tersedia pada link ini.");
 
   const pageCount = Number(draft.pageCount) || images.length;
+  const contentSize = canvaContentSize(draft.content);
   const maxSlides = Math.min(Math.max(Number(options.maxSlides) || images.length, 1), images.length);
   const selected = images
     .slice(0, Math.min(maxSlides, images.length))
@@ -31,6 +33,8 @@ async function extractCanvaDeck(inputUrl, options = {}) {
   const slides = [];
   for (const image of selected) {
     const rendered = await fetchImageAsDataUrl(image.url);
+    const pageIndex = Math.max(0, (Number(image.page) || slides.length + 1) - 1);
+    const page = Array.isArray(draft.content?.A) ? draft.content.A[pageIndex] : null;
     slides.push({
       page: Number(image.page) || slides.length + 1,
       pageHash: Number(image.pageHash) || 0,
@@ -38,6 +42,7 @@ async function extractCanvaDeck(inputUrl, options = {}) {
       height: Number(image.height) || rendered.height || 9,
       mime: rendered.mime,
       src: rendered.src,
+      elements: await extractCanvaPageElements(page, contentSize, rasterAssets),
     });
   }
 
@@ -65,6 +70,238 @@ async function extractCanvaDeck(inputUrl, options = {}) {
     signature,
     slides,
   };
+}
+
+function canvaContentSize(content) {
+  const width = Number(content?.C?.A) || 1920;
+  const height = Number(content?.C?.B) || 1080;
+  return { width, height, sx: 960 / width, sy: 540 / height };
+}
+
+async function extractCanvaPageElements(page, size, rasterAssets) {
+  if (!page || !Array.isArray(page.E)) return [];
+  const elements = [];
+  for (const element of page.E) {
+    elements.push(...await convertCanvaElement(element, size, 0, 0, rasterAssets));
+    if (elements.length >= 450) break;
+  }
+  return elements.slice(0, 450);
+}
+
+async function convertCanvaElement(element, size, offsetX, offsetY, rasterAssets) {
+  if (!element || typeof element !== "object") return [];
+  const type = element["A?"];
+  if (type === "H" && Array.isArray(element.c)) {
+    const groupX = offsetX + (Number(element.B) || 0);
+    const groupY = offsetY + (Number(element.A) || 0);
+    const groupElements = [];
+    for (const child of element.c) groupElements.push(...await convertCanvaElement(child, size, groupX, groupY, rasterAssets));
+    return groupElements;
+  }
+  if (type === "I") return await convertCanvaImageElement(element, size, offsetX, offsetY, rasterAssets);
+  if (type === "K") {
+    const text = canvaText(element.a);
+    if (!text.trim()) return [];
+    const style = canvaTextStyle(element.a);
+    return [{
+      type: "text",
+      id: safeElementId(element._, "txt"),
+      x: scaleX(offsetX + Number(element.B || 0), size),
+      y: scaleY(offsetY + Number(element.A || 0), size),
+      w: scaleX(Number(element.D || 10), size),
+      h: scaleY(Number(element.C || 10), size),
+      text,
+      variant: style.fontSize >= 28 ? "title" : "body",
+      fontSize: style.fontSize,
+      color: style.color,
+      fontFamily: style.fontFamily,
+      bold: style.bold,
+      italic: style.italic,
+      underline: style.underline,
+      align: style.align,
+      lineHeight: style.lineHeight,
+    }];
+  }
+  if (type === "J") {
+    const fill = canvaShapeFill(element);
+    const stroke = canvaShapeStroke(element);
+    if (!fill && !stroke) return [];
+    return [{
+      type: "shape",
+      id: safeElementId(element._, "shp"),
+      x: scaleX(offsetX + Number(element.B || 0), size),
+      y: scaleY(offsetY + Number(element.A || 0), size),
+      w: scaleX(Number(element.D || 10), size),
+      h: scaleY(Number(element.C || 10), size),
+      shape: canvaShapeKind(element),
+      fill: fill || "transparent",
+      stroke: stroke || "transparent",
+    }];
+  }
+  if (type === "U") {
+    const rotation = Number(element.E) || 0;
+    const horizontal = Math.abs(rotation % 180) < 45 || Math.abs(rotation % 180) > 135;
+    return [{
+      type: "shape",
+      id: safeElementId(element._, "line"),
+      x: scaleX(offsetX + Number(element.B || 0), size),
+      y: scaleY(offsetY + Number(element.A || 0), size),
+      w: Math.max(2, horizontal ? scaleX(Number(element.D || 10), size) : scaleX(Number(element.C || 4), size)),
+      h: Math.max(2, horizontal ? scaleY(Number(element.C || 4), size) : scaleY(Number(element.D || 10), size)),
+      shape: "line",
+      fill: "transparent",
+      stroke: cleanHex(element.d) || "#202124",
+    }];
+  }
+  return [];
+}
+
+async function convertCanvaImageElement(element, size, offsetX, offsetY, rasterAssets) {
+  const assetId = element?.a?.B?.A?.A || element?.a?.A?.A?.A || "";
+  const asset = assetId ? rasterAssets.get(assetId) : null;
+  if (!asset) return [];
+  try {
+    const frameWidth = Math.abs(Number(element.D || 10));
+    const frameHeight = Math.abs(Number(element.C || 10));
+    const file = selectCanvaAssetFile(asset, frameWidth, frameHeight);
+    if (!file?.url) return [];
+    if (!asset.dataUrl) {
+      const rendered = await fetchImageAsDataUrl(file.url);
+      asset.dataUrl = rendered.src;
+      asset.mime = rendered.mime;
+      asset.width = rendered.width || Number(file.width) || asset.width;
+      asset.height = rendered.height || Number(file.height) || asset.height;
+    }
+    return [{
+      type: "image",
+      id: safeElementId(element._ || assetId, "img"),
+      x: scaleX(offsetX + Number(element.B || 0), size),
+      y: scaleY(offsetY + Number(element.A || 0), size),
+      w: Math.max(1, scaleX(frameWidth, size)),
+      h: Math.max(1, scaleY(frameHeight, size)),
+      src: asset.dataUrl,
+      alt: asset.title || `Canva image ${assetId}`,
+    }];
+  } catch {
+    return [];
+  }
+}
+
+function collectCanvaRasterAssets(root) {
+  const map = new Map();
+  const seen = new Set();
+  const visit = (value) => {
+    if (!value || typeof value !== "object" || seen.has(value)) return;
+    seen.add(value);
+    if (value.type === "RASTER" && typeof value.id === "string" && Array.isArray(value.files)) {
+      map.set(value.id, {
+        id: value.id,
+        title: typeof value.title === "string" ? value.title : "",
+        files: value.files.filter((file) => file && typeof file.url === "string"),
+        width: Number(value.width) || 0,
+        height: Number(value.height) || 0,
+        dataUrl: "",
+        mime: "",
+      });
+    }
+    for (const child of Object.values(value)) {
+      if (Array.isArray(child)) child.forEach(visit);
+      else if (child && typeof child === "object") visit(child);
+    }
+  };
+  visit(root);
+  return map;
+}
+
+function selectCanvaAssetFile(asset, targetWidth, targetHeight) {
+  const files = Array.isArray(asset?.files) ? asset.files : [];
+  if (!files.length) return null;
+  const targetPixels = Math.max(1, targetWidth * targetHeight);
+  return files
+    .slice()
+    .sort((a, b) => {
+      const aPixels = Math.max(1, (Number(a.width) || 0) * (Number(a.height) || 0));
+      const bPixels = Math.max(1, (Number(b.width) || 0) * (Number(b.height) || 0));
+      const aScore = aPixels >= targetPixels ? aPixels - targetPixels : targetPixels - aPixels + 10_000_000;
+      const bScore = bPixels >= targetPixels ? bPixels - targetPixels : targetPixels - bPixels + 10_000_000;
+      return aScore - bScore;
+    })[0];
+}
+
+function safeElementId(value, prefix) {
+  return `${prefix}_${String(value || Math.random().toString(36).slice(2)).replace(/[^a-z0-9_-]/gi, "").slice(0, 54)}`;
+}
+
+function scaleX(value, size) {
+  return clampNumber(value * size.sx, -960, 1920);
+}
+
+function scaleY(value, size) {
+  return clampNumber(value * size.sy, -540, 1080);
+}
+
+function clampNumber(value, min, max) {
+  return Math.min(max, Math.max(min, Number.isFinite(value) ? value : 0));
+}
+
+function canvaText(rich) {
+  if (!rich || typeof rich !== "object") return "";
+  const chunks = [];
+  const source = Array.isArray(rich.A) ? rich.A : [];
+  for (const item of source) {
+    if (item?.["A?"] === "A" && typeof item.A === "string") chunks.push(item.A);
+  }
+  return chunks.join("").replace(/\n$/, "");
+}
+
+function canvaTextStyle(rich) {
+  const style = {};
+  for (const run of Array.isArray(rich?.B) ? rich.B : []) {
+    if (run?.["A?"] !== "A" || !run.A || typeof run.A !== "object") continue;
+    for (const [key, value] of Object.entries(run.A)) {
+      const next = value && typeof value === "object" && "B" in value ? value.B : undefined;
+      if (next !== undefined && next !== null && next !== "") style[key] = next;
+    }
+  }
+  const fontSize = clampNumber((Number(style["font-size"]) || 32) * 0.5, 6, 92);
+  const fontWeight = String(style["font-weight"] || "").toLowerCase();
+  return {
+    fontSize,
+    color: cleanHex(style.color) || "#202124",
+    fontFamily: canvaFontFamily(style["font-family"]),
+    bold: /bold|heavy|black|700|800|900/.test(fontWeight),
+    italic: String(style["font-style"] || "").toLowerCase().includes("italic"),
+    underline: String(style["text-decoration"] || "").toLowerCase().includes("underline"),
+    align: ["left", "center", "right"].includes(String(style["text-align"])) ? String(style["text-align"]) : "left",
+    lineHeight: clampNumber((Number(style.leading) || 1100) / 1000, 0.75, 2.4),
+  };
+}
+
+function canvaFontFamily(value) {
+  const token = String(value || "").split(",")[0].trim();
+  if (!token) return "Arial";
+  if (/YAD1aYG82rc/i.test(token)) return "Arial";
+  return token.replace(/[;"<>]/g, "").slice(0, 80) || "Arial";
+}
+
+function cleanHex(value) {
+  const text = typeof value === "string" ? value.trim() : "";
+  return /^#[0-9a-f]{6}$/i.test(text) ? text : "";
+}
+
+function canvaShapeFill(element) {
+  const path = Array.isArray(element.b) ? element.b[0] : null;
+  return cleanHex(path?.B?.C || path?.B?.B || "");
+}
+
+function canvaShapeStroke(element) {
+  const path = Array.isArray(element.b) ? element.b[0] : null;
+  return cleanHex(path?.C?.B || path?.C?.C || "");
+}
+
+function canvaShapeKind(element) {
+  const path = Array.isArray(element.b) ? String(element.b[0]?.A || "") : "";
+  return /C|c|Q|q/.test(path) && !/^M0 0H/i.test(path) ? "ellipse" : "rect";
 }
 
 function normalizeCanvaUrl(value) {

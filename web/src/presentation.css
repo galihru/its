@@ -3203,15 +3203,30 @@ dialog::backdrop {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 9px 4px 4px;
+  padding: 4px;
   border-radius: 999px;
   background: rgba(20, 21, 25, .58);
   backdrop-filter: blur(14px);
 }
 
 .audience-volume-panel input {
-  width: 108px;
+  width: 0;
+  opacity: 0;
+  pointer-events: none;
   accent-color: #fff;
+  transition: width .18s ease, opacity .18s ease;
+}
+
+.audience-volume-panel:hover,
+.audience-volume-panel:focus-within {
+  padding-right: 9px;
+}
+
+.audience-volume-panel:hover input,
+.audience-volume-panel:focus-within input {
+  width: 108px;
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .audience-live-toggle,
@@ -4164,7 +4179,8 @@ dialog.audience-rail-dialog .dialog-title .eyebrow {
     height: 38px;
   }
 
-  .audience-volume-panel input {
+  .audience-volume-panel:hover input,
+  .audience-volume-panel:focus-within input {
     width: 86px;
   }
 
@@ -4294,7 +4310,8 @@ dialog.audience-rail-dialog .dialog-title .eyebrow {
     height: 38px;
   }
 
-  .audience-volume-panel input {
+  .audience-volume-panel:hover input,
+  .audience-volume-panel:focus-within input {
     width: 84px;
   }
 

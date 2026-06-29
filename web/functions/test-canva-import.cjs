@@ -18,6 +18,12 @@ async function main() {
     importedSlides: deck.slides.length,
     signature: deck.signature,
     firstSlideBytes: Math.round((deck.slides[0]?.src.length || 0) * 0.75),
+    extractedElements: deck.slides.reduce((sum, slide) => sum + (Array.isArray(slide.elements) ? slide.elements.length : 0), 0),
+    firstSlides: deck.slides.slice(0, 3).map((slide) => ({
+      page: slide.page,
+      elements: Array.isArray(slide.elements) ? slide.elements.length : 0,
+      types: Array.from(new Set((slide.elements || []).map((element) => element.type))).sort(),
+    })),
   };
   console.log(JSON.stringify(summary, null, 2));
   if (out) {
