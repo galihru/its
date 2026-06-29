@@ -209,9 +209,15 @@
           <input id="audience-volume" type="range" min="0" max="1" step="0.05" value="0.9" aria-label="Volume" />
         </div>
         <span class="audience-action-spacer"></span>
-        <button id="audience-share-action" class="audience-icon-button" type="button" title="Bagikan" aria-label="Bagikan">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 12.2 15.4 8M8.5 11.8l6.9 4.2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="6" cy="12" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="6.5" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="17.5" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/></svg>
-        </button>
+        <div class="audience-share-wrap">
+          <button id="audience-share-action" class="audience-icon-button" type="button" title="Bagikan" aria-label="Bagikan" aria-describedby="audience-share-popover">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 12.2 15.4 8M8.5 11.8l6.9 4.2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="6" cy="12" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="6.5" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="17.5" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+          </button>
+          <div id="audience-share-popover" class="audience-share-popover" role="tooltip" aria-live="polite" hidden>
+            <button id="audience-share-link" class="audience-share-link" type="button">Salin link</button>
+            <div id="audience-share-qr" class="audience-share-qr" aria-label="QR link presentasi"></div>
+          </div>
+        </div>
         <button id="audience-download-action" class="audience-icon-button" type="button" title="Download" aria-label="Download presentasi">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v10m0 0 4-4m-4 4-4-4M5 19h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>

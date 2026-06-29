@@ -3107,6 +3107,12 @@ dialog::backdrop {
   min-width: 12px;
 }
 
+.audience-share-wrap {
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+
 .audience-icon-button {
   width: 40px;
   height: 40px;
@@ -3130,6 +3136,67 @@ dialog::backdrop {
   height: 21px;
   display: block;
   fill: currentColor;
+}
+
+.audience-share-popover {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 12px);
+  width: min(260px, calc(100vw - 36px));
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, .36);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, .72);
+  color: #202124;
+  backdrop-filter: blur(26px) saturate(1.2);
+  box-shadow: none;
+  opacity: 0;
+  transform: translateY(8px) scale(.98);
+  pointer-events: none;
+  transition: opacity .16s ease, transform .16s ease;
+}
+
+.audience-share-wrap:hover .audience-share-popover,
+.audience-share-wrap:focus-within .audience-share-popover,
+.audience-share-popover.pinned {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.audience-share-link {
+  width: 100%;
+  min-height: 38px;
+  border: 0;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .76);
+  color: #202124;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.audience-share-link:hover {
+  background: #fff;
+}
+
+.audience-share-qr {
+  margin-top: 10px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .86);
+  padding: 10px;
+}
+
+.audience-share-qr svg {
+  width: 190px;
+  max-width: 100%;
+  height: auto;
+  display: block;
 }
 
 .audience-volume-panel {
@@ -3696,8 +3763,20 @@ dialog.audience-rail-dialog .dialog-title {
   top: 0;
   z-index: 2;
   background: rgba(255, 255, 255, .58);
-  padding-top: 2px;
+  padding: 14px 18px 12px;
   backdrop-filter: blur(22px) saturate(1.14);
+}
+
+dialog.audience-rail-dialog .dialog-title h2 {
+  margin: 3px 0 0;
+  font-size: 20px;
+  line-height: 1.08;
+  font-weight: 560;
+}
+
+dialog.audience-rail-dialog .dialog-title .eyebrow {
+  font-size: 9px;
+  letter-spacing: .15em;
 }
 
 .comment-action-sheet[open] {

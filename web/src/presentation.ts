@@ -246,7 +246,9 @@ const uid = (prefix = "id") => `${prefix}_${crypto.randomUUID().replaceAll("-", 
 const clone = <T>(value: T): T => structuredClone(value);
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-const isEditableRole = () => role === "owner" || role === "editor";
+let projectOwnerUid = "";
+const isWritableOwner = () => role === "owner" && (!projectOwnerUid || projectOwnerUid === firebaseUser?.uid);
+const isEditableRole = () => role === "editor" || isWritableOwner();
 
 const savedParticipantName = localStorage.getItem("its-presentasi-name") || localStorage.getItem("its-presentasi-anonymous-name") || sessionStorage.getItem("its-presentasi-name") || "";
 let participantName = savedParticipantName || `Anonymous ${Math.floor(1000 + Math.random() * 9000)}`;
@@ -368,9 +370,17 @@ function cleanFontFamily(value: unknown): string | undefined {
 function normalizeCanvaUrl(value: string): string | null {
   try {
     const url = new URL(value.trim());
+    const host = url.hostname.toLowerCase();
+    if (host === "canva.link" || host.endsWith(".canva.link")) {
+      url.search = "";
+      url.hash = "";
+      return url.href;
+    }
     if (!/(^|\.)canva\.com$/i.test(url.hostname)) return null;
-    if (!/^\/design\/[^/]+/i.test(url.pathname) && !/^\/[^/]+\/[^/]+/i.test(url.pathname)) return null;
+    if (!/^\/design\/[^/]+/i.test(url.pathname)) return null;
+    url.pathname = url.pathname.replace(/\/(edit|view|watch|present)(\/.*)?$/i, "/view");
     url.hash = "";
+    url.search = "";
     return url.href;
   } catch {
     return null;
@@ -380,9 +390,33 @@ function normalizeCanvaUrl(value: string): string | null {
 function canvaEmbedUrl(value: string, refresh = false): string {
   const normalized = normalizeCanvaUrl(value) || value;
   const url = new URL(normalized);
-  url.searchParams.set("embed", "");
+  if (/(^|\.)canva\.com$/i.test(url.hostname)) {
+    url.pathname = url.pathname.replace(/\/(edit|watch|present)(\/.*)?$/i, "/view");
+    url.search = "";
+    url.searchParams.set("embed", "");
+  }
   if (refresh) url.searchParams.set("its_refresh", String(Date.now()));
   return url.href;
+}
+
+async function resolveCanvaUrlForEmbed(value: string): Promise<string | null> {
+  const normalized = normalizeCanvaUrl(value);
+  if (!normalized) return null;
+  try {
+    const host = new URL(normalized).hostname.toLowerCase();
+    if (host === "canva.link" || host.endsWith(".canva.link")) {
+      const response = await fetch(normalized, { method: "GET", redirect: "follow" });
+      if (response.url) return normalizeCanvaUrl(response.url) || normalized;
+    }
+  } catch {
+    try {
+      const response = await fetch(normalized, { mode: "no-cors", redirect: "follow" });
+      if (response.url) return normalizeCanvaUrl(response.url) || normalized;
+    } catch {
+      // Browser CORS/Cloudflare can block short-link redirect reads; keep the original link.
+    }
+  }
+  return normalized;
 }
 
 function cleanStyleFields(item: Record<string, unknown>): PptxRunStyle & { animation?: ElementAnimation } {
@@ -816,7 +850,10 @@ function friendlyError(error: unknown): string {
   if (message.includes("auth/popup-closed-by-user")) return "Login Google dibatalkan.";
   if (message.includes("auth/credential-already-in-use")) return "Akun Google itu sudah terhubung ke sesi lain. Untuk project owner ini, tetap gunakan sesi owner yang sedang aktif.";
   if (message.includes("auth/unauthorized-domain")) return "Domain ini belum diizinkan untuk Google Sign-In di Firebase Console.";
-  if (message.includes("PERMISSION_DENIED")) return "Database Rules belum mengizinkan fitur presentasi.";
+  if (message.includes("PERMISSION_DENIED")) {
+    if (role === "owner" && projectOwnerUid && firebaseUser?.uid !== projectOwnerUid) return "Sesi ini bukan UID pemilik project. Masuk dengan akun pembuat project untuk menghapus atau menyimpan.";
+    return "Database Rules belum mengizinkan operasi ini untuk sesi saat ini.";
+  }
   if (message.toLowerCase().includes("network")) return "koneksi jaringan tidak tersedia.";
   return message;
 }
@@ -1015,6 +1052,11 @@ async function openProject(): Promise<void> {
   }
   const record = snapshot.val() as PresentationRecord;
   // Bare ?p= URLs are the owner workspace. Viewer/editor links use explicit view/edit params.
+  projectOwnerUid = String(record.ownerUid || "");
+  const requestedBareOwner = role === "owner";
+  if (requestedBareOwner && projectOwnerUid && projectOwnerUid !== firebaseUser.uid) {
+    role = "viewer";
+  }
   deck = sanitizeDeck(record.deck);
   presentationState = record.state || { currentSlide: 0, presenting: false };
   projectCreatedAt = Number(record.createdAt) || Number(record.updatedAt) || 0;
@@ -1031,6 +1073,7 @@ async function openProject(): Promise<void> {
     await startPresence();
   } else {
     showJoinGate(role);
+    if (requestedBareOwner) toast("Sesi ini bukan akun pemilik project. Masuk dengan akun pembuat atau buka sebagai viewer/editor.");
   }
 }
 
@@ -1715,6 +1758,13 @@ function scheduleSave(label = "Menyimpan…"): void {
   setSaveState("saving", label);
   clearTimeout(saveTimer);
   saveTimer = window.setTimeout(() => void persistDeck(), SAVE_DELAY);
+}
+
+function flushSave(label = "Menyimpan..."): void {
+  scheduleSave(label);
+  if (!saveTimer) return;
+  clearTimeout(saveTimer);
+  void persistDeck();
 }
 
 async function persistDeck(): Promise<void> {
@@ -2551,7 +2601,7 @@ function deleteSelected(): void {
   selectedElementId = null;
   recordHistory();
   renderAll();
-  scheduleSave();
+  flushSave("Menghapus slide...");
 }
 
 function duplicateSlide(): void {
@@ -2782,11 +2832,13 @@ async function addImageFile(file: File): Promise<void> {
   addImageFromDataUrl(src, file.name);
 }
 
-function addCanvaLink(url: string): void {
+async function addCanvaLink(url: string): Promise<void> {
   if (!isEditableRole()) return;
-  const normalized = normalizeCanvaUrl(url);
+  setSaveState("saving", "Mengecek link Canva...");
+  const normalized = await resolveCanvaUrlForEmbed(url);
   if (!normalized) {
     toast("Link Canva tidak valid atau tidak publik.");
+    setSaveState("saved");
     return;
   }
   const title = prompt("Nama embed Canva", "Canva")?.trim() || "Canva";
@@ -2806,13 +2858,17 @@ function addCanvaLink(url: string): void {
   recordHistory();
   renderAll();
   scheduleSave("Menyimpan embed Canva...");
-  toast("Embed Canva ditambahkan dan akan auto-refresh.");
+  const host = new URL(normalized).hostname.toLowerCase();
+  toast(host.endsWith("canva.link") ? "Link Canva ditambahkan. Jika embed kosong, buka Canva lalu tempel URL /view final." : "Embed Canva ditambahkan dan akan auto-refresh.");
 }
 
 function promptCanvaImport(): void {
   const value = prompt("Tempel link Canva publik", "");
   if (value === null) return;
-  addCanvaLink(value);
+  void addCanvaLink(value).catch((error) => {
+    setSaveState("error");
+    toast(`Gagal import Canva: ${friendlyError(error)}`);
+  });
 }
 
 function refreshVisibleCanvaEmbeds(force = false): void {
@@ -3880,6 +3936,7 @@ function renderAudienceChrome(): void {
   $("span:last-child", status).textContent = presentationState.presenting
     ? live ? "LIVE - peer-to-peer" : "Tidak Live - klik Live untuk kembali"
     : "Menunggu presenter...";
+  renderAudienceSharePopover();
   renderSegmentDialog();
 }
 
@@ -5129,8 +5186,297 @@ async function generatePresentationShareImageBlob(): Promise<Blob> {
   return canvasToBlob(canvas, "image/png");
 }
 
+const QR_VERSION = 8;
+const QR_SIZE = QR_VERSION * 4 + 17;
+const QR_DATA_CODEWORDS = 194;
+const QR_DATA_BLOCKS = 2;
+const QR_DATA_PER_BLOCK = QR_DATA_CODEWORDS / QR_DATA_BLOCKS;
+const QR_ECC_PER_BLOCK = 24;
+
+function audienceShareUrl(): string {
+  if (!projectId) return location.href;
+  if (role === "editor" && editorToken) return buildUrl({ edit: editorToken });
+  return buildUrl({ view: true });
+}
+
+function qrBitLength(value: number): number {
+  return value === 0 ? 0 : 32 - Math.clz32(value);
+}
+
+function qrBchRemainder(value: number, poly: number): number {
+  let result = value;
+  const polyLength = qrBitLength(poly);
+  while (qrBitLength(result) >= polyLength) result ^= poly << (qrBitLength(result) - polyLength);
+  return result;
+}
+
+function qrFormatBits(mask: number): number {
+  const data = (1 << 3) | mask; // Error correction level L.
+  return ((data << 10) | qrBchRemainder(data << 10, 0x537)) ^ 0x5412;
+}
+
+function qrVersionBits(): number {
+  return (QR_VERSION << 12) | qrBchRemainder(QR_VERSION << 12, 0x1f25);
+}
+
+function qrGfTables(): { exp: number[]; log: number[] } {
+  const exp = new Array<number>(512).fill(0);
+  const log = new Array<number>(256).fill(0);
+  let x = 1;
+  for (let i = 0; i < 255; i += 1) {
+    exp[i] = x;
+    log[x] = i;
+    x <<= 1;
+    if (x & 0x100) x ^= 0x11d;
+  }
+  for (let i = 255; i < 512; i += 1) exp[i] = exp[i - 255];
+  return { exp, log };
+}
+
+const QR_GF = qrGfTables();
+
+function qrGfMultiply(a: number, b: number): number {
+  return a && b ? QR_GF.exp[QR_GF.log[a] + QR_GF.log[b]] : 0;
+}
+
+function qrReedSolomonGenerator(degree: number): number[] {
+  let result = [1];
+  for (let i = 0; i < degree; i += 1) {
+    const next = new Array<number>(result.length + 1).fill(0);
+    for (let j = 0; j < result.length; j += 1) {
+      next[j] ^= result[j];
+      next[j + 1] ^= qrGfMultiply(result[j], QR_GF.exp[i]);
+    }
+    result = next;
+  }
+  return result.slice(1);
+}
+
+const QR_RS_DIVISOR = qrReedSolomonGenerator(QR_ECC_PER_BLOCK);
+
+function qrReedSolomonRemainder(data: number[]): number[] {
+  const result = new Array<number>(QR_ECC_PER_BLOCK).fill(0);
+  for (const byte of data) {
+    const factor = byte ^ result.shift()!;
+    result.push(0);
+    for (let i = 0; i < QR_RS_DIVISOR.length; i += 1) result[i] ^= qrGfMultiply(QR_RS_DIVISOR[i], factor);
+  }
+  return result;
+}
+
+function qrDataCodewords(text: string): number[] {
+  const bytes = [...new TextEncoder().encode(text)];
+  if (bytes.length > 190) throw new Error("Link terlalu panjang untuk QR cepat.");
+  const bits: number[] = [];
+  const appendBits = (value: number, length: number) => {
+    for (let i = length - 1; i >= 0; i -= 1) bits.push((value >>> i) & 1);
+  };
+  appendBits(0b0100, 4);
+  appendBits(bytes.length, 8);
+  bytes.forEach((byte) => appendBits(byte, 8));
+  const capacity = QR_DATA_CODEWORDS * 8;
+  appendBits(0, Math.min(4, capacity - bits.length));
+  while (bits.length % 8) bits.push(0);
+  const codewords: number[] = [];
+  for (let i = 0; i < bits.length; i += 8) codewords.push(bits.slice(i, i + 8).reduce((sum, bit) => (sum << 1) | bit, 0));
+  for (let pad = 0; codewords.length < QR_DATA_CODEWORDS; pad += 1) codewords.push(pad % 2 ? 0x11 : 0xec);
+  return codewords;
+}
+
+function qrAllCodewords(text: string): number[] {
+  const data = qrDataCodewords(text);
+  const blocks = Array.from({ length: QR_DATA_BLOCKS }, (_, index) => data.slice(index * QR_DATA_PER_BLOCK, (index + 1) * QR_DATA_PER_BLOCK));
+  const ecc = blocks.map(qrReedSolomonRemainder);
+  const result: number[] = [];
+  for (let i = 0; i < QR_DATA_PER_BLOCK; i += 1) blocks.forEach((block) => result.push(block[i]));
+  for (let i = 0; i < QR_ECC_PER_BLOCK; i += 1) ecc.forEach((block) => result.push(block[i]));
+  return result;
+}
+
+function qrMask(mask: number, x: number, y: number): boolean {
+  switch (mask) {
+    case 0: return (x + y) % 2 === 0;
+    case 1: return y % 2 === 0;
+    case 2: return x % 3 === 0;
+    case 3: return (x + y) % 3 === 0;
+    case 4: return (Math.floor(y / 2) + Math.floor(x / 3)) % 2 === 0;
+    case 5: return ((x * y) % 2) + ((x * y) % 3) === 0;
+    case 6: return (((x * y) % 2) + ((x * y) % 3)) % 2 === 0;
+    default: return (((x + y) % 2) + ((x * y) % 3)) % 2 === 0;
+  }
+}
+
+function qrPenalty(matrix: boolean[][]): number {
+  let penalty = 0;
+  const size = matrix.length;
+  for (let y = 0; y < size; y += 1) {
+    let runColor = matrix[y][0];
+    let run = 1;
+    for (let x = 1; x < size; x += 1) {
+      if (matrix[y][x] === runColor) run += 1;
+      else {
+        if (run >= 5) penalty += 3 + run - 5;
+        runColor = matrix[y][x];
+        run = 1;
+      }
+    }
+    if (run >= 5) penalty += 3 + run - 5;
+  }
+  for (let x = 0; x < size; x += 1) {
+    let runColor = matrix[0][x];
+    let run = 1;
+    for (let y = 1; y < size; y += 1) {
+      if (matrix[y][x] === runColor) run += 1;
+      else {
+        if (run >= 5) penalty += 3 + run - 5;
+        runColor = matrix[y][x];
+        run = 1;
+      }
+    }
+    if (run >= 5) penalty += 3 + run - 5;
+  }
+  for (let y = 0; y < size - 1; y += 1) {
+    for (let x = 0; x < size - 1; x += 1) {
+      const color = matrix[y][x];
+      if (color === matrix[y][x + 1] && color === matrix[y + 1][x] && color === matrix[y + 1][x + 1]) penalty += 3;
+    }
+  }
+  const dark = matrix.flat().filter(Boolean).length;
+  penalty += Math.floor(Math.abs(dark * 20 - size * size * 10) / (size * size)) * 10;
+  return penalty;
+}
+
+function buildQrMatrix(text: string): boolean[][] {
+  const matrix = Array.from({ length: QR_SIZE }, () => new Array<boolean>(QR_SIZE).fill(false));
+  const reserved = Array.from({ length: QR_SIZE }, () => new Array<boolean>(QR_SIZE).fill(false));
+  const setFunction = (x: number, y: number, dark: boolean) => {
+    if (x < 0 || y < 0 || x >= QR_SIZE || y >= QR_SIZE) return;
+    matrix[y][x] = dark;
+    reserved[y][x] = true;
+  };
+  const drawFinder = (x: number, y: number) => {
+    for (let dy = -1; dy <= 7; dy += 1) {
+      for (let dx = -1; dx <= 7; dx += 1) {
+        const inside = dx >= 0 && dx <= 6 && dy >= 0 && dy <= 6;
+        const dark = inside && (dx === 0 || dx === 6 || dy === 0 || dy === 6 || (dx >= 2 && dx <= 4 && dy >= 2 && dy <= 4));
+        setFunction(x + dx, y + dy, dark);
+      }
+    }
+  };
+  const drawAlignment = (cx: number, cy: number) => {
+    for (let dy = -2; dy <= 2; dy += 1) {
+      for (let dx = -2; dx <= 2; dx += 1) {
+        setFunction(cx + dx, cy + dy, Math.max(Math.abs(dx), Math.abs(dy)) === 2 || (dx === 0 && dy === 0));
+      }
+    }
+  };
+  drawFinder(0, 0);
+  drawFinder(QR_SIZE - 7, 0);
+  drawFinder(0, QR_SIZE - 7);
+  for (let i = 8; i < QR_SIZE - 8; i += 1) {
+    setFunction(6, i, i % 2 === 0);
+    setFunction(i, 6, i % 2 === 0);
+  }
+  [6, 24, 42].forEach((x) => [6, 24, 42].forEach((y) => {
+    if ((x === 6 && y === 6) || (x === 42 && y === 6) || (x === 6 && y === 42)) return;
+    drawAlignment(x, y);
+  }));
+  for (let i = 0; i <= 8; i += 1) {
+    if (i !== 6) {
+      setFunction(8, i, false);
+      setFunction(i, 8, false);
+    }
+  }
+  for (let i = 0; i < 8; i += 1) {
+    setFunction(QR_SIZE - 1 - i, 8, false);
+    setFunction(8, QR_SIZE - 1 - i, false);
+  }
+  setFunction(8, QR_SIZE - 8, true);
+  for (let i = 0; i < 18; i += 1) {
+    setFunction(QR_SIZE - 11 + (i % 3), Math.floor(i / 3), false);
+    setFunction(Math.floor(i / 3), QR_SIZE - 11 + (i % 3), false);
+  }
+
+  const codewords = qrAllCodewords(text);
+  const bits = codewords.flatMap((byte) => Array.from({ length: 8 }, (_, index) => ((byte >>> (7 - index)) & 1) === 1));
+  let bitIndex = 0;
+  let upward = true;
+  for (let right = QR_SIZE - 1; right >= 1; right -= 2) {
+    if (right === 6) right -= 1;
+    for (let vert = 0; vert < QR_SIZE; vert += 1) {
+      const y = upward ? QR_SIZE - 1 - vert : vert;
+      for (let x = right; x >= right - 1; x -= 1) {
+        if (reserved[y][x]) continue;
+        matrix[y][x] = bits[bitIndex] || false;
+        bitIndex += 1;
+      }
+    }
+    upward = !upward;
+  }
+
+  let best = matrix;
+  let bestPenalty = Infinity;
+  for (let mask = 0; mask < 8; mask += 1) {
+    const candidate = matrix.map((row, y) => row.map((value, x) => reserved[y][x] ? value : value !== qrMask(mask, x, y)));
+    const format = qrFormatBits(mask);
+    for (let i = 0; i <= 5; i += 1) candidate[i][8] = ((format >>> i) & 1) !== 0;
+    candidate[7][8] = ((format >>> 6) & 1) !== 0;
+    candidate[8][8] = ((format >>> 7) & 1) !== 0;
+    candidate[8][7] = ((format >>> 8) & 1) !== 0;
+    for (let i = 9; i < 15; i += 1) candidate[8][14 - i] = ((format >>> i) & 1) !== 0;
+    for (let i = 0; i < 8; i += 1) candidate[8][QR_SIZE - 1 - i] = ((format >>> i) & 1) !== 0;
+    for (let i = 8; i < 15; i += 1) candidate[QR_SIZE - 15 + i][8] = ((format >>> i) & 1) !== 0;
+    candidate[QR_SIZE - 8][8] = true;
+    const version = qrVersionBits();
+    for (let i = 0; i < 18; i += 1) {
+      const dark = ((version >>> i) & 1) !== 0;
+      candidate[Math.floor(i / 3)][QR_SIZE - 11 + (i % 3)] = dark;
+      candidate[QR_SIZE - 11 + (i % 3)][Math.floor(i / 3)] = dark;
+    }
+    const penalty = qrPenalty(candidate);
+    if (penalty < bestPenalty) {
+      bestPenalty = penalty;
+      best = candidate;
+    }
+  }
+  return best;
+}
+
+function createQrSvg(text: string): string {
+  const matrix = buildQrMatrix(text);
+  const size = matrix.length;
+  const quiet = 4;
+  const viewSize = size + quiet * 2;
+  const path = matrix.flatMap((row, y) => row.map((dark, x) => dark ? `M${x + quiet} ${y + quiet}h1v1h-1z` : "")).join("");
+  const logoSize = 9;
+  const logo = (viewSize - logoSize) / 2;
+  return `<svg viewBox="0 0 ${viewSize} ${viewSize}" role="img" aria-label="QR link presentasi" xmlns="http://www.w3.org/2000/svg">
+    <rect width="${viewSize}" height="${viewSize}" rx="5" fill="#fff"/>
+    <path d="${path}" fill="#111315"/>
+    <rect x="${logo - 1.2}" y="${logo - 1.2}" width="${logoSize + 2.4}" height="${logoSize + 2.4}" rx="3" fill="#fff"/>
+    <image href="/its-presentasi.png" x="${logo}" y="${logo - .3}" width="${logoSize}" height="${logoSize}" preserveAspectRatio="xMidYMid meet"/>
+  </svg>`;
+}
+
+function renderAudienceSharePopover(): void {
+  const popover = document.getElementById("audience-share-popover");
+  const qr = document.getElementById("audience-share-qr");
+  const link = document.getElementById("audience-share-link") as HTMLButtonElement | null;
+  if (!popover || !qr || !link) return;
+  const url = audienceShareUrl();
+  link.textContent = url;
+  link.title = "Klik untuk menyalin link";
+  link.dataset.shareUrl = url;
+  try {
+    qr.innerHTML = createQrSvg(url);
+  } catch {
+    qr.textContent = "QR tidak tersedia untuk link ini.";
+  }
+  popover.removeAttribute("hidden");
+}
+
 async function shareAudiencePresentation(): Promise<void> {
-  const url = projectId ? buildUrl({ view: true }) : location.href;
+  const url = audienceShareUrl();
   const title = deck.title || "ITS Presentasi";
   updatePresentationMetadata();
   const shareData: ShareData = { title, text: title, url };
@@ -5515,6 +5861,14 @@ function bindUi(): void {
   $("#confirm-delete").addEventListener("click", () => void deleteProject(deleteTarget));
   $("#audience-fullscreen").addEventListener("click", () => void toggleAudienceFullscreen());
   $("#audience-share-action").addEventListener("click", () => void shareAudiencePresentation().catch((error) => toast(friendlyError(error))));
+  $("#audience-share-action").addEventListener("pointerenter", renderAudienceSharePopover);
+  $("#audience-share-action").addEventListener("focus", renderAudienceSharePopover);
+  $("#audience-share-link").addEventListener("click", async (event) => {
+    event.preventDefault();
+    const value = ($("#audience-share-link") as HTMLButtonElement).dataset.shareUrl || audienceShareUrl();
+    await navigator.clipboard.writeText(value);
+    toast("Link presentasi disalin.");
+  });
   $("#audience-download-action").addEventListener("click", downloadAudiencePresentation);
   $("#audience-volume-button").addEventListener("click", toggleAudienceMediaMute);
   $("#audience-volume").addEventListener("input", updateAudienceVolume);
