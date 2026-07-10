@@ -5,14 +5,70 @@
   "hosting": {
     "site": "itstelkom",
     "public": "dist",
-    "ignore": [
-      "firebase.json",
-      "**/.*",
-      "**/node_modules/**",
-      "**/*.apk",
-      "**/*.idsig"
-    ],
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**",
+        "**/*.apk",
+        "**/*.idsig"
+      ],
     "rewrites": [
+      {
+        "source": "/documentation",
+        "destination": "/documentation/index.html"
+      },
+      {
+        "source": "/documentation/**",
+        "destination": "/documentation/index.html"
+      },
+      {
+        "source": "/method",
+        "destination": "/method/index.html"
+      },
+      {
+        "source": "/method/android",
+        "destination": "/method/android/index.html"
+      },
+      {
+        "source": "/method/android/**",
+        "destination": "/method/android/index.html"
+      },
+      {
+        "source": "/method/windows",
+        "destination": "/method/windows/index.html"
+      },
+      {
+        "source": "/method/windows/**",
+        "destination": "/method/windows/index.html"
+      },
+      {
+        "source": "/method/webapp",
+        "destination": "/method/webapp/index.html"
+      },
+      {
+        "source": "/method/webapp/**",
+        "destination": "/method/webapp/index.html"
+      },
+      {
+        "source": "/method/**",
+        "destination": "/method/index.html"
+      },
+      {
+        "source": "/licence",
+        "destination": "/licence/index.html"
+      },
+      {
+        "source": "/licence/**",
+        "destination": "/licence/index.html"
+      },
+      {
+        "source": "/license",
+        "destination": "/license/index.html"
+      },
+      {
+        "source": "/license/**",
+        "destination": "/license/index.html"
+      },
       {
         "source": "/privacy",
         "destination": "/privacy/index.html"

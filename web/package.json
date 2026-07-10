@@ -11,7 +11,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "tsc && vite build && node scripts/prepare-hosting-artifacts.mjs",
     "preview": "vite preview",
     "desktop:dev": "npm run build && electron electron/main.cjs",
     "desktop:open": "electron electron/main.cjs",
@@ -19,7 +19,8 @@
     "widgets:publish": "powershell -ExecutionPolicy Bypass -File scripts/publish-windows-widget-provider.ps1",
     "desktop:msix": "powershell -ExecutionPolicy Bypass -File scripts/build-windows-msix-with-widgets.ps1",
     "desktop:portable": "npm run build && electron-builder --win portable",
-    "desktop:custom-installer": "powershell -ExecutionPolicy Bypass -File scripts/build-custom-windows-installer.ps1"
+    "desktop:custom-installer": "powershell -ExecutionPolicy Bypass -File scripts/build-custom-windows-installer.ps1",
+    "docs:method": "node scripts/generate-method-docs.mjs"
   },
   "devDependencies": {
     "@capacitor/android": "^6.2.1",

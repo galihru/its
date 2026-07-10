@@ -4,234 +4,77 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Privacy Policy - ITS Maps</title>
-    <meta
-      name="description"
-      content="Privacy Policy for ITS Maps by Hanifa Teams, covering map, traffic, camera AI, Firebase, and Windows widget data handling."
-    />
-    <style>
-      :root {
-        color-scheme: light;
-        --bg: #f6f8fb;
-        --ink: #162033;
-        --muted: #5f6b7a;
-        --line: #d8e0ea;
-        --accent: #0f766e;
-        --panel: #ffffff;
-      }
-
-      * {
-        box-sizing: border-box;
-      }
-
-      body {
-        margin: 0;
-        background: var(--bg);
-        color: var(--ink);
-        font-family:
-          Inter,
-          Segoe UI,
-          Roboto,
-          Arial,
-          sans-serif;
-        line-height: 1.65;
-      }
-
-      main {
-        width: min(920px, calc(100% - 32px));
-        margin: 0 auto;
-        padding: 48px 0 64px;
-      }
-
-      header {
-        border-bottom: 1px solid var(--line);
-        margin-bottom: 28px;
-        padding-bottom: 24px;
-      }
-
-      .brand {
-        color: var(--accent);
-        font-size: 0.9rem;
-        font-weight: 700;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-      }
-
-      h1 {
-        margin: 10px 0 8px;
-        font-size: clamp(2rem, 4vw, 3.35rem);
-        line-height: 1.08;
-      }
-
-      h2 {
-        margin: 34px 0 10px;
-        font-size: 1.25rem;
-      }
-
-      p,
-      li {
-        color: var(--muted);
-        font-size: 1rem;
-      }
-
-      a {
-        color: var(--accent);
-      }
-
-      .summary {
-        color: var(--ink);
-        font-size: 1.08rem;
-        max-width: 760px;
-      }
-
-      .meta {
-        display: grid;
-        gap: 10px;
-        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-        margin: 26px 0;
-      }
-
-      .meta div {
-        background: var(--panel);
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        padding: 14px 16px;
-      }
-
-      .meta strong {
-        display: block;
-        color: var(--ink);
-      }
-
-      section {
-        background: var(--panel);
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        margin: 16px 0;
-        padding: 22px;
-      }
-
-      ul {
-        margin: 10px 0 0;
-        padding-left: 22px;
-      }
-
-      footer {
-        color: var(--muted);
-        font-size: 0.95rem;
-        margin-top: 28px;
-      }
-    </style>
+    <meta name="description" content="Privacy Policy for ITS Maps by Hanifa Teams, including web, Android APK, Microsoft Store Windows app, Windows widgets, maps, camera AI, Firebase, and Raspberry Pi telemetry." />
+    <link rel="icon" type="image/png" href="/its.png" />
+    <link rel="stylesheet" href="/method/method.css" />
   </head>
-  <body>
-    <main>
-      <header>
-        <div class="brand">ITS Maps</div>
-        <h1>Privacy Policy / Kebijakan Privasi</h1>
-        <p class="summary">
-          This page explains how ITS Maps handles data for the web app, Windows desktop app,
-          Microsoft Store package, Windows widgets, traffic dashboard, Raspberry Pi sync,
-          and camera AI features.
-        </p>
-        <div class="meta" aria-label="Policy metadata">
-          <div>
-            <strong>Developer</strong>
-            Hanifa Septhi Larasati
-          </div>
-          <div>
-            <strong>Publisher</strong>
-            Hanifa Teams
-          </div>
-          <div>
-            <strong>Last updated</strong>
-            8 July 2026
-          </div>
+  <body class="policy-page">
+    <a class="skip-link" href="#content">Lewati ke konten</a>
+    <header class="policy-top">
+      <nav aria-label="Privacy navigation">
+        <a class="brand" href="/"><img src="/its.png" alt=""> <span>ITS Maps</span></a>
+        <div>
+          <a href="/documentation">Documentation</a>
+          <a href="/method">Method</a>
+          <a href="/licence">Licence</a>
         </div>
-      </header>
-
-      <section>
-        <h2>1. Information We Process</h2>
-        <p>Depending on which features are enabled, ITS Maps may process:</p>
-        <ul>
-          <li>Device telemetry such as device name, device identifier, online status, battery or network status, and Raspberry Pi sync status.</li>
-          <li>Map and location data published by configured ITS Maps devices or entered by the user for map display and tracking features.</li>
-          <li>Traffic and detection summaries, including counts, labels, confidence values, timestamps, and dashboard history.</li>
-          <li>Camera stream URLs or local camera access selected by the user. Camera frames may be analyzed locally in the app for AI detection where supported.</li>
-          <li>Presentation collaboration data, including project title, slide content, comments, participant display name, and optional Google account identity when the presentation feature is used.</li>
-          <li>App configuration, diagnostics, version/update metadata, and widget state needed to operate the Microsoft Store app and Windows widgets.</li>
-        </ul>
+      </nav>
+      <section class="policy-hero">
+        <div>
+          <p class="eyebrow">Privacy Policy</p>
+          <h1>Kebijakan Privasi ITS Maps</h1>
+          <p>Halaman ini menjelaskan data yang diproses oleh WebApp, Android APK, Microsoft Store Windows app, Windows Widgets, Raspberry Pi controller, fitur peta, kamera, dan AI object detection.</p>
+          <dl class="policy-meta">
+            <div><dt>Developer</dt><dd>Hanifa Septhi Larasati</dd></div>
+            <div><dt>Publisher</dt><dd>Hanifa Teams</dd></div>
+            <div><dt>Updated</dt><dd>10 July 2026</dd></div>
+            <div><dt>Policy URL</dt><dd><a href="https://itstelkom.web.app/privacy">https://itstelkom.web.app/privacy</a></dd></div>
+          </dl>
+        </div>
+        <div class="policy-art" aria-label="Privacy illustrations">
+          <img src="/privacy/assets/1.png" alt="ITS Maps privacy illustration 1" loading="lazy">
+          <img src="/privacy/assets/2.png" alt="ITS Maps privacy illustration 2" loading="lazy">
+          <img src="/privacy/assets/3.png" alt="ITS Maps privacy illustration 3" loading="lazy">
+        </div>
       </section>
-
-      <section>
-        <h2>2. How We Use Information</h2>
-        <p>ITS Maps uses information to provide realtime maps, traffic charts, camera AI detection, Raspberry Pi monitoring, widgets, notifications, presentation collaboration, app updates, and troubleshooting.</p>
-      </section>
-
-      <section>
-        <h2>3. Firebase and Third-Party Services</h2>
-        <p>
-          ITS Maps uses Firebase services, including Firebase Hosting and Firebase Realtime Database,
-          to host the app and synchronize realtime data. Optional Google sign-in may be used for
-          presentation collaboration. Microsoft Store services may process package, licensing,
-          crash, and install information according to Microsoft policies.
-        </p>
-      </section>
-
-      <section>
-        <h2>4. Camera, AI, and Location</h2>
-        <p>
-          Camera and location features are used only for app functionality selected or configured by
-          the user. ITS Maps does not sell camera, AI, location, or device telemetry data. Raw camera
-          video is not intentionally stored by ITS Maps unless the user connects the app to a service
-          or device configuration that stores it separately.
-        </p>
-      </section>
-
-      <section>
-        <h2>5. Sharing</h2>
-        <p>We may share data only with service providers needed to run the app, when required by law, to protect users and systems, or with the user's configured devices and collaborators. We do not sell personal information.</p>
-      </section>
-
-      <section>
-        <h2>6. Retention and Deletion</h2>
-        <p>
-          Realtime and history data is retained only as long as needed for the configured ITS Maps
-          features, Firebase records, diagnostics, or user projects. Users can remove locally stored
-          app data by clearing the app data or uninstalling the app. Data synchronized to Firebase can
-          be removed by deleting the related configured records or by contacting the publisher through
-          the Microsoft Store listing.
-        </p>
-      </section>
-
-      <section>
-        <h2>7. Security</h2>
-        <p>
-          ITS Maps uses HTTPS and platform security features where available. No online service can
-          be guaranteed to be perfectly secure, so users should only connect trusted devices, camera
-          streams, and Firebase projects.
-        </p>
-      </section>
-
-      <section>
-        <h2>8. Children's Privacy</h2>
-        <p>ITS Maps is not directed to children under 13. If you believe a child has provided personal information through the app, contact the publisher through the Microsoft Store listing.</p>
-      </section>
-
-      <section>
-        <h2>9. Contact</h2>
-        <p>
-          For privacy requests, support, deletion requests, or questions about this policy, contact
-          Hanifa Teams through the ITS Maps Microsoft Store listing or publisher support channel.
-        </p>
-      </section>
-
-      <section>
-        <h2>10. Changes</h2>
-        <p>This policy may be updated when ITS Maps changes features, services, or legal requirements. The updated policy will be posted at this URL.</p>
-      </section>
-
-      <footer>
-        Privacy Policy URL: <a href="https://itstelkom.web.app/privacy">https://itstelkom.web.app/privacy</a>
-      </footer>
+    </header>
+    <main id="content" class="policy-layout">
+      <aside class="policy-toc" aria-label="Daftar isi kebijakan">
+        <a href="#summary">Ringkasan</a>
+        <a href="#data">Data</a>
+        <a href="#use">Penggunaan</a>
+        <a href="#firebase">Firebase</a>
+        <a href="#camera">Kamera dan AI</a>
+        <a href="#location">Lokasi</a>
+        <a href="#sharing">Berbagi</a>
+        <a href="#retention">Retensi</a>
+        <a href="#security">Keamanan</a>
+        <a href="#contact">Kontak</a>
+      </aside>
+      <article class="policy-content">
+        <section id="summary" class="policy-card"><h2>1. Ringkasan</h2><p>ITS Maps memproses data hanya untuk menjalankan fitur aplikasi: peta realtime, status Raspberry Pi, grafik lalu lintas, kamera, AI object detection, widget Android, Windows widgets, notifikasi, dan dokumentasi aplikasi. ITS Maps tidak menjual data pribadi.</p></section>
+        <section id="data" class="policy-card"><h2>2. Informasi yang diproses</h2><ul>
+          <li>Telemetry perangkat: ID sistem, status online/offline, waktu update, status kamera, dan status controller.</li>
+          <li>Data lalu lintas: warna lampu, durasi merah/kuning/hijau, jumlah mobil, motor, bus, truk, sepeda, dan total kendaraan.</li>
+          <li>Data peta/lokasi: koordinat Raspberry Pi, marker peta, lokasi user jika user memberi izin, dan data POI/map view.</li>
+          <li>Data kamera/AI: URL snapshot/stream, bbox object detection, label objek, confidence, timestamp, dan ringkasan hasil deteksi.</li>
+          <li>Data aplikasi: pengaturan lokal, versi aplikasi, status update, cache, log diagnostik ringan, dan state widget.</li>
+        </ul></section>
+        <section id="use" class="policy-card"><h2>3. Cara data digunakan</h2><p>Data digunakan untuk menampilkan dashboard realtime, membuat grafik, memperbarui widget, menjalankan AI detection, menampilkan peta, mengirim notifikasi, memperbaiki error, dan menjaga sinkronisasi antar platform.</p></section>
+        <section id="firebase" class="policy-card"><h2>4. Firebase dan layanan pihak ketiga</h2><p>ITS Maps memakai Firebase Hosting dan Firebase Realtime Database untuk hosting website dan sinkronisasi realtime. Aplikasi juga menggunakan layanan peta seperti OpenStreetMap/CARTO/Leaflet/MapLibre serta platform distribusi Microsoft Store dan Android sesuai fitur yang dipakai user.</p></section>
+        <section id="camera" class="policy-card"><h2>5. Kamera dan AI object detection</h2><p>Frame kamera/snapshot dapat dianalisis untuk mendeteksi objek dan kendaraan. Hasil yang ditampilkan berupa label, kotak deteksi, confidence, jumlah kendaraan, dan status analisis. Raw video tidak dijual dan tidak sengaja disimpan oleh ITS Maps kecuali user menghubungkan perangkat/layanan yang menyimpan stream secara terpisah.</p></section>
+        <section id="location" class="policy-card"><h2>6. Lokasi</h2><p>Lokasi user hanya dipakai setelah user memberi izin. Lokasi dapat digunakan untuk marker peta, jarak ke perangkat, atau tampilan lokasi saya. User dapat mencabut izin lokasi dari pengaturan browser, Android, atau Windows.</p></section>
+        <section id="sharing" class="policy-card"><h2>7. Berbagi data</h2><p>Data dapat diproses oleh penyedia layanan yang dibutuhkan untuk menjalankan aplikasi, seperti Firebase, Microsoft Store, browser/Android/Windows permission system, dan layanan peta. ITS Maps tidak menjual data pribadi.</p></section>
+        <section id="retention" class="policy-card"><h2>8. Retensi dan penghapusan</h2><p>Data realtime dipertahankan selama dibutuhkan oleh konfigurasi perangkat, dashboard, history, atau diagnostik. Data lokal bisa dihapus dengan clear app data/uninstall. Data RTDB dapat dihapus dari Firebase project atau melalui permintaan ke publisher.</p></section>
+        <section id="security" class="policy-card"><h2>9. Keamanan</h2><p>ITS Maps menggunakan HTTPS, permission system platform, dan pemisahan data lokal/realtime. Tidak ada sistem online yang sempurna, sehingga user disarankan hanya menghubungkan perangkat, stream, dan Firebase project tepercaya.</p></section>
+        <section id="children" class="policy-card"><h2>10. Privasi anak</h2><p>ITS Maps tidak ditujukan untuk anak di bawah 13 tahun. Jika Anda yakin anak memberikan data pribadi melalui aplikasi, hubungi publisher melalui kanal dukungan.</p></section>
+        <section id="contact" class="policy-card"><h2>11. Kontak dan perubahan</h2><p>Untuk pertanyaan, permintaan penghapusan, atau pembaruan kebijakan, hubungi Hanifa Teams melalui listing Microsoft Store atau kanal dukungan publisher. Kebijakan ini dapat diperbarui ketika fitur, layanan, atau persyaratan hukum berubah.</p></section>
+      </article>
     </main>
+    <footer class="policy-footer">
+      <p>Privacy Policy URL: <a href="https://itstelkom.web.app/privacy">https://itstelkom.web.app/privacy</a></p>
+      <button type="button" data-print>Print A4</button>
+    </footer>
+    <script src="/method/method.js" defer></script>
   </body>
 </html>
