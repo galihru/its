@@ -74,6 +74,38 @@
         "destination": "/pdf-preview/index.html"
       },
       {
+        "source": "/pdf-preview/documentation",
+        "destination": "/pdf-preview/documentation/index.html"
+      },
+      {
+        "source": "/pdf-preview/method",
+        "destination": "/pdf-preview/method/index.html"
+      },
+      {
+        "source": "/pdf-preview/android",
+        "destination": "/pdf-preview/android/index.html"
+      },
+      {
+        "source": "/pdf-preview/windows",
+        "destination": "/pdf-preview/windows/index.html"
+      },
+      {
+        "source": "/pdf-preview/webapp",
+        "destination": "/pdf-preview/webapp/index.html"
+      },
+      {
+        "source": "/pdf-preview/licence",
+        "destination": "/pdf-preview/licence/index.html"
+      },
+      {
+        "source": "/pdf-preview/license",
+        "destination": "/pdf-preview/license/index.html"
+      },
+      {
+        "source": "/pdf-preview/fte-cd-6",
+        "destination": "/pdf-preview/fte-cd-6/index.html"
+      },
+      {
         "source": "/pdf-preview/**",
         "destination": "/pdf-preview/index.html"
       },

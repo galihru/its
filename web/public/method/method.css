@@ -187,30 +187,29 @@ output { display: block; margin-top: 12px; padding: 12px; border-radius: 12px; b
   .pdf-paper-shell iframe { max-width: 100%; }
 }
 @media print {
-  @page { size: A4; margin: 18mm 14mm 20mm; }
+  @page { size: A4; margin: 16mm 13mm 18mm; }
   :root { --bg: #fff; --shadow: none; }
   body { background: #fff !important; color: #111827; font-size: 10.5pt; }
-  .topbar, .toc, .hero-actions, .skip-link, .policy-toc, .policy-footer, .run-actions { display: none !important; }
+  .topbar, .toc, .hero-actions, .skip-link, .policy-toc, .policy-footer, .run-actions, .print-header, .print-footer { display: none !important; }
   main, .policy-layout, .policy-top nav, .policy-hero { width: auto; margin: 0; padding: 0; display: block; }
-  .doc-hero, .doc-section, .policy-card { box-shadow: none; border-color: #cbd5e1; break-inside: avoid; page-break-inside: avoid; }
+  .doc-hero, .doc-section, .policy-card { box-shadow: none; border-color: #cbd5e1; break-inside: auto; page-break-inside: auto; }
+  .feature-grid article, .formula-grid article, .download-grid article, .method-card, .coverage-grid article, .credit-list article, figure { break-inside: avoid; page-break-inside: avoid; }
   .print-cover { display: grid; min-height: 245mm; align-content: center; gap: 10mm; text-align: center; break-after: page; }
   .print-cover img { width: 34mm; margin: 0 auto; }
   .print-cover h1 { font-size: 34pt; }
   .print-cover dl { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; text-align: left; }
   .print-cover div { border: 1px solid #cbd5e1; border-radius: 4mm; padding: 4mm; }
-  .print-header, .print-footer { display: flex; position: fixed; left: 0; right: 0; justify-content: space-between; color: #475569; font-size: 8.5pt; }
-  .print-header { top: -10mm; border-bottom: .2mm solid #cbd5e1; padding-bottom: 2mm; }
-  .print-footer { bottom: -12mm; border-top: .2mm solid #cbd5e1; padding-top: 2mm; }
   .doc-hero { display: block; padding: 0 0 6mm; border: 0; background: #fff; break-after: avoid; }
   .doc-hero img, .policy-art { display: none; }
   h1 { font-size: 24pt; }
   h2 { font-size: 16pt; }
   h3 { font-size: 12pt; }
   a { color: #111827; text-decoration: none; }
-  .source-file { break-before: page; }
-  .source-file summary { background: #fff; }
-  .source-file:not([open]) .code-table, .source-file:not([open]) .symbol-list { display: block; }
-  .code-table { font-size: 7.5pt; }
+  .source-file { break-before: page; page-break-before: always; overflow: visible; border-radius: 0; }
+  .source-file summary { background: #fff; padding-top: 6mm; break-after: avoid; page-break-after: avoid; }
+  .source-file[open] .code-table { display: grid; }
+  .source-file[open] .symbol-list { display: flex; }
+  .code-table { font-size: 7.2pt; min-width: 0; }
   .code-table > div { grid-template-columns: 12mm 78mm 74mm; break-inside: avoid; }
   .code-head { position: static; background: #111827 !important; color: #fff !important; }
   pre, code { white-space: pre-wrap; overflow-wrap: anywhere; }

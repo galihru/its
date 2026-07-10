@@ -6,7 +6,27 @@ window.addEventListener("DOMContentLoaded", () => {
     document.querySelectorAll(".source-file").forEach((details) => { details.open = true; });
   }
 
-  document.querySelectorAll("[data-print]").forEach((button) => button.addEventListener("click", () => window.print()));
+  let printOpenedDetails = [];
+  const preparePrint = () => {
+    printOpenedDetails = [];
+    document.body.classList.add("is-printing-all");
+    document.querySelectorAll("details.source-file").forEach((details) => {
+      if (!details.open) printOpenedDetails.push(details);
+      details.open = true;
+    });
+  };
+  const restorePrint = () => {
+    if (query.has("pdf")) return;
+    printOpenedDetails.forEach((details) => { details.open = false; });
+    printOpenedDetails = [];
+    document.body.classList.remove("is-printing-all");
+  };
+  window.addEventListener("beforeprint", preparePrint);
+  window.addEventListener("afterprint", restorePrint);
+  document.querySelectorAll("[data-print]").forEach((button) => button.addEventListener("click", () => {
+    preparePrint();
+    window.print();
+  }));
   if (window.mermaid) window.mermaid.initialize({ startOnLoad: true, securityLevel: "loose", theme: "neutral" });
 
   const loadQr = (() => {
@@ -115,6 +135,8 @@ window.addEventListener("DOMContentLoaded", () => {
   const catalogEl = document.getElementById("pdf-doc-catalog");
   const docs = catalogEl ? JSON.parse(catalogEl.textContent || "[]") : [];
   const byId = new Map(docs.map((doc) => [doc.id, doc]));
+  const pathId = window.location.pathname.split("/").filter(Boolean).pop();
+  const initialPdfId = query.get("id") || (byId.has(pathId) ? pathId : document.querySelector("[data-initial-pdf-id]")?.getAttribute("data-initial-pdf-id")) || "documentation";
   const select = document.querySelector("[data-pdf-select]");
   const frame = document.querySelector("[data-pdf-frame]");
   const titleEl = document.querySelector("[data-pdf-title]");
@@ -200,7 +222,7 @@ window.addEventListener("DOMContentLoaded", () => {
       ["Source", activeDoc.article],
       ...(detected.meta || []),
     ]);
-    syncQr("/pdf-preview?id=" + encodeURIComponent(activeDoc.id));
+    syncQr("/pdf-preview/" + encodeURIComponent(activeDoc.id));
   };
 
   const loadDoc = (id, updateUrl = true) => {
@@ -211,9 +233,7 @@ window.addEventListener("DOMContentLoaded", () => {
     if (pageEl) pageEl.textContent = "1";
     if (pagesEl) pagesEl.textContent = "...";
     if (updateUrl) {
-      const url = new URL(window.location.href);
-      url.searchParams.set("id", activeDoc.id);
-      window.history.replaceState(null, "", url);
+      window.history.replaceState(null, "", "/pdf-preview/" + encodeURIComponent(activeDoc.id));
     }
   };
 
@@ -264,7 +284,7 @@ window.addEventListener("DOMContentLoaded", () => {
     button.addEventListener("click", async () => {
       const type = button.getAttribute("data-pdf-rail");
       if (type === "link") {
-        const url = absoluteUrl("/pdf-preview?id=" + encodeURIComponent(activeDoc?.id || "documentation"));
+        const url = absoluteUrl("/pdf-preview/" + encodeURIComponent(activeDoc?.id || "documentation"));
         try { await navigator.clipboard.writeText(url); } catch {}
       } else {
         pdfApp.classList.remove("is-sidebar-closed");
@@ -272,5 +292,5 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  loadDoc(query.get("id") || "documentation", false);
+  loadDoc(initialPdfId, false);
 });

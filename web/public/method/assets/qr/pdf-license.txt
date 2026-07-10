@@ -1,2 +1,2 @@
 PDF preview ITS Maps License
-https://itstelkom.web.app/pdf-preview?id=license
+https://itstelkom.web.app/pdf-preview/license

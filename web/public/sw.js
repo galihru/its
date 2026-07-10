@@ -1,4 +1,4 @@
-const CACHE_NAME = 'its-maps-cache-v13';
+const CACHE_NAME = 'its-maps-cache-v14';
 const OFFLINE_URLS = [
   '/',
   '/index.html',
@@ -15,6 +15,14 @@ const OFFLINE_URLS = [
   '/licence',
   '/license',
   '/pdf-preview',
+  '/pdf-preview/documentation',
+  '/pdf-preview/method',
+  '/pdf-preview/android',
+  '/pdf-preview/windows',
+  '/pdf-preview/webapp',
+  '/pdf-preview/licence',
+  '/pdf-preview/license',
+  '/pdf-preview/fte-cd-6',
   '/new',
   '/manifest.webmanifest',
   '/manifest-mobile.webmanifest',

@@ -1,2 +1,2 @@
 PDF preview Metode Android APK
-https://itstelkom.web.app/pdf-preview?id=android
+https://itstelkom.web.app/pdf-preview/android

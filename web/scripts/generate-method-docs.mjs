@@ -70,6 +70,8 @@ const pdfDocuments = [
     article: "/documentation",
     download: "/documentation",
     kind: "HTML documentation",
+    year: "2026",
+    authors: ["Hanifa Septhi Larasati"],
   },
   {
     id: "method",
@@ -78,6 +80,8 @@ const pdfDocuments = [
     article: "/method",
     download: "/method",
     kind: "HTML method",
+    year: "2026",
+    authors: ["Hanifa Septhi Larasati"],
   },
   {
     id: "android",
@@ -86,6 +90,8 @@ const pdfDocuments = [
     article: "/method/android",
     download: "/method/android",
     kind: "HTML method",
+    year: "2026",
+    authors: ["Hanifa Septhi Larasati"],
   },
   {
     id: "windows",
@@ -94,6 +100,8 @@ const pdfDocuments = [
     article: "/method/windows",
     download: "/method/windows",
     kind: "HTML method",
+    year: "2026",
+    authors: ["Hanifa Septhi Larasati"],
   },
   {
     id: "webapp",
@@ -102,6 +110,8 @@ const pdfDocuments = [
     article: "/method/webapp",
     download: "/method/webapp",
     kind: "HTML method",
+    year: "2026",
+    authors: ["Hanifa Septhi Larasati"],
   },
   {
     id: "licence",
@@ -110,6 +120,8 @@ const pdfDocuments = [
     article: "/licence",
     download: "/licence",
     kind: "Legal page",
+    year: "2026",
+    authors: ["Hanifa Septhi Larasati"],
   },
   {
     id: "license",
@@ -118,6 +130,8 @@ const pdfDocuments = [
     article: "/license",
     download: "/license",
     kind: "Legal page",
+    year: "2026",
+    authors: ["Hanifa Septhi Larasati"],
   },
   {
     id: "fte-cd-6",
@@ -126,6 +140,8 @@ const pdfDocuments = [
     article: "/docs/FTE-CD-6.docx",
     download: "/docs/FTE-CD-6.docx",
     kind: "DOCX template",
+    year: "2026",
+    authors: ["Hanifa Septhi Larasati"],
   },
 ];
 
@@ -133,7 +149,7 @@ const qrAssets = [
   ["android-apk", "Android APK langsung", "https://github.com/hanifasepthi/its/releases/download/its-maps-android-1.0.36/ITS-Maps-Android-1.0.36.apk"],
   ["microsoft-store", "Microsoft Store protocol", "ms-windows-store://pdp/?productid=9MWFGGW3FD2C"],
   ["webapp", "ITS Maps WebApp", "https://itstelkom.web.app/"],
-  ...pdfDocuments.map((doc) => [`pdf-${doc.id}`, `PDF preview ${doc.label}`, `https://itstelkom.web.app/pdf-preview?id=${doc.id}`]),
+  ...pdfDocuments.map((doc) => [`pdf-${doc.id}`, `PDF preview ${doc.label}`, `https://itstelkom.web.app/pdf-preview/${doc.id}`]),
 ];
 
 const sourceGroups = {
@@ -287,6 +303,14 @@ function qrFile(slug) {
   return `/method/assets/qr/${slug}.svg`;
 }
 
+function pdfSharePath(id) {
+  return `/pdf-preview/${id}`;
+}
+
+function pdfOgPath(id) {
+  return `/pdf-preview/og/${id}.svg`;
+}
+
 async function generateQrAssets() {
   ensureDir(qrAssetsRoot);
   for (const [slug, label, value] of qrAssets) {
@@ -302,6 +326,44 @@ async function generateQrAssets() {
     });
     fs.writeFileSync(path.join(qrAssetsRoot, `${slug}.svg`), svg, "utf8");
     fs.writeFileSync(path.join(qrAssetsRoot, `${slug}.txt`), `${label}\n${value}\n`, "utf8");
+  }
+}
+
+function generateOgAssets() {
+  const ogRoot = path.join(pdfPreviewRoot, "og");
+  ensureDir(ogRoot);
+  for (const doc of pdfDocuments) {
+    const title = esc(doc.label);
+    const authors = esc((doc.authors || [site.developer]).join(", "));
+    const kind = esc(doc.kind);
+    const year = esc(doc.year || "2026");
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f8fbff"/>
+      <stop offset="0.52" stop-color="#eaf7f4"/>
+      <stop offset="1" stop-color="#eef4ff"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="18" stdDeviation="24" flood-color="#162033" flood-opacity=".18"/>
+    </filter>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect x="78" y="72" width="1044" height="486" rx="34" fill="#fff" stroke="#cddceb" filter="url(#shadow)"/>
+  <rect x="126" y="116" width="272" height="356" rx="8" fill="#ffffff" stroke="#d8e2ee"/>
+  <image href="https://itstelkom.web.app/its.png" x="214" y="190" width="96" height="96" preserveAspectRatio="xMidYMid meet"/>
+  <text x="262" y="338" text-anchor="middle" font-family="Arial, sans-serif" font-size="24" font-weight="700" fill="#142033">ITS Maps</text>
+  <text x="262" y="374" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" fill="#5f6e7c">${kind}</text>
+  <text x="452" y="172" font-family="Arial, sans-serif" font-size="22" font-weight="800" fill="#087568" letter-spacing="2">PDF VIEWER</text>
+  <foreignObject x="452" y="202" width="610" height="190">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="font-family:Arial,sans-serif;font-size:56px;line-height:1.02;font-weight:900;color:#111827;letter-spacing:0">${title}</div>
+  </foreignObject>
+  <text x="452" y="430" font-family="Arial, sans-serif" font-size="26" fill="#334155">Dibuat oleh ${authors}</text>
+  <text x="452" y="468" font-family="Arial, sans-serif" font-size="24" fill="#64748b">Tahun ${year} • Hanifa Teams • itstelkom.web.app</text>
+  <rect x="1006" y="482" width="74" height="74" rx="18" fill="#fff" stroke="#d8e2ee"/>
+  <image href="https://itstelkom.web.app/its.png" x="1019" y="495" width="48" height="48" preserveAspectRatio="xMidYMid meet"/>
+</svg>`;
+    fs.writeFileSync(path.join(ogRoot, `${doc.id}.svg`), svg, "utf8");
   }
 }
 
@@ -525,29 +587,29 @@ const green = Math.min(120, Math.max(10, 0.85 * total + 8));</code></pre>
 function mermaidSection(platform) {
   const flow = platform === "android"
     ? `flowchart LR
-  RTDB[(Firebase RTDB)] --> S[WidgetRealtimeService.java]
-  S --> W1[ITS Live Widget]
-  S --> W2[Kamera AI ITS Widget]
-  S --> W3[Peta ITS Widget]
-  S --> W4[Data Full & Alert Widget]
-  S --> L[LockScreenDashboardActivity]
-  Main[MainActivity / Capacitor] --> S`
+  RTDB[("Firebase RTDB")] --> S["WidgetRealtimeService.java"]
+  S --> W1["ITS Live Widget"]
+  S --> W2["Kamera AI ITS Widget"]
+  S --> W3["Peta ITS Widget"]
+  S --> W4["Data Full & Alert Widget"]
+  S --> L["LockScreenDashboardActivity"]
+  Main["MainActivity / Capacitor"] --> S`
     : platform === "windows"
       ? `flowchart LR
-  RTDB[(Firebase RTDB)] --> C[ItsWidgetDataService.cs]
-  C --> M[ItsWidgetMediaRenderer.cs]
-  C --> T[AdaptiveCard JSON templates]
-  M --> Board[Windows Widget Board]
-  Electron[Electron Desktop] --> Renderer[web/src/windows.ts]
-  Package[MSIX HanifaTeams.ITSMaps] --> Board`
+  RTDB[("Firebase RTDB")] --> C["ItsWidgetDataService.cs"]
+  C --> M["ItsWidgetMediaRenderer.cs"]
+  C --> T["AdaptiveCard JSON templates"]
+  M --> Board["Windows Widget Board"]
+  Electron["Electron Desktop"] --> Renderer["web/src/windows.ts"]
+  Package["MSIX HanifaTeams.ITSMaps"] --> Board`
       : `flowchart LR
-  RTDB[(Firebase RTDB)] --> Main[web/src/main.ts]
-  Main --> Map[Leaflet / MapLibre map]
-  Main --> Camera[Camera surface]
-  Camera --> AI[browserRfDetr.ts]
-  AI --> Overlay[Canvas bbox + confidence]
-  Main --> PWA[Service worker + install]
-  Main --> Docs[/documentation + /method]`;
+  RTDB[("Firebase RTDB")] --> Main["web/src/main.ts"]
+  Main --> Map["Leaflet / MapLibre map"]
+  Main --> Camera["Camera surface"]
+  Camera --> AI["browserRfDetr.ts"]
+  AI --> Overlay["Canvas bbox + confidence"]
+  Main --> PWA["Service worker + install"]
+  Main --> Docs["/documentation + /method"]`;
   return `
     <section class="doc-section" id="diagram">
       <div class="section-kicker">Diagram</div>
@@ -622,7 +684,7 @@ function screenshotSection(platform) {
 }
 
 function pdfPreviewLink(id, label = "Preview PDF") {
-  return `<a href="/pdf-preview?id=${encodeURIComponent(id)}">${esc(label)}</a>`;
+  return `<a href="${pdfSharePath(id)}">${esc(label)}</a>`;
 }
 
 function qrCard(slug, label, className = "qr-card", extraAttrs = "") {
@@ -845,15 +907,15 @@ function documentationPage() {
         <div class="section-kicker">Architecture</div>
         <h2>Arsitektur end-to-end</h2>
         <pre class="mermaid">flowchart LR
-  Pi[Raspberry Pi Controller] -->|heartbeat, traffic, GPS, snapshots| RTDB[(Firebase RTDB)]
-  RTDB --> Web[WebApp / PWA]
-  RTDB --> Android[Android APK + Widgets]
-  RTDB --> Win[Windows Desktop MSIX]
-  RTDB --> Widgets[Windows Widget Board]
-  Web --> AI[Browser RF-DETR]
-  Android --> Lock[Lock-screen Dashboard]
-  Win --> Store[Microsoft Store]
-  Widgets --> Cards[Adaptive Cards]</pre>
+  Pi["Raspberry Pi Controller"] -->|"heartbeat, traffic, GPS, snapshots"| RTDB[("Firebase RTDB")]
+  RTDB --> Web["WebApp / PWA"]
+  RTDB --> Android["Android APK + Widgets"]
+  RTDB --> Win["Windows Desktop MSIX"]
+  RTDB --> Widgets["Windows Widget Board"]
+  Web --> AI["Browser RF-DETR"]
+  Android --> Lock["Lock-screen Dashboard"]
+  Win --> Store["Microsoft Store"]
+  Widgets --> Cards["Adaptive Cards"]</pre>
       </section>
       ${formulaSection("webapp")}
       ${codeAtlas(allSources, "Atlas kode lintas platform")}
@@ -895,20 +957,42 @@ function licencePage(spelling = "licence") {
   });
 }
 
-function pdfPreviewPage() {
+function pdfPreviewDescription(doc) {
+  const authors = (doc.authors || [site.developer]).join(", ");
+  return `${doc.label} dibuat oleh ${authors} pada tahun ${doc.year || "2026"}. Preview PDF resmi ITS Maps dengan toolbar, sidebar, QR, dan print/save PDF.`;
+}
+
+function pdfPreviewPage(initialId = "documentation") {
+  const initialDoc = pdfDocuments.find((doc) => doc.id === initialId) || pdfDocuments[0];
   const catalog = JSON.stringify(pdfDocuments).replaceAll("</", "<\\/");
+  const ogTitle = `${initialDoc.label} | ITS Maps PDF Viewer`;
+  const ogDescription = pdfPreviewDescription(initialDoc);
+  const canonical = `${site.url}${pdfSharePath(initialDoc.id)}`;
+  const ogImage = `${site.url}${pdfOgPath(initialDoc.id)}`;
   return `<!doctype html>
 <html lang="id">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>PDF Preview | ITS Maps</title>
-    <meta name="description" content="Custom PDF-style preview viewer for ITS Maps documentation, method pages, and downloadable documents." />
+    <title>${esc(ogTitle)}</title>
+    <meta name="description" content="${esc(ogDescription)}" />
+    <link rel="canonical" href="${esc(canonical)}" />
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="ITS Maps" />
+    <meta property="og:title" content="${esc(ogTitle)}" />
+    <meta property="og:description" content="${esc(ogDescription)}" />
+    <meta property="og:url" content="${esc(canonical)}" />
+    <meta property="og:image" content="${esc(ogImage)}" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="${esc(ogTitle)}" />
+    <meta name="twitter:description" content="${esc(ogDescription)}" />
+    <meta name="twitter:image" content="${esc(ogImage)}" />
     <link rel="icon" type="image/png" href="/its.png" />
     <link rel="stylesheet" href="/method/method.css" />
     <script src="/method/method.js" defer></script>
   </head>
   <body class="pdf-preview-page">
+    <div hidden data-initial-pdf-id="${esc(initialDoc.id)}"></div>
     <script type="application/json" id="pdf-doc-catalog">${catalog}</script>
     <div class="pdf-app" data-pdf-app>
       <header class="pdf-toolbar" aria-label="PDF preview toolbar">
@@ -963,7 +1047,7 @@ function pdfPreviewPage() {
           <button type="button" data-pdf-rail="link" aria-label="Copy link">Link</button>
         </nav>
         <div class="pdf-paper-shell">
-          <iframe data-pdf-frame title="ITS Maps PDF preview" src="/documentation/?pdf=1"></iframe>
+          <iframe data-pdf-frame title="ITS Maps PDF preview" src="${esc(initialDoc.source)}"></iframe>
         </div>
       </main>
     </div>
@@ -1075,7 +1159,7 @@ function pageShell({ title, bodyClass, navActive, main }) {
     ["/method/windows", "Windows"],
     ["/privacy", "Privacy"],
     ["/licence", "Licence"],
-    ["/pdf-preview?id=documentation", "PDF Preview"],
+    ["/pdf-preview/documentation", "PDF Preview"],
   ];
   return `<!doctype html>
 <html lang="id">
@@ -1295,30 +1379,29 @@ output { display: block; margin-top: 12px; padding: 12px; border-radius: 12px; b
   .pdf-paper-shell iframe { max-width: 100%; }
 }
 @media print {
-  @page { size: A4; margin: 18mm 14mm 20mm; }
+  @page { size: A4; margin: 16mm 13mm 18mm; }
   :root { --bg: #fff; --shadow: none; }
   body { background: #fff !important; color: #111827; font-size: 10.5pt; }
-  .topbar, .toc, .hero-actions, .skip-link, .policy-toc, .policy-footer, .run-actions { display: none !important; }
+  .topbar, .toc, .hero-actions, .skip-link, .policy-toc, .policy-footer, .run-actions, .print-header, .print-footer { display: none !important; }
   main, .policy-layout, .policy-top nav, .policy-hero { width: auto; margin: 0; padding: 0; display: block; }
-  .doc-hero, .doc-section, .policy-card { box-shadow: none; border-color: #cbd5e1; break-inside: avoid; page-break-inside: avoid; }
+  .doc-hero, .doc-section, .policy-card { box-shadow: none; border-color: #cbd5e1; break-inside: auto; page-break-inside: auto; }
+  .feature-grid article, .formula-grid article, .download-grid article, .method-card, .coverage-grid article, .credit-list article, figure { break-inside: avoid; page-break-inside: avoid; }
   .print-cover { display: grid; min-height: 245mm; align-content: center; gap: 10mm; text-align: center; break-after: page; }
   .print-cover img { width: 34mm; margin: 0 auto; }
   .print-cover h1 { font-size: 34pt; }
   .print-cover dl { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; text-align: left; }
   .print-cover div { border: 1px solid #cbd5e1; border-radius: 4mm; padding: 4mm; }
-  .print-header, .print-footer { display: flex; position: fixed; left: 0; right: 0; justify-content: space-between; color: #475569; font-size: 8.5pt; }
-  .print-header { top: -10mm; border-bottom: .2mm solid #cbd5e1; padding-bottom: 2mm; }
-  .print-footer { bottom: -12mm; border-top: .2mm solid #cbd5e1; padding-top: 2mm; }
   .doc-hero { display: block; padding: 0 0 6mm; border: 0; background: #fff; break-after: avoid; }
   .doc-hero img, .policy-art { display: none; }
   h1 { font-size: 24pt; }
   h2 { font-size: 16pt; }
   h3 { font-size: 12pt; }
   a { color: #111827; text-decoration: none; }
-  .source-file { break-before: page; }
-  .source-file summary { background: #fff; }
-  .source-file:not([open]) .code-table, .source-file:not([open]) .symbol-list { display: block; }
-  .code-table { font-size: 7.5pt; }
+  .source-file { break-before: page; page-break-before: always; overflow: visible; border-radius: 0; }
+  .source-file summary { background: #fff; padding-top: 6mm; break-after: avoid; page-break-after: avoid; }
+  .source-file[open] .code-table { display: grid; }
+  .source-file[open] .symbol-list { display: flex; }
+  .code-table { font-size: 7.2pt; min-width: 0; }
   .code-table > div { grid-template-columns: 12mm 78mm 74mm; break-inside: avoid; }
   .code-head { position: static; background: #111827 !important; color: #fff !important; }
   pre, code { white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -1335,7 +1418,27 @@ window.addEventListener("DOMContentLoaded", () => {
     document.querySelectorAll(".source-file").forEach((details) => { details.open = true; });
   }
 
-  document.querySelectorAll("[data-print]").forEach((button) => button.addEventListener("click", () => window.print()));
+  let printOpenedDetails = [];
+  const preparePrint = () => {
+    printOpenedDetails = [];
+    document.body.classList.add("is-printing-all");
+    document.querySelectorAll("details.source-file").forEach((details) => {
+      if (!details.open) printOpenedDetails.push(details);
+      details.open = true;
+    });
+  };
+  const restorePrint = () => {
+    if (query.has("pdf")) return;
+    printOpenedDetails.forEach((details) => { details.open = false; });
+    printOpenedDetails = [];
+    document.body.classList.remove("is-printing-all");
+  };
+  window.addEventListener("beforeprint", preparePrint);
+  window.addEventListener("afterprint", restorePrint);
+  document.querySelectorAll("[data-print]").forEach((button) => button.addEventListener("click", () => {
+    preparePrint();
+    window.print();
+  }));
   if (window.mermaid) window.mermaid.initialize({ startOnLoad: true, securityLevel: "loose", theme: "neutral" });
 
   const loadQr = (() => {
@@ -1444,6 +1547,8 @@ window.addEventListener("DOMContentLoaded", () => {
   const catalogEl = document.getElementById("pdf-doc-catalog");
   const docs = catalogEl ? JSON.parse(catalogEl.textContent || "[]") : [];
   const byId = new Map(docs.map((doc) => [doc.id, doc]));
+  const pathId = window.location.pathname.split("/").filter(Boolean).pop();
+  const initialPdfId = query.get("id") || (byId.has(pathId) ? pathId : document.querySelector("[data-initial-pdf-id]")?.getAttribute("data-initial-pdf-id")) || "documentation";
   const select = document.querySelector("[data-pdf-select]");
   const frame = document.querySelector("[data-pdf-frame]");
   const titleEl = document.querySelector("[data-pdf-title]");
@@ -1529,7 +1634,7 @@ window.addEventListener("DOMContentLoaded", () => {
       ["Source", activeDoc.article],
       ...(detected.meta || []),
     ]);
-    syncQr("/pdf-preview?id=" + encodeURIComponent(activeDoc.id));
+    syncQr("/pdf-preview/" + encodeURIComponent(activeDoc.id));
   };
 
   const loadDoc = (id, updateUrl = true) => {
@@ -1540,9 +1645,7 @@ window.addEventListener("DOMContentLoaded", () => {
     if (pageEl) pageEl.textContent = "1";
     if (pagesEl) pagesEl.textContent = "...";
     if (updateUrl) {
-      const url = new URL(window.location.href);
-      url.searchParams.set("id", activeDoc.id);
-      window.history.replaceState(null, "", url);
+      window.history.replaceState(null, "", "/pdf-preview/" + encodeURIComponent(activeDoc.id));
     }
   };
 
@@ -1593,7 +1696,7 @@ window.addEventListener("DOMContentLoaded", () => {
     button.addEventListener("click", async () => {
       const type = button.getAttribute("data-pdf-rail");
       if (type === "link") {
-        const url = absoluteUrl("/pdf-preview?id=" + encodeURIComponent(activeDoc?.id || "documentation"));
+        const url = absoluteUrl("/pdf-preview/" + encodeURIComponent(activeDoc?.id || "documentation"));
         try { await navigator.clipboard.writeText(url); } catch {}
       } else {
         pdfApp.classList.remove("is-sidebar-closed");
@@ -1601,7 +1704,7 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  loadDoc(query.get("id") || "documentation", false);
+  loadDoc(initialPdfId, false);
 });
 `;
 }
@@ -1621,6 +1724,7 @@ async function main() {
   ensureDir(pdfPreviewRoot);
   copyAssets();
   await generateQrAssets();
+  generateOgAssets();
 
   writeFile("method/method.css", methodCss());
   writeFile("method/method.js", methodJs());
@@ -1631,7 +1735,10 @@ async function main() {
   writeFile("documentation/index.html", documentationPage());
   writeFile("licence/index.html", licencePage("licence"));
   writeFile("license/index.html", licencePage("license"));
-  writeFile("pdf-preview/index.html", pdfPreviewPage());
+  writeFile("pdf-preview/index.html", pdfPreviewPage("documentation"));
+  for (const doc of pdfDocuments) {
+    writeFile(`pdf-preview/${doc.id}/index.html`, pdfPreviewPage(doc.id));
+  }
   writeFile("privacy/index.html", privacyPage());
 }
 

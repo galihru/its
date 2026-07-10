@@ -16,7 +16,7 @@
     <header class="topbar">
       <a class="brand" href="/"><img src="/its.png" alt=""><span>ITS Maps</span></a>
       <nav aria-label="Navigasi dokumentasi">
-        <a href="/">Home</a><a href="/documentation">Documentation</a><a href="/method">Method</a><a href="/method/webapp">WebApp</a><a href="/method/android">Android</a><a href="/method/windows" aria-current="page">Windows</a><a href="/privacy">Privacy</a><a href="/licence">Licence</a><a href="/pdf-preview?id=documentation">PDF Preview</a>
+        <a href="/">Home</a><a href="/documentation">Documentation</a><a href="/method">Method</a><a href="/method/webapp">WebApp</a><a href="/method/android">Android</a><a href="/method/windows" aria-current="page">Windows</a><a href="/privacy">Privacy</a><a href="/licence">Licence</a><a href="/pdf-preview/documentation">PDF Preview</a>
       </nav>
     </header>
     <main id="content">
@@ -45,7 +45,7 @@
           <div class="hero-actions">
             <a href="/method">Semua metode</a>
             <a href="/documentation">Dokumentasi utama</a>
-            <a href="/pdf-preview?id=windows">Preview PDF</a>
+            <a href="/pdf-preview/windows">Preview PDF</a>
             <button type="button" data-print>Print A4</button>
           </div>
         </div>
@@ -73,12 +73,12 @@
       <div class="section-kicker">Diagram</div>
       <h2>Alur runtime Microsoft Store / Windows</h2>
       <pre class="mermaid">flowchart LR
-  RTDB[(Firebase RTDB)] --&gt; C[ItsWidgetDataService.cs]
-  C --&gt; M[ItsWidgetMediaRenderer.cs]
-  C --&gt; T[AdaptiveCard JSON templates]
-  M --&gt; Board[Windows Widget Board]
-  Electron[Electron Desktop] --&gt; Renderer[web/src/windows.ts]
-  Package[MSIX HanifaTeams.ITSMaps] --&gt; Board</pre>
+  RTDB[(&quot;Firebase RTDB&quot;)] --&gt; C[&quot;ItsWidgetDataService.cs&quot;]
+  C --&gt; M[&quot;ItsWidgetMediaRenderer.cs&quot;]
+  C --&gt; T[&quot;AdaptiveCard JSON templates&quot;]
+  M --&gt; Board[&quot;Windows Widget Board&quot;]
+  Electron[&quot;Electron Desktop&quot;] --&gt; Renderer[&quot;web/src/windows.ts&quot;]
+  Package[&quot;MSIX HanifaTeams.ITSMaps&quot;] --&gt; Board</pre>
     </section>
 
 

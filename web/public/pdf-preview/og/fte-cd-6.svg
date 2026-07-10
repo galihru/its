@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f8fbff"/>
+      <stop offset="0.52" stop-color="#eaf7f4"/>
+      <stop offset="1" stop-color="#eef4ff"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="18" stdDeviation="24" flood-color="#162033" flood-opacity=".18"/>
+    </filter>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect x="78" y="72" width="1044" height="486" rx="34" fill="#fff" stroke="#cddceb" filter="url(#shadow)"/>
+  <rect x="126" y="116" width="272" height="356" rx="8" fill="#ffffff" stroke="#d8e2ee"/>
+  <image href="https://itstelkom.web.app/its.png" x="214" y="190" width="96" height="96" preserveAspectRatio="xMidYMid meet"/>
+  <text x="262" y="338" text-anchor="middle" font-family="Arial, sans-serif" font-size="24" font-weight="700" fill="#142033">ITS Maps</text>
+  <text x="262" y="374" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" fill="#5f6e7c">DOCX template</text>
+  <text x="452" y="172" font-family="Arial, sans-serif" font-size="22" font-weight="800" fill="#087568" letter-spacing="2">PDF VIEWER</text>
+  <foreignObject x="452" y="202" width="610" height="190">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="font-family:Arial,sans-serif;font-size:56px;line-height:1.02;font-weight:900;color:#111827;letter-spacing:0">FTE-CD-6</div>
+  </foreignObject>
+  <text x="452" y="430" font-family="Arial, sans-serif" font-size="26" fill="#334155">Dibuat oleh Hanifa Septhi Larasati</text>
+  <text x="452" y="468" font-family="Arial, sans-serif" font-size="24" fill="#64748b">Tahun 2026 • Hanifa Teams • itstelkom.web.app</text>
+  <rect x="1006" y="482" width="74" height="74" rx="18" fill="#fff" stroke="#d8e2ee"/>
+  <image href="https://itstelkom.web.app/its.png" x="1019" y="495" width="48" height="48" preserveAspectRatio="xMidYMid meet"/>
+</svg>

@@ -18,7 +18,7 @@ Website: <https://itstelkom.web.app/>
 | Method Android | <https://itstelkom.web.app/method/android> | Live |
 | Method Windows | <https://itstelkom.web.app/method/windows> | Live |
 | Method WebApp | <https://itstelkom.web.app/method/webapp> | Live |
-| Preview PDF | <https://itstelkom.web.app/pdf-preview?id=documentation> | Viewer dokumentasi gaya jurnal dengan sidebar, toolbar, print/save PDF, dan QR |
+| Preview PDF | <https://itstelkom.web.app/pdf-preview/documentation> | Viewer dokumentasi gaya jurnal dengan sidebar, toolbar, print/save PDF, dan QR |
 | Licence | <https://itstelkom.web.app/licence> | Live, sama dengan `LICENSE` GitHub |
 | Android APK | <https://itstelkom.web.app/artifacts/apps/ITS-Maps-Android-1.0.36.apk.b64> | Public APK package encoded |
 | Android APK langsung | <https://github.com/hanifasepthi/its/releases/download/its-maps-android-1.0.36/ITS-Maps-Android-1.0.36.apk> | Public APK package via GitHub Release |
@@ -41,18 +41,18 @@ Website: <https://itstelkom.web.app/>
 
 ```mermaid
 flowchart LR
-  Pi[Raspberry Pi Controller] -->|heartbeat, traffic, GPS, snapshots| RTDB[(Firebase Realtime Database)]
-  Pi -->|camera stream / snapshots| Media[Camera media endpoint]
-  RTDB --> Web[WebApp / PWA]
-  RTDB --> Android[Android APK + Native Widgets]
-  RTDB --> Windows[Windows Desktop / MSIX]
-  RTDB --> WidgetBoard[Windows 11 Widget Board]
+  Pi["Raspberry Pi Controller"] -->|"heartbeat, traffic, GPS, snapshots"| RTDB[("Firebase Realtime Database")]
+  Pi -->|"camera stream / snapshots"| Media["Camera media endpoint"]
+  RTDB --> Web["WebApp / PWA"]
+  RTDB --> Android["Android APK + Native Widgets"]
+  RTDB --> Windows["Windows Desktop / MSIX"]
+  RTDB --> WidgetBoard["Windows 11 Widget Board"]
   Media --> Web
   Media --> Android
   Media --> Windows
   Media --> WidgetBoard
-  Web --> Docs[/documentation + /method]
-  Windows --> Store[Microsoft Store ID 9MWFGGW3FD2C]
+  Web --> Docs["/documentation + /method"]
+  Windows --> Store["Microsoft Store ID 9MWFGGW3FD2C"]
 ```
 
 ## Realtime Data Flow
@@ -148,7 +148,7 @@ Dokumentasi detail tidak hanya menyebut nama file. Halaman berikut dibuat oleh `
 - diagram Mermaid,
 - rumus LaTeX,
 - contoh kode yang dapat dijalankan di halaman,
-- mode print A4 dengan cover, header, footer, dan daftar isi.
+- mode print A4 dengan cover, daftar isi, dan tabel source yang otomatis dibuka penuh saat print.
 
 | Halaman | Isi |
 | --- | --- |
@@ -232,7 +232,7 @@ Halaman privacy baru berada di `web/public/privacy/index.html` dan dirancang unt
 Halaman dokumentasi dan method memakai stylesheet `web/public/method/method.css` yang menyertakan mode print A4:
 
 - cover page,
-- header dan footer print,
+- metadata cover print tanpa overlay header/footer yang menimpa isi,
 - page-break untuk file source,
 - tabel kode dengan nomor baris,
 - gambar dan card yang tidak terpotong.

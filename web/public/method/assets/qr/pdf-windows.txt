@@ -1,2 +1,2 @@
 PDF preview Metode Windows
-https://itstelkom.web.app/pdf-preview?id=windows
+https://itstelkom.web.app/pdf-preview/windows

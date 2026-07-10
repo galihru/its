@@ -92,6 +92,18 @@
           "type": "image/png"
         }
       ]
+    },
+    {
+      "name": "PDF Viewer",
+      "short_name": "PDF",
+      "url": "/pdf-preview/documentation?source=pwa-desktop",
+      "icons": [
+        {
+          "src": "/icons/icon-96.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
     }
   ]
 }
