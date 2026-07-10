@@ -217,51 +217,37 @@ Dokumentasi detail tidak hanya menyebut nama file. Halaman berikut dibuat oleh `
 
 ## Privacy, Accessibility, dan Print
 
-Halaman privacy baru berada di `web/public/privacy/index.html` dan dirancang untuk review Microsoft Store:
+Halaman privacy berada di `web/public/privacy/index.html` dan disiapkan untuk review Microsoft Store:
 
-- heading terstruktur,
-- skip link,
-- alt text gambar,
-- daftar isi sticky,
-- link policy canonical,
-- tombol print,
-- layout responsive,
-- kontras warna yang lebih jelas,
-- konten yang menjelaskan lokasi, kamera, AI, RTDB, retention, sharing, dan kontak.
+- heading terstruktur, skip link, alt text gambar, kontras yang jelas, dan layout responsive,
+- policy URL canonical `https://itstelkom.web.app/privacy`,
+- penjelasan lokasi, kamera, AI object detection, Firebase RTDB, retention, sharing, dan kontak,
+- tombol print dan tampilan A4 yang tidak menimpa header/footer konten.
 
-Halaman dokumentasi dan method memakai stylesheet `web/public/method/method.css` yang menyertakan mode print A4:
+Halaman dokumentasi dan method memakai `web/public/method/method.css` serta `web/public/method/method.js`:
 
-- cover page,
-- metadata cover print tanpa overlay header/footer yang menimpa isi,
-- page-break untuk file source,
-- tabel kode dengan nomor baris,
-- gambar dan card yang tidak terpotong.
+- mode print membuka semua `details.source-file` agar source code tidak tertinggal,
+- PDF preview memakai page grid A4 virtual seperti journal viewer,
+- default zoom 100% menampilkan 1 sheet, zoom rendah otomatis menjadi multi-kolom,
+- menu sidebar hanya menyembunyikan panel detail, bukan lembar dokumen,
+- pencarian memakai panel custom dengan jumlah hasil dan tombol prev/next,
+- mobile memakai bottom sheet swipeable untuk panel PDF dan menu `...`.
 
-Template dokumen `web/FTE-CD-6.docx` juga disalin ke `web/public/docs/FTE-CD-6.docx` agar dapat dijadikan referensi dokumen formal.
+Template dokumen `web/FTE-CD-6.docx` juga tersedia sebagai `web/public/docs/FTE-CD-6.docx` untuk referensi dokumen formal.
 
 ## AI Hub Positioning
 
 ITS Maps layak diposisikan sebagai aplikasi AI karena fitur berikut:
 
 - object detection RF-DETR pada kamera/snapshot,
-- bbox dan confidence score,
+- bbox dan confidence score untuk hasil deteksi,
 - label objek dalam bahasa Indonesia,
-- vehicle counting,
-- AI history,
-- AI video segment,
-- AI widget preview,
-- realtime chart berdasarkan data deteksi/traffic,
-- privacy policy yang menyebut AI/camera/location secara eksplisit.
+- vehicle counting dan ringkasan kelas kendaraan,
+- AI history, AI video segment, dan widget AI preview,
+- chart realtime berdasarkan data deteksi/traffic,
+- privacy policy yang menyebut AI, camera, dan location secara eksplisit.
 
-Kata kunci Store yang disarankan:
-
-- AI
-- Maps
-- ITS
-- Traffic
-- Object Detection
-- Raspberry Pi
-- Windows Widgets
+Kata kunci Store yang disarankan: `AI`, `Maps`, `ITS`, `Traffic`, `Object Detection`, `Raspberry Pi`, `Windows Widgets`.
 
 ## Credits
 

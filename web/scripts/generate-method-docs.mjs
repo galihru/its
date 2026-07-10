@@ -466,7 +466,7 @@ function sourceTable(sources) {
       </div>
       ${sources.map((src) => `
         <div role="row">
-          <span role="cell"><code>${esc(src.rel)}</code></span>
+          <span role="cell"><code title="${esc(src.rel)}">${esc(src.rel)}</code></span>
           <span role="cell">${src.lines.length.toLocaleString("id-ID")}</span>
           <span role="cell">${src.logicLines.toLocaleString("id-ID")}</span>
           <span role="cell">${sourceSymbolCell(src)}</span>
@@ -1012,12 +1012,16 @@ function pdfPreviewPage(initialId = "documentation") {
         <a data-pdf-download href="/documentation" aria-label="Download atau buka dokumen">DL</a>
       </header>
       <aside class="pdf-sidebar" aria-label="Detail dokumen">
+        <button class="pdf-sheet-handle" type="button" data-pdf-sheet-close aria-label="Tutup panel detail"><span></span></button>
         <div class="pdf-tabs" role="tablist" aria-label="Panel dokumen">
           <button type="button" role="tab" aria-selected="true" data-pdf-tab="details">DETAILS</button>
           <button type="button" role="tab" aria-selected="false" data-pdf-tab="relations">RELATIONS</button>
         </div>
         <section class="pdf-panel is-active" data-pdf-panel="details">
-          <div class="pdf-cover-wrap"><img data-pdf-cover src="/method/assets/its.png" alt=""></div>
+          <div class="pdf-cover-wrap">
+            <div class="pdf-cover-page" data-pdf-cover-page aria-label="Cover halaman pertama"></div>
+            <img data-pdf-cover src="/method/assets/its.png" alt="">
+          </div>
           <p class="pdf-kicker" data-pdf-kind>Documentation</p>
           <h1 data-pdf-title>ITS Maps Documentation</h1>
           <p data-pdf-summary>Preview dokumentasi ITS Maps dengan gaya pembaca jurnal.</p>
@@ -1036,9 +1040,23 @@ function pdfPreviewPage(initialId = "documentation") {
           <a href="/method/windows">Windows method</a>
           <a href="/method/webapp">WebApp method</a>
           <a href="/privacy">Privacy Policy</a>
-          <a href="/licence">Licence</a>
+          <a href="/licence">Licence Aplikasi</a>
+          <a href="/license">Licence AI</a>
         </section>
       </aside>
+      <div class="pdf-sidebar-scrim" data-pdf-sidebar-scrim></div>
+      <section class="pdf-search-panel" data-pdf-search-panel hidden aria-label="Pencarian dokumen">
+        <label>
+          <span>Search document</span>
+          <input type="search" data-pdf-search-input placeholder="Ketik kata kunci..." autocomplete="off" />
+        </label>
+        <output data-pdf-search-count>0 hasil</output>
+        <div>
+          <button type="button" data-pdf-search-prev>Prev</button>
+          <button type="button" data-pdf-search-next>Next</button>
+          <button type="button" data-pdf-search-close>Close</button>
+        </div>
+      </section>
       <main class="pdf-stage" aria-label="PDF document preview">
         <nav class="pdf-rail" aria-label="Viewer shortcut">
           <button type="button" data-pdf-rail="info" aria-label="Info">i</button>
@@ -1046,8 +1064,9 @@ function pdfPreviewPage(initialId = "documentation") {
           <button type="button" data-pdf-rail="image" aria-label="Images">Img</button>
           <button type="button" data-pdf-rail="link" aria-label="Copy link">Link</button>
         </nav>
-        <div class="pdf-paper-shell">
-          <iframe data-pdf-frame title="ITS Maps PDF preview" src="${esc(initialDoc.source)}"></iframe>
+        <iframe class="pdf-source-frame" data-pdf-frame title="ITS Maps PDF source" src="${esc(initialDoc.source)}"></iframe>
+        <div class="pdf-paper-shell" data-pdf-paper-shell>
+          <div class="pdf-page-grid" data-pdf-page-grid aria-live="polite"></div>
         </div>
       </main>
     </div>
@@ -1152,15 +1171,17 @@ function printChrome(title) {
 function pageShell({ title, bodyClass, navActive, main }) {
   const nav = [
     ["/", "Home"],
-    ["/documentation", "Documentation"],
-    ["/method", "Method"],
+    ["/method", "Metode"],
+    ["/documentation", "Dokumentasi"],
+    ["/privacy", "Privasi"],
+    ["/licence", "Licence Aplikasi"],
+    ["/license", "Licence AI"],
     ["/method/webapp", "WebApp"],
     ["/method/android", "Android"],
     ["/method/windows", "Windows"],
-    ["/privacy", "Privacy"],
-    ["/licence", "Licence"],
     ["/pdf-preview/documentation", "PDF Preview"],
   ];
+  const overflowNav = nav.slice(4);
   return `<!doctype html>
 <html lang="id">
   <head>
@@ -1180,6 +1201,12 @@ function pageShell({ title, bodyClass, navActive, main }) {
       <a class="brand" href="/"><img src="/its.png" alt=""><span>ITS Maps</span></a>
       <nav aria-label="Navigasi dokumentasi">
         ${nav.map(([href, label]) => `<a href="${href}"${href === navActive ? ' aria-current="page"' : ""}>${label}</a>`).join("")}
+        <details class="nav-more">
+          <summary aria-label="Menu lainnya">...</summary>
+          <div>
+            ${overflowNav.map(([href, label]) => `<a href="${href}"${href === navActive ? ' aria-current="page"' : ""}>${label}</a>`).join("")}
+          </div>
+        </details>
       </nav>
     </header>
     <main id="content">
@@ -1219,6 +1246,12 @@ img { max-width: 100%; }
 .topbar nav { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 .topbar nav a { border-radius: 999px; padding: 8px 11px; color: #344256; text-decoration: none; font-size: 13px; font-weight: 700; }
 .topbar nav a:hover, .topbar nav a:focus-visible, .topbar nav a[aria-current="page"] { background: #eaf6f3; color: #0b5548; outline: none; }
+.nav-more { display: none; position: relative; }
+.nav-more summary { list-style: none; border-radius: 999px; padding: 8px 12px; color: #344256; font-size: 13px; font-weight: 900; cursor: pointer; }
+.nav-more summary::-webkit-details-marker { display: none; }
+.nav-more[open] summary, .nav-more summary:hover, .nav-more summary:focus-visible { background: #eaf6f3; color: #0b5548; outline: none; }
+.nav-more div { position: absolute; top: calc(100% + 8px); right: 0; z-index: 40; display: grid; gap: 6px; width: min(260px, 80vw); padding: 10px; border: 1px solid #cbd8e6; border-radius: 16px; background: #fff; box-shadow: 0 18px 45px rgba(21,35,58,.18); }
+.nav-more div a { display: block; }
 main { width: min(1180px, calc(100% - 32px)); margin: 0 auto; padding: 28px 0 72px; }
 .doc-hero { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(280px, .9fr); gap: clamp(22px, 4vw, 54px); align-items: center; margin: 26px 0 18px; padding: clamp(22px, 4vw, 46px); border: 1px solid var(--line); border-radius: 28px; background: linear-gradient(135deg, #fff 0%, #edf8f5 45%, #eef4ff 100%); box-shadow: var(--shadow); }
 .doc-hero img { width: 100%; max-height: 420px; object-fit: contain; border-radius: 20px; background: rgba(255,255,255,.7); }
@@ -1247,12 +1280,12 @@ figcaption { margin-top: 8px; color: var(--muted); font-size: 13px; font-weight:
 .coverage-grid { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
 .coverage-grid article { display: grid; gap: 4px; }
 .coverage-grid b { font-size: 1.4rem; }
-.source-summary { border: 1px solid var(--line); border-radius: 14px; overflow: visible; margin: 16px 0; background: #fff; }
-.source-summary > div { display: grid; grid-template-columns: minmax(280px, 2fr) minmax(84px, .45fr) minmax(100px, .55fr) minmax(96px, .45fr); gap: 12px; padding: 10px 12px; border-top: 1px solid var(--line); align-items: start; position: relative; }
+.source-summary { border: 1px solid var(--line); border-radius: 14px; overflow-x: auto; overflow-y: visible; margin: 16px 0; background: #fff; }
+.source-summary > div { display: grid; grid-template-columns: minmax(320px, 1fr) 78px 96px 56px; gap: 12px; min-width: 620px; padding: 10px 12px; border-top: 1px solid var(--line); align-items: start; position: relative; }
 .source-summary > div:first-child { border-top: 0; }
 .source-summary-head { background: #eef4f8; font-weight: 900; }
 .source-summary [role="cell"], .source-summary [role="columnheader"] { min-width: 0; }
-.source-summary code { display: block; overflow-wrap: anywhere; white-space: normal; }
+.source-summary code { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .symbol-cell { position: relative; display: inline-flex; align-items: flex-start; justify-content: flex-start; }
 .symbol-trigger { border: 1px solid #c8d6e5; border-radius: 999px; background: #f4f8fb; color: #1f3146; width: 42px; min-height: 30px; font-weight: 900; cursor: pointer; }
 .symbol-trigger:hover, .symbol-trigger:focus-visible { background: #14304a; color: #fff; outline: 3px solid rgba(27,117,208,.18); }
@@ -1306,23 +1339,28 @@ output { display: block; margin-top: 12px; padding: 12px; border-radius: 12px; b
 .pdf-source-mode .code-table { font-size: 7.5pt; min-width: 0; }
 .pdf-source-mode .code-table > div { grid-template-columns: 12mm 78mm 74mm; }
 .pdf-preview-page { margin: 0; overflow: hidden; background: #292934; color: #f8fafc; font-family: Inter, "Segoe UI", Roboto, Arial, sans-serif; }
-.pdf-app { --pdf-zoom: 1; display: grid; grid-template-columns: 450px minmax(0, 1fr); grid-template-rows: 68px minmax(0, calc(100vh - 68px)); height: 100vh; background: #d9dbe5; }
-.pdf-toolbar { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; padding: 0 18px; background: #2a2a35; border-bottom: 1px solid rgba(255,255,255,.12); color: #cfd3df; }
-.pdf-toolbar a, .pdf-toolbar button, .pdf-toolbar select { border: 0; border-radius: 10px; min-height: 34px; background: transparent; color: #cfd3df; font-weight: 900; text-decoration: none; cursor: pointer; }
+.pdf-app { --pdf-zoom: 1; --pdf-columns: 1; --pdf-page-w: 794px; --pdf-page-h: 1123px; --pdf-gap: 28px; display: grid; grid-template-columns: 420px minmax(0, 1fr); grid-template-rows: 68px minmax(0, calc(100vh - 68px)); height: 100vh; background: #d9dbe5; }
+.pdf-toolbar { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; padding: 0 18px; background: #2a2a35; border-bottom: 1px solid rgba(255,255,255,.12); color: #cfd3df; overflow-x: auto; scrollbar-width: thin; }
+.pdf-toolbar a, .pdf-toolbar button, .pdf-toolbar select { border: 0; border-radius: 10px; min-height: 34px; background: transparent; color: #cfd3df; font-weight: 900; text-decoration: none; cursor: pointer; white-space: nowrap; }
 .pdf-toolbar button, .pdf-toolbar a { min-width: 34px; display: inline-grid; place-items: center; }
 .pdf-toolbar button:hover, .pdf-toolbar a:hover, .pdf-toolbar select:hover, .pdf-toolbar button:focus-visible, .pdf-toolbar a:focus-visible, .pdf-toolbar select:focus-visible { background: rgba(255,255,255,.1); outline: 2px solid rgba(83,223,245,.36); }
-.pdf-toolbar select { padding: 0 10px; background: #3a3a48; }
-.pdf-page-count { padding-left: 10px; border-left: 1px solid rgba(255,255,255,.18); font-weight: 800; }
+.pdf-toolbar select { max-width: min(260px, 46vw); padding: 0 10px; background: #3a3a48; }
+.pdf-page-count { padding-left: 10px; border-left: 1px solid rgba(255,255,255,.18); font-weight: 800; white-space: nowrap; }
 .pdf-toolbar-spacer { flex: 1; }
-.pdf-sidebar { grid-row: 2; min-height: 0; overflow-y: auto; padding: 30px 32px; background: #2b2b36; color: #f7f8fb; border-right: 1px solid rgba(255,255,255,.12); }
+.pdf-sidebar { grid-row: 2; min-height: 0; overflow-y: auto; padding: 26px 30px 34px; background: #2b2b36; color: #f7f8fb; border-right: 1px solid rgba(255,255,255,.12); transition: transform .22s ease, opacity .18s ease; }
 .pdf-app.is-sidebar-closed { grid-template-columns: 0 minmax(0, 1fr); }
-.pdf-app.is-sidebar-closed .pdf-sidebar { display: none; }
-.pdf-tabs { display: grid; grid-template-columns: 1fr 1fr; margin-bottom: 28px; border: 1px solid rgba(255,255,255,.7); }
+.pdf-app.is-sidebar-closed .pdf-sidebar { transform: translateX(-100%); opacity: 0; pointer-events: none; }
+.pdf-sidebar-scrim { display: none; }
+.pdf-sheet-handle { display: none; }
+.pdf-tabs { display: grid; grid-template-columns: 1fr 1fr; margin-bottom: 24px; border: 1px solid rgba(255,255,255,.7); }
 .pdf-tabs button { border: 0; padding: 14px; background: transparent; color: #aeb4c3; font-weight: 900; cursor: pointer; }
 .pdf-tabs button[aria-selected="true"] { background: #fff; color: #303240; }
 .pdf-panel { display: none; }
 .pdf-panel.is-active { display: grid; gap: 14px; }
-.pdf-cover-wrap img { width: 120px; aspect-ratio: 3/4; object-fit: contain; background: #eef2f7; border-radius: 6px; }
+.pdf-cover-wrap { position: relative; width: 132px; aspect-ratio: 210 / 297; border-radius: 8px; overflow: hidden; background: #eef2f7; box-shadow: 0 14px 30px rgba(0,0,0,.22); }
+.pdf-cover-wrap img { display: none; }
+.pdf-cover-page { width: 100%; height: 100%; background: #fff; }
+.pdf-cover-page iframe { width: 794px; height: 1123px; border: 0; transform: scale(.166); transform-origin: top left; pointer-events: none; }
 .pdf-kicker { color: #aeb4c3; margin: 16px 0 0; font-size: 12px; font-weight: 900; text-transform: uppercase; }
 .pdf-sidebar h1 { margin: 0; font-size: 20px; line-height: 1.35; }
 .pdf-sidebar p { color: #c7cad6; margin: 0; }
@@ -1334,14 +1372,32 @@ output { display: block; margin-top: 12px; padding: 12px; border-radius: 12px; b
 .pdf-meta dt { color: #aeb4c3; font-weight: 800; }
 .pdf-meta dd { margin: 0; color: #f7f8fb; font-weight: 900; overflow-wrap: anywhere; }
 .pdf-qr { background: #353543; color: #eef2f7; border-color: rgba(255,255,255,.2); }
-.pdf-stage { position: relative; grid-row: 2; min-width: 0; min-height: 0; overflow: auto; display: grid; justify-items: center; align-items: start; padding: 32px 48px; background: #d9dbe5; }
-.pdf-paper-shell { width: calc(210mm * var(--pdf-zoom)); min-height: calc(297mm * var(--pdf-zoom)); transform-origin: top center; transition: width .2s ease, min-height .2s ease; }
-.pdf-paper-shell iframe { width: 210mm; height: 297mm; min-height: 78vh; border: 0; background: #fff; transform: scale(var(--pdf-zoom)); transform-origin: top left; box-shadow: 0 10px 30px rgba(15,23,42,.22); }
-.pdf-paper-shell.is-rotated iframe { transform: scale(var(--pdf-zoom)) rotate(90deg); transform-origin: top left; }
-.pdf-rail { position: sticky; top: 16px; justify-self: start; margin-left: -32px; z-index: 3; display: grid; gap: 10px; align-self: start; }
+.pdf-stage { position: relative; grid-row: 2; min-width: 0; min-height: 0; overflow: auto; padding: 30px 48px 64px; background: #d9dbe5; }
+.pdf-source-frame { position: absolute; left: -10000px; top: 0; width: var(--pdf-page-w); height: var(--pdf-page-h); border: 0; opacity: 0; pointer-events: none; }
+.pdf-paper-shell { width: 100%; min-height: 100%; display: grid; justify-items: center; align-items: start; }
+.pdf-page-grid { display: grid; grid-template-columns: repeat(var(--pdf-columns), calc(var(--pdf-page-w) * var(--pdf-zoom))); gap: calc(var(--pdf-gap) * var(--pdf-zoom)); justify-content: center; align-items: start; transition: grid-template-columns .18s ease, gap .18s ease; }
+.pdf-page-grid:empty::before { content: "Loading document pages..."; display: grid; place-items: center; width: min(720px, 70vw); height: min(420px, 60vh); color: #536174; background: #fff; box-shadow: 0 10px 30px rgba(15,23,42,.18); font-weight: 900; }
+.pdf-page { position: relative; width: calc(var(--pdf-page-w) * var(--pdf-zoom)); height: calc(var(--pdf-page-h) * var(--pdf-zoom)); overflow: hidden; background: #fff; box-shadow: 0 10px 30px rgba(15,23,42,.24); outline: 1px solid rgba(15,23,42,.12); }
+.pdf-page.is-loading::before { content: "Loading page"; position: absolute; inset: 0; display: grid; place-items: center; color: #64748b; font-weight: 800; background: linear-gradient(180deg,#fff,#f8fafc); }
+.pdf-page.is-print-queued::before { content: "Preparing page"; }
+.pdf-page-viewport { width: var(--pdf-page-w); height: var(--pdf-page-h); transform: scale(var(--pdf-zoom)); transform-origin: top left; }
+.pdf-page-viewport iframe { width: var(--pdf-page-w); height: var(--pdf-page-h); border: 0; background: #fff; pointer-events: none; }
+.pdf-paper-shell.is-rotated .pdf-page { width: calc(var(--pdf-page-h) * var(--pdf-zoom)); height: calc(var(--pdf-page-w) * var(--pdf-zoom)); }
+.pdf-paper-shell.is-rotated .pdf-page-viewport { transform: scale(var(--pdf-zoom)) rotate(90deg) translateY(-100%); transform-origin: top left; }
+.pdf-page-label { position: absolute; right: 10px; bottom: 8px; z-index: 2; padding: 2px 7px; border-radius: 999px; background: rgba(15,23,42,.7); color: #fff; font-size: 11px; font-weight: 900; opacity: 0; transition: opacity .15s ease; }
+.pdf-page:hover .pdf-page-label, .pdf-page.is-current .pdf-page-label { opacity: 1; }
+.pdf-page.is-current { outline: 3px solid rgba(13,143,165,.42); }
+.pdf-rail { position: sticky; top: 16px; z-index: 4; display: grid; gap: 10px; width: max-content; margin-left: -32px; float: left; }
 .pdf-rail button { width: 36px; height: 36px; border: 0; border-radius: 999px; background: #fff; color: #506070; box-shadow: 0 6px 18px rgba(15,23,42,.18); font-weight: 900; cursor: pointer; }
 .pdf-rail button:hover, .pdf-rail button:focus-visible { background: #0d8fa5; color: #fff; outline: none; }
 .pdf-panel[data-pdf-panel="relations"] a { display: block; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,.12); text-decoration: none; }
+.pdf-search-panel { position: fixed; top: 82px; right: 22px; z-index: 70; display: grid; gap: 10px; width: min(360px, calc(100vw - 32px)); padding: 14px; border: 1px solid rgba(255,255,255,.2); border-radius: 16px; background: #20202a; color: #f8fafc; box-shadow: 0 22px 60px rgba(0,0,0,.35); }
+.pdf-search-panel[hidden] { display: none; }
+.pdf-search-panel label { display: grid; gap: 6px; font-weight: 900; }
+.pdf-search-panel input { min-height: 38px; border: 1px solid #465063; border-radius: 10px; padding: 0 10px; background: #111827; color: #fff; }
+.pdf-search-panel output { margin: 0; padding: 0; border: 0; background: transparent; color: #cbd5e1; font-weight: 900; }
+.pdf-search-panel div { display: flex; gap: 8px; flex-wrap: wrap; }
+.pdf-search-panel button { border: 0; border-radius: 9px; padding: 8px 10px; background: #eff3f7; color: #20202a; font-weight: 900; cursor: pointer; }
 .policy-page { background: #fff; }
 .policy-top { background: linear-gradient(180deg, #eef7ff 0%, #fff 100%); border-bottom: 1px solid var(--line); }
 .policy-top nav { display: flex; justify-content: space-between; gap: 18px; align-items: center; width: min(1180px, calc(100% - 32px)); margin: 0 auto; padding: 18px 0; }
@@ -1367,22 +1423,37 @@ output { display: block; margin-top: 12px; padding: 12px; border-radius: 12px; b
   .doc-hero, .policy-hero, .policy-layout { grid-template-columns: 1fr; }
   .topbar { align-items: flex-start; flex-direction: column; }
   .toc { top: 118px; }
+  .topbar nav > a:nth-of-type(n+5) { display: none; }
+  .nav-more { display: block; }
+  .nav-more div { position: fixed; left: 12px; right: 12px; top: auto; bottom: 12px; width: auto; max-height: min(70vh, 520px); overflow-y: auto; border-radius: 22px; padding: 18px 14px 14px; transition: transform .2s ease; touch-action: pan-y; }
+  .nav-more div::before { content: ""; width: 44px; height: 5px; border-radius: 999px; background: #91a0b2; justify-self: center; margin-bottom: 4px; }
+  .nav-more div.is-dragging { transition: none; }
   .policy-toc { position: relative; top: auto; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .source-summary > div, .code-table > div { grid-template-columns: 1fr; }
-  .symbol-popover { position: fixed; left: 16px; right: 16px; top: auto; width: auto; }
+  .symbol-popover { position: fixed; left: 16px; right: 16px; bottom: 14px; top: auto; width: auto; max-height: 72vh; border-radius: 20px 20px 8px 8px; }
   .line-no { text-align: left; }
-  .pdf-app { grid-template-columns: 1fr; grid-template-rows: auto auto minmax(0, 1fr); overflow: auto; }
-  .pdf-toolbar { flex-wrap: wrap; padding: 10px; }
-  .pdf-sidebar { grid-row: 2; max-height: 44vh; border-right: 0; border-bottom: 1px solid rgba(255,255,255,.12); }
-  .pdf-stage { grid-row: 3; padding: 18px; }
-  .pdf-paper-shell { width: min(100%, calc(210mm * var(--pdf-zoom))); }
-  .pdf-paper-shell iframe { max-width: 100%; }
+  .pdf-app { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; }
+  .pdf-toolbar { flex-wrap: wrap; gap: 8px; padding: 10px; }
+  .pdf-toolbar-spacer { display: none; }
+  .pdf-sidebar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 60; max-height: 86vh; border-radius: 22px 22px 0 0; border-right: 0; border-top: 1px solid rgba(255,255,255,.12); box-shadow: 0 -20px 60px rgba(0,0,0,.36); transform: translateY(calc(100% - 34px)); opacity: 1; padding: 10px 24px max(28px, env(safe-area-inset-bottom)); touch-action: none; }
+.pdf-app:not(.is-sidebar-closed) .pdf-sidebar { transform: translateY(0); }
+.pdf-app.is-sidebar-closed { grid-template-columns: 1fr; }
+.pdf-app.is-sidebar-closed .pdf-sidebar { display: block; transform: translateY(calc(100% - 34px)); opacity: 1; pointer-events: auto; }
+.pdf-sidebar.is-dragging { transition: none; }
+  .pdf-app:not(.is-sidebar-closed) .pdf-sidebar-scrim { display: block; position: fixed; inset: 0; z-index: 55; background: rgba(15,23,42,.42); }
+  .pdf-sheet-handle { display: flex; justify-content: center; width: 100%; border: 0; background: transparent; padding: 0 0 12px; cursor: grab; }
+  .pdf-sheet-handle span { display: block; width: 46px; height: 5px; border-radius: 999px; background: #8f98aa; }
+  .pdf-stage { grid-row: 2; padding: 18px 12px 52px; }
+  .pdf-rail { top: 12px; margin-left: 0; float: none; position: fixed; left: 10px; z-index: 5; }
+  .pdf-rail button { width: 32px; height: 32px; font-size: 11px; }
+  .pdf-page-grid { gap: 16px; }
+  .pdf-search-panel { left: 10px; right: 10px; top: 76px; width: auto; }
 }
 @media print {
-  @page { size: A4; margin: 16mm 13mm 18mm; }
+  @page { size: A4; margin: 22mm 14mm 22mm; }
   :root { --bg: #fff; --shadow: none; }
   body { background: #fff !important; color: #111827; font-size: 10.5pt; }
-  .topbar, .toc, .hero-actions, .skip-link, .policy-toc, .policy-footer, .run-actions, .print-header, .print-footer { display: none !important; }
+  .topbar, .toc, .hero-actions, .skip-link, .policy-toc, .policy-footer, .run-actions, .print-header, .print-footer, .nav-more, .symbol-trigger { display: none !important; }
   main, .policy-layout, .policy-top nav, .policy-hero { width: auto; margin: 0; padding: 0; display: block; }
   .doc-hero, .doc-section, .policy-card { box-shadow: none; border-color: #cbd5e1; break-inside: auto; page-break-inside: auto; }
   .feature-grid article, .formula-grid article, .download-grid article, .method-card, .coverage-grid article, .credit-list article, figure { break-inside: avoid; page-break-inside: avoid; }
@@ -1401,10 +1472,23 @@ output { display: block; margin-top: 12px; padding: 12px; border-radius: 12px; b
   .source-file summary { background: #fff; padding-top: 6mm; break-after: avoid; page-break-after: avoid; }
   .source-file[open] .code-table { display: grid; }
   .source-file[open] .symbol-list { display: flex; }
+  .symbol-popover { display: grid !important; position: static; width: auto; max-height: none; overflow: visible; box-shadow: none; border: 0; padding: 0; }
   .code-table { font-size: 7.2pt; min-width: 0; }
   .code-table > div { grid-template-columns: 12mm 78mm 74mm; break-inside: avoid; }
   .code-head { position: static; background: #111827 !important; color: #fff !important; }
   pre, code { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .pdf-preview-page { overflow: visible; background: #fff !important; }
+  .pdf-preview-page .pdf-app { display: block; height: auto; background: #fff; --pdf-zoom: 1 !important; --pdf-columns: 1 !important; }
+  .pdf-preview-page .pdf-toolbar, .pdf-preview-page .pdf-sidebar, .pdf-preview-page .pdf-sidebar-scrim, .pdf-preview-page .pdf-search-panel, .pdf-preview-page .pdf-rail, .pdf-preview-page .pdf-source-frame { display: none !important; }
+  .pdf-preview-page .pdf-stage { display: block; overflow: visible; padding: 0; background: #fff; }
+  .pdf-preview-page .pdf-paper-shell { display: block; width: auto; min-height: 0; }
+  .pdf-preview-page .pdf-page-grid { display: block; }
+  .pdf-preview-page .pdf-page { width: 210mm !important; height: 297mm !important; margin: 0 !important; box-shadow: none; outline: 0; break-after: page; page-break-after: always; overflow: hidden; }
+  .pdf-preview-page .pdf-page:last-child { break-after: auto; page-break-after: auto; }
+  .pdf-preview-page .pdf-page-viewport { width: 794px; height: 1123px; transform: scale(1) !important; transform-origin: top left; }
+  .pdf-preview-page .pdf-page-viewport iframe { width: 794px; height: 1123px; }
+  .pdf-preview-page .pdf-page-label { display: none; }
+  .pdf-preview-page .pdf-page:not(.is-rendered)::before { content: none; }
 }
 `;
 }
@@ -1420,6 +1504,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
   let printOpenedDetails = [];
   const preparePrint = () => {
+    if (document.querySelector("[data-pdf-app]")) return;
     printOpenedDetails = [];
     document.body.classList.add("is-printing-all");
     document.querySelectorAll("details.source-file").forEach((details) => {
@@ -1541,6 +1626,36 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   });
 
+  document.querySelectorAll(".nav-more").forEach((details) => {
+    const panel = details.querySelector("div");
+    let startY = 0;
+    let currentY = 0;
+    if (!panel) return;
+    const mobileNav = () => window.matchMedia("(max-width: 820px)").matches;
+    panel.addEventListener("pointerdown", (event) => {
+      if (!mobileNav()) return;
+      startY = event.clientY;
+      currentY = 0;
+      panel.classList.add("is-dragging");
+      panel.setPointerCapture?.(event.pointerId);
+    });
+    panel.addEventListener("pointermove", (event) => {
+      if (!mobileNav() || !startY) return;
+      currentY = Math.max(0, event.clientY - startY);
+      panel.style.transform = "translateY(" + currentY + "px)";
+    });
+    const finish = () => {
+      if (!startY) return;
+      panel.classList.remove("is-dragging");
+      panel.style.transform = "";
+      if (currentY > 90) details.open = false;
+      startY = 0;
+      currentY = 0;
+    };
+    panel.addEventListener("pointerup", finish);
+    panel.addEventListener("pointercancel", finish);
+  });
+
   const pdfApp = document.querySelector("[data-pdf-app]");
   if (!pdfApp) return;
 
@@ -1561,16 +1676,38 @@ window.addEventListener("DOMContentLoaded", () => {
   const pageEl = document.querySelector("[data-pdf-page]");
   const pagesEl = document.querySelector("[data-pdf-pages]");
   const qrEl = document.querySelector("[data-pdf-qr]");
-  const paper = document.querySelector(".pdf-paper-shell");
+  const paper = document.querySelector("[data-pdf-paper-shell]");
+  const stage = document.querySelector(".pdf-stage");
+  const pageGrid = document.querySelector("[data-pdf-page-grid]");
+  const coverPageEl = document.querySelector("[data-pdf-cover-page]");
+  const sidebar = document.querySelector(".pdf-sidebar");
+  const sidebarScrim = document.querySelector("[data-pdf-sidebar-scrim]");
+  const searchPanel = document.querySelector("[data-pdf-search-panel]");
+  const searchInput = document.querySelector("[data-pdf-search-input]");
+  const searchCountEl = document.querySelector("[data-pdf-search-count]");
+  let pageObserver;
   let activeDoc;
   let zoom = 1;
+  let totalPages = 1;
+  let pageWidth = 794;
+  let pageHeight = 1123;
+  let currentColumns = 1;
+  let renderedPages = new Map();
+  let pageNodes = [];
+  let searchMatches = [];
+  let activeSearchIndex = -1;
+  let searchTimer = 0;
 
   const setZoom = (next) => {
-    zoom = Math.min(1.7, Math.max(0.55, next));
+    zoom = Math.min(1.6, Math.max(0.45, next));
     pdfApp.style.setProperty("--pdf-zoom", String(zoom));
+    updateColumns();
+    updateCurrentPage();
   };
 
   const absoluteUrl = (url) => new URL(url, window.location.origin).href;
+  const isMobile = () => window.matchMedia("(max-width: 820px)").matches;
+  const escapeRegex = (value) => value.replace(/[-\\/\\\\^$*+?.()|[\\]{}]/g, "\\\\$&");
 
   const fillMeta = (pairs) => {
     if (!metaEl) return;
@@ -1594,6 +1731,185 @@ window.addEventListener("DOMContentLoaded", () => {
     ].join("");
   };
 
+  const setActiveTab = (name) => {
+    document.querySelectorAll("[data-pdf-tab]").forEach((item) => item.setAttribute("aria-selected", item.getAttribute("data-pdf-tab") === name ? "true" : "false"));
+    document.querySelectorAll("[data-pdf-panel]").forEach((panel) => panel.classList.toggle("is-active", panel.getAttribute("data-pdf-panel") === name));
+  };
+
+  const openSidebar = (tab = "details") => {
+    setActiveTab(tab);
+    pdfApp.classList.remove("is-sidebar-closed");
+    requestAnimationFrame(updateColumns);
+  };
+
+  const closeSidebar = () => {
+    pdfApp.classList.add("is-sidebar-closed");
+    requestAnimationFrame(updateColumns);
+  };
+
+  const toggleSidebar = () => {
+    if (pdfApp.classList.contains("is-sidebar-closed")) openSidebar();
+    else closeSidebar();
+  };
+
+  const prepareInnerFrame = (iframe, pageIndex = 0) => {
+    const scrollY = pageIndex * pageHeight;
+    const apply = () => {
+      try {
+        const doc = iframe.contentDocument;
+        const win = iframe.contentWindow;
+        doc.body.style.width = pageWidth + "px";
+        win.scrollTo(0, scrollY);
+        doc.documentElement.scrollTop = scrollY;
+        doc.body.scrollTop = scrollY;
+        doc.documentElement.style.overflow = "hidden";
+        doc.body.style.overflow = "hidden";
+        requestAnimationFrame(() => win.scrollTo(0, scrollY));
+      } catch {}
+    };
+    iframe.addEventListener("load", apply, { once: true });
+    if (iframe.contentDocument?.readyState === "complete") apply();
+  };
+
+  const detachPage = (node) => {
+    const index = Number(node.dataset.pageIndex || 0);
+    const current = renderedPages.get(index);
+    if (!current) return;
+    current.remove();
+    renderedPages.delete(index);
+    node.classList.remove("is-rendered");
+  };
+
+  const attachPage = (node) => {
+    const index = Number(node.dataset.pageIndex || 0);
+    if (!activeDoc || renderedPages.has(index)) return renderedPages.get(index);
+    node.classList.add("is-loading");
+    const viewport = document.createElement("div");
+    viewport.className = "pdf-page-viewport";
+    const iframe = document.createElement("iframe");
+    iframe.title = (activeDoc.label || "ITS Maps") + " halaman " + (index + 1);
+    iframe.loading = "lazy";
+    iframe.setAttribute("scrolling", "no");
+    iframe.src = activeDoc.source;
+    iframe.addEventListener("load", () => node.classList.remove("is-loading"), { once: true });
+    prepareInnerFrame(iframe, index);
+    viewport.appendChild(iframe);
+    node.appendChild(viewport);
+    node.classList.add("is-rendered");
+    renderedPages.set(index, viewport);
+    return viewport;
+  };
+
+  const rebuildObserver = () => {
+    pageObserver?.disconnect();
+    if (!stage) return;
+    pageObserver = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        const node = entry.target;
+        if (entry.isIntersecting) attachPage(node);
+        else if (renderedPages.size > Math.max(4, currentColumns * 3)) detachPage(node);
+      });
+    }, { root: stage, rootMargin: "360px 120px" });
+    pageNodes.forEach((node) => pageObserver.observe(node));
+  };
+
+  const buildPages = (count) => {
+    if (!pageGrid) return;
+    pageGrid.innerHTML = "";
+    renderedPages.forEach((node) => node.remove());
+    renderedPages = new Map();
+    totalPages = Math.max(1, count);
+    pageNodes = [];
+    const fragment = document.createDocumentFragment();
+    for (let i = 0; i < totalPages; i += 1) {
+      const page = document.createElement("article");
+      page.className = "pdf-page";
+      page.dataset.pageIndex = String(i);
+      page.setAttribute("aria-label", "Halaman " + (i + 1));
+      const label = document.createElement("span");
+      label.className = "pdf-page-label";
+      label.textContent = String(i + 1);
+      page.appendChild(label);
+      fragment.appendChild(page);
+      pageNodes.push(page);
+    }
+    pageGrid.appendChild(fragment);
+    if (pagesEl) pagesEl.textContent = String(totalPages);
+    rebuildObserver();
+    updateColumns();
+    requestAnimationFrame(() => {
+      pageNodes.slice(0, Math.max(2, currentColumns * 2)).forEach((node) => attachPage(node));
+    });
+    updateCurrentPage();
+  };
+
+  const attachAllPagesForPrint = () => {
+    pageObserver?.disconnect();
+    pageNodes.forEach((node) => {
+      node.classList.add("is-print-queued");
+      const viewport = attachPage(node);
+      viewport?.querySelector("iframe")?.setAttribute("loading", "eager");
+    });
+  };
+
+  const restoreLazyPagesAfterPrint = () => {
+    const current = Math.max(0, Number(pageEl?.textContent || "1") - 1);
+    const keepRadius = Math.max(4, currentColumns * 2);
+    pageNodes.forEach((node, index) => {
+      node.classList.remove("is-print-queued");
+      if (Math.abs(index - current) > keepRadius) detachPage(node);
+    });
+    rebuildObserver();
+    updateCurrentPage();
+  };
+
+  const updateColumns = () => {
+    if (!stage) return;
+    const gap = Math.max(16, 28 * zoom);
+    const pageScaledWidth = (paper?.classList.contains("is-rotated") ? pageHeight : pageWidth) * zoom;
+    const available = Math.max(280, stage.clientWidth - (isMobile() ? 24 : 32));
+    const natural = Math.max(1, Math.floor((available + gap) / (pageScaledWidth + gap)));
+    const maxColumns = zoom >= 0.95 ? 1 : zoom >= 0.72 ? 2 : zoom >= 0.56 ? 3 : 4;
+    currentColumns = Math.max(1, Math.min(maxColumns, natural));
+    pdfApp.style.setProperty("--pdf-columns", String(currentColumns));
+  };
+
+  const scrollToPage = (pageNumber) => {
+    if (!stage || !pageNodes.length) return;
+    const index = Math.min(totalPages - 1, Math.max(0, pageNumber - 1));
+    pageNodes[index]?.scrollIntoView({ block: "start", inline: "nearest", behavior: "smooth" });
+    if (pageEl) pageEl.textContent = String(index + 1);
+  };
+
+  const updateCurrentPage = () => {
+    if (!stage || !pageNodes.length) return;
+    const stageRect = stage.getBoundingClientRect();
+    let best = 0;
+    let bestDistance = Infinity;
+    for (const node of pageNodes) {
+      const rect = node.getBoundingClientRect();
+      if (rect.bottom < stageRect.top || rect.top > stageRect.bottom) continue;
+      const distance = Math.abs(rect.top - stageRect.top - 24);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = Number(node.dataset.pageIndex || 0);
+      }
+    }
+    pageNodes.forEach((node) => node.classList.toggle("is-current", Number(node.dataset.pageIndex || 0) === best));
+    if (pageEl) pageEl.textContent = String(best + 1);
+  };
+
+  const renderCoverPage = () => {
+    if (!coverPageEl || !activeDoc) return;
+    coverPageEl.innerHTML = "";
+    const iframe = document.createElement("iframe");
+    iframe.title = "Cover " + activeDoc.label;
+    iframe.src = activeDoc.source;
+    iframe.setAttribute("scrolling", "no");
+    prepareInnerFrame(iframe, 0);
+    coverPageEl.appendChild(iframe);
+  };
+
   const updateFromFrame = () => {
     if (!frame || !activeDoc) return;
     let detected = {};
@@ -1610,8 +1926,12 @@ window.addEventListener("DOMContentLoaded", () => {
         const dd = item.querySelector("dd")?.textContent?.trim() || "";
         return [dt, dd];
       });
-      const pageEstimate = Math.max(1, Math.ceil((doc.documentElement.scrollHeight || doc.body.scrollHeight || 1122) / 1122));
-      if (pagesEl) pagesEl.textContent = String(pageEstimate);
+      pageWidth = Math.max(640, Math.round(frame.clientWidth || 794));
+      pageHeight = Math.max(900, Math.round(frame.clientHeight || 1123));
+      pdfApp.style.setProperty("--pdf-page-w", pageWidth + "px");
+      pdfApp.style.setProperty("--pdf-page-h", pageHeight + "px");
+      const height = Math.max(doc.documentElement.scrollHeight || 0, doc.body.scrollHeight || 0, pageHeight);
+      buildPages(Math.ceil(height / pageHeight));
     } catch {
       detected = {};
     }
@@ -1635,6 +1955,7 @@ window.addEventListener("DOMContentLoaded", () => {
       ...(detected.meta || []),
     ]);
     syncQr("/pdf-preview/" + encodeURIComponent(activeDoc.id));
+    renderCoverPage();
   };
 
   const loadDoc = (id, updateUrl = true) => {
@@ -1642,6 +1963,11 @@ window.addEventListener("DOMContentLoaded", () => {
     if (!activeDoc || !frame) return;
     if (select) select.value = activeDoc.id;
     frame.src = activeDoc.source;
+    if (pageGrid) pageGrid.innerHTML = "";
+    pageNodes = [];
+    renderedPages = new Map();
+    searchMatches = [];
+    activeSearchIndex = -1;
     if (pageEl) pageEl.textContent = "1";
     if (pagesEl) pagesEl.textContent = "...";
     if (updateUrl) {
@@ -1656,40 +1982,134 @@ window.addEventListener("DOMContentLoaded", () => {
 
   frame?.addEventListener("load", () => {
     updateFromFrame();
-    try {
-      frame.contentWindow.addEventListener("scroll", () => {
-        const doc = frame.contentDocument;
-        const page = Math.max(1, Math.floor((doc.documentElement.scrollTop || doc.body.scrollTop || 0) / 1122) + 1);
-        if (pageEl) pageEl.textContent = String(page);
-      }, { passive: true });
-    } catch {}
   });
 
-  document.querySelector("[data-pdf-sidebar-toggle]")?.addEventListener("click", () => pdfApp.classList.toggle("is-sidebar-closed"));
+  stage?.addEventListener("scroll", () => requestAnimationFrame(updateCurrentPage), { passive: true });
+  window.addEventListener("resize", () => requestAnimationFrame(updateColumns));
+  stage?.addEventListener("wheel", (event) => {
+    if (!event.ctrlKey) return;
+    event.preventDefault();
+    setZoom(zoom + (event.deltaY < 0 ? 0.08 : -0.08));
+  }, { passive: false });
+
+  let pinchStart = 0;
+  let pinchZoom = 1;
+  stage?.addEventListener("touchstart", (event) => {
+    if (event.touches.length !== 2) return;
+    const [a, b] = event.touches;
+    pinchStart = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    pinchZoom = zoom;
+  }, { passive: true });
+  stage?.addEventListener("touchmove", (event) => {
+    if (event.touches.length !== 2 || !pinchStart) return;
+    const [a, b] = event.touches;
+    const distance = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    setZoom(pinchZoom * (distance / pinchStart));
+  }, { passive: true });
+
+  document.querySelector("[data-pdf-sidebar-toggle]")?.addEventListener("click", toggleSidebar);
+  sidebarScrim?.addEventListener("click", closeSidebar);
+  document.querySelector("[data-pdf-sheet-close]")?.addEventListener("click", () => {
+    if (isMobile()) closeSidebar();
+  });
+  let sheetDragStart = 0;
+  let sheetWasClosed = false;
+  sidebar?.addEventListener("pointerdown", (event) => {
+    if (!isMobile()) return;
+    sheetDragStart = event.clientY;
+    sheetWasClosed = pdfApp.classList.contains("is-sidebar-closed");
+    sidebar.classList.add("is-dragging");
+    sidebar.setPointerCapture?.(event.pointerId);
+  });
+  sidebar?.addEventListener("pointermove", (event) => {
+    if (!isMobile() || !sheetDragStart) return;
+    const dy = event.clientY - sheetDragStart;
+    if (sheetWasClosed) {
+      const base = Math.max(34, sidebar.offsetHeight - 34);
+      sidebar.style.transform = "translateY(" + Math.max(0, base + dy) + "px)";
+    } else {
+      sidebar.style.transform = "translateY(" + Math.max(0, dy) + "px)";
+    }
+  });
+  const finishSheetDrag = (event) => {
+    if (!isMobile() || !sheetDragStart) return;
+    const dy = event.clientY - sheetDragStart;
+    sidebar?.classList.remove("is-dragging");
+    if (sidebar) sidebar.style.transform = "";
+    if (sheetWasClosed ? dy < -42 : dy < 90) openSidebar();
+    else closeSidebar();
+    sheetDragStart = 0;
+  };
+  sidebar?.addEventListener("pointerup", finishSheetDrag);
+  sidebar?.addEventListener("pointercancel", finishSheetDrag);
   document.querySelector("[data-pdf-zoom-in]")?.addEventListener("click", () => setZoom(zoom + 0.1));
   document.querySelector("[data-pdf-zoom-out]")?.addEventListener("click", () => setZoom(zoom - 0.1));
-  document.querySelector("[data-pdf-rotate]")?.addEventListener("click", () => paper?.classList.toggle("is-rotated"));
+  document.querySelector("[data-pdf-rotate]")?.addEventListener("click", () => {
+    paper?.classList.toggle("is-rotated");
+    requestAnimationFrame(updateColumns);
+  });
   document.querySelector("[data-pdf-fullscreen]")?.addEventListener("click", () => {
     if (document.fullscreenElement) document.exitFullscreen();
     else pdfApp.requestFullscreen?.();
   });
   document.querySelector("[data-pdf-search]")?.addEventListener("click", () => {
-    const term = window.prompt("Cari dalam dokumen:");
-    if (!term) return;
-    try { frame.contentWindow.find(term); } catch {}
+    if (!searchPanel) return;
+    searchPanel.hidden = !searchPanel.hidden;
+    if (!searchPanel.hidden) searchInput?.focus();
   });
+
+  const runSearch = () => {
+    const term = searchInput?.value.trim() || "";
+    searchMatches = [];
+    activeSearchIndex = -1;
+    if (!term) {
+      if (searchCountEl) searchCountEl.textContent = "0 hasil";
+      return;
+    }
+    try {
+      const text = frame.contentDocument?.body?.innerText || "";
+      const pattern = new RegExp(escapeRegex(term), "gi");
+      let match;
+      while ((match = pattern.exec(text)) && searchMatches.length < 5000) {
+        searchMatches.push({ index: match.index, total: text.length });
+      }
+      if (searchCountEl) searchCountEl.textContent = searchMatches.length + " hasil";
+      if (searchMatches.length) goSearch(1);
+    } catch {
+      if (searchCountEl) searchCountEl.textContent = "Pencarian tidak tersedia";
+    }
+  };
+
+  const goSearch = (direction) => {
+    if (!searchMatches.length) return;
+    activeSearchIndex = (activeSearchIndex + direction + searchMatches.length) % searchMatches.length;
+    const hit = searchMatches[activeSearchIndex];
+    const page = Math.max(1, Math.min(totalPages, Math.ceil((hit.index / Math.max(1, hit.total)) * totalPages)));
+    scrollToPage(page);
+    if (searchCountEl) searchCountEl.textContent = (activeSearchIndex + 1) + " / " + searchMatches.length + " hasil";
+    try { frame.contentWindow.find(searchInput.value, false, direction < 0); } catch {}
+  };
+
+  searchInput?.addEventListener("input", () => {
+    window.clearTimeout(searchTimer);
+    searchTimer = window.setTimeout(runSearch, 180);
+  });
+  document.querySelector("[data-pdf-search-prev]")?.addEventListener("click", () => goSearch(-1));
+  document.querySelector("[data-pdf-search-next]")?.addEventListener("click", () => goSearch(1));
+  document.querySelector("[data-pdf-search-close]")?.addEventListener("click", () => { if (searchPanel) searchPanel.hidden = true; });
   document.querySelector("[data-pdf-print]")?.addEventListener("click", () => {
-    try { frame.contentWindow.print(); } catch { window.print(); }
+    attachAllPagesForPrint();
+    window.setTimeout(() => window.print(), 700);
   });
+  window.addEventListener("beforeprint", attachAllPagesForPrint);
+  window.addEventListener("afterprint", restoreLazyPagesAfterPrint);
   document.querySelector("[data-pdf-cite]")?.addEventListener("click", async () => {
     const text = (titleEl?.textContent || activeDoc?.label || "ITS Maps") + ". Hanifa Teams. " + absoluteUrl(activeDoc?.article || "/documentation");
     try { await navigator.clipboard.writeText(text); } catch {}
   });
   document.querySelectorAll("[data-pdf-tab]").forEach((tab) => {
     tab.addEventListener("click", () => {
-      const name = tab.getAttribute("data-pdf-tab");
-      document.querySelectorAll("[data-pdf-tab]").forEach((item) => item.setAttribute("aria-selected", item === tab ? "true" : "false"));
-      document.querySelectorAll("[data-pdf-panel]").forEach((panel) => panel.classList.toggle("is-active", panel.getAttribute("data-pdf-panel") === name));
+      setActiveTab(tab.getAttribute("data-pdf-tab"));
     });
   });
   document.querySelectorAll("[data-pdf-rail]").forEach((button) => {
@@ -1698,12 +2118,17 @@ window.addEventListener("DOMContentLoaded", () => {
       if (type === "link") {
         const url = absoluteUrl("/pdf-preview/" + encodeURIComponent(activeDoc?.id || "documentation"));
         try { await navigator.clipboard.writeText(url); } catch {}
+      } else if (type === "toc") {
+        openSidebar("relations");
+      } else if (type === "image") {
+        scrollToPage(1);
       } else {
-        pdfApp.classList.remove("is-sidebar-closed");
+        openSidebar("details");
       }
     });
   });
 
+  if (isMobile()) closeSidebar();
   loadDoc(initialPdfId, false);
 });
 `;

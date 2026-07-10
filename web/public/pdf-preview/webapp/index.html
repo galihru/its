@@ -41,12 +41,16 @@
         <a data-pdf-download href="/documentation" aria-label="Download atau buka dokumen">DL</a>
       </header>
       <aside class="pdf-sidebar" aria-label="Detail dokumen">
+        <button class="pdf-sheet-handle" type="button" data-pdf-sheet-close aria-label="Tutup panel detail"><span></span></button>
         <div class="pdf-tabs" role="tablist" aria-label="Panel dokumen">
           <button type="button" role="tab" aria-selected="true" data-pdf-tab="details">DETAILS</button>
           <button type="button" role="tab" aria-selected="false" data-pdf-tab="relations">RELATIONS</button>
         </div>
         <section class="pdf-panel is-active" data-pdf-panel="details">
-          <div class="pdf-cover-wrap"><img data-pdf-cover src="/method/assets/its.png" alt=""></div>
+          <div class="pdf-cover-wrap">
+            <div class="pdf-cover-page" data-pdf-cover-page aria-label="Cover halaman pertama"></div>
+            <img data-pdf-cover src="/method/assets/its.png" alt="">
+          </div>
           <p class="pdf-kicker" data-pdf-kind>Documentation</p>
           <h1 data-pdf-title>ITS Maps Documentation</h1>
           <p data-pdf-summary>Preview dokumentasi ITS Maps dengan gaya pembaca jurnal.</p>
@@ -73,9 +77,23 @@
           <a href="/method/windows">Windows method</a>
           <a href="/method/webapp">WebApp method</a>
           <a href="/privacy">Privacy Policy</a>
-          <a href="/licence">Licence</a>
+          <a href="/licence">Licence Aplikasi</a>
+          <a href="/license">Licence AI</a>
         </section>
       </aside>
+      <div class="pdf-sidebar-scrim" data-pdf-sidebar-scrim></div>
+      <section class="pdf-search-panel" data-pdf-search-panel hidden aria-label="Pencarian dokumen">
+        <label>
+          <span>Search document</span>
+          <input type="search" data-pdf-search-input placeholder="Ketik kata kunci..." autocomplete="off" />
+        </label>
+        <output data-pdf-search-count>0 hasil</output>
+        <div>
+          <button type="button" data-pdf-search-prev>Prev</button>
+          <button type="button" data-pdf-search-next>Next</button>
+          <button type="button" data-pdf-search-close>Close</button>
+        </div>
+      </section>
       <main class="pdf-stage" aria-label="PDF document preview">
         <nav class="pdf-rail" aria-label="Viewer shortcut">
           <button type="button" data-pdf-rail="info" aria-label="Info">i</button>
@@ -83,8 +101,9 @@
           <button type="button" data-pdf-rail="image" aria-label="Images">Img</button>
           <button type="button" data-pdf-rail="link" aria-label="Copy link">Link</button>
         </nav>
-        <div class="pdf-paper-shell">
-          <iframe data-pdf-frame title="ITS Maps PDF preview" src="/method/webapp/?pdf=1"></iframe>
+        <iframe class="pdf-source-frame" data-pdf-frame title="ITS Maps PDF source" src="/method/webapp/?pdf=1"></iframe>
+        <div class="pdf-paper-shell" data-pdf-paper-shell>
+          <div class="pdf-page-grid" data-pdf-page-grid aria-live="polite"></div>
         </div>
       </main>
     </div>
