@@ -1,0 +1,97 @@
+{
+  "id": "/desktop/renderer.html?source=pwa-desktop",
+  "name": "ITS Maps Desktop",
+  "short_name": "ITS Desktop",
+  "description": "ITS Maps desktop PWA dengan tampilan seperti aplikasi desktop untuk peta, kamera, history, dan panel realtime.",
+  "start_url": "/desktop/renderer.html?source=pwa-desktop",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "background_color": "#111827",
+  "theme_color": "#111827",
+  "orientation": "landscape",
+  "categories": ["maps", "navigation", "utilities"],
+  "prefer_related_applications": false,
+  "related_applications": [
+    {
+      "platform": "windows",
+      "id": "id.ac.telkomuniversity.its.maps.windows",
+      "url": "https://itstelkom.web.app/artifacts/apps/ITS-Maps-Windows-Custom-Setup-1.0.14-x64.download"
+    }
+  ],
+  "icons": [
+    {
+      "src": "/icons/icon-96.png",
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshots/pwa/desktop-1.png",
+      "sizes": "1672x941",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Tampilan desktop ITS Maps dari folder src/ss/windows"
+    },
+    {
+      "src": "/screenshots/pwa/desktop-2.png",
+      "sizes": "1672x941",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Preview desktop ITS Maps"
+    },
+    {
+      "src": "/screenshots/pwa/desktop-3.png",
+      "sizes": "1672x941",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Panel desktop ITS Maps"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Buka Dashboard Desktop",
+      "short_name": "Dashboard",
+      "url": "/desktop/renderer.html?source=pwa-desktop",
+      "icons": [
+        {
+          "src": "/icons/icon-96.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Dokumentasi",
+      "short_name": "Docs",
+      "url": "/documentation?source=pwa-desktop",
+      "icons": [
+        {
+          "src": "/icons/icon-96.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    }
+  ]
+}

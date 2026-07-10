@@ -9,8 +9,19 @@ User=raspberry5its
 SupplementaryGroups=gpio video
 WorkingDirectory=/home/raspberry5its/its-controller
 Environment=ITS_OUTPUT_PATH=/home/raspberry5its/its-maps/web/public/data/its-state.json
+Environment=ITS_FIREBASE_ROOT_URL=https://itstelkom-default-rtdb.asia-southeast1.firebasedatabase.app
 Environment=ITS_INTERVAL_SECONDS=1
+Environment=ITS_OFFLINE_AFTER_MS=300000
+Environment=ITS_STALE_DELETE_AFTER_MS=900000
+Environment=ITS_SNAPSHOT_INTERVAL_SECONDS=10
+Environment=ITS_SNAPSHOT_MAX_BYTES=350000
 Environment=ITS_PUBLISH_OFFLINE_ON_SHUTDOWN=false
+Environment=ITS_LOCATION_MODE=gps
+Environment=ITS_GPS_ENABLED=true
+Environment=ITS_GPS_DEVICES=/dev/serial0,/dev/ttyAMA0,/dev/ttyS0,/dev/ttyUSB0
+Environment=ITS_GPS_BAUD=9600
+Environment=ITS_GPS_READ_SECONDS=2
+Environment=ITS_GPS_CACHE_SECONDS=20
 Environment=ITS_GPIO_ENABLED=true
 Environment=ITS_GPIO_RED_PIN=17
 Environment=ITS_GPIO_YELLOW_PIN=27
@@ -18,6 +29,11 @@ Environment=ITS_GPIO_GREEN_PIN=22
 Environment=ITS_GPIO_ACTIVE_LOW=false
 Environment=ITS_GPIO_SELF_TEST=true
 Environment=ITS_GPIO_SELF_TEST_SECONDS=2
+Environment=ITS_TRAFFIC_RED_SECONDS=10
+Environment=ITS_TRAFFIC_YELLOW_SECONDS=3
+Environment=ITS_TRAFFIC_GREEN_SECONDS=7
+Environment=ITS_TRAFFIC_MAX_GREEN_EXTRA_SECONDS=20
+Environment=ITS_TRAFFIC_VEHICLES_PER_GREEN_SECOND=3
 Environment=ITS_YOLO_ENABLED=true
 Environment=ITS_YOLO_MODEL_PATH=/home/raspberry5its/models/yolo26n.onnx
 Environment=ITS_YOLO_CAMERA_SOURCE=0
@@ -28,8 +44,7 @@ Environment=ITS_CAMERA_TUNNEL_PROVIDER=cloudflare
 Environment=ITS_CAMERA_WEBRTC_PORT=8080
 Environment=ITS_CAMERA_WEBRTC_PATH=cam/
 Environment=ITS_CAMERA_STREAM_HEALTH_PATH=stream.mjpg
-Environment=ITS_WEBRTC_ENABLED=true
-Environment=ITS_WEBRTC_SIGNAL_PATH=webrtc/devices/raspberry-its
+Environment=ITS_WEBRTC_ENABLED=false
 ExecStart=/usr/bin/bash /home/raspberry5its/its-controller/run-controller-public.sh
 Restart=always
 RestartSec=5

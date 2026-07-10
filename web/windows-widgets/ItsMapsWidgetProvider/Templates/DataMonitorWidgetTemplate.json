@@ -1,0 +1,57 @@
+{
+  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+  "type": "AdaptiveCard",
+  "version": "1.5",
+  "body": [
+    {
+      "type": "ColumnSet",
+      "spacing": "None",
+      "columns": [
+        {
+          "type": "Column",
+          "width": "50px",
+          "items": [
+            { "type": "TextBlock", "text": "ITS", "weight": "Bolder", "color": "Default", "horizontalAlignment": "Center" },
+            { "type": "Container", "selectAction": { "type": "Action.Execute", "verb": "dataCounts" }, "items": [ { "type": "Image", "url": "${iconChart}", "width": "23px", "horizontalAlignment": "Center" }, { "type": "TextBlock", "text": "Data", "size": "Small", "color": "Default", "isSubtle": true, "horizontalAlignment": "Center", "spacing": "None" } ] },
+            { "type": "Container", "selectAction": { "type": "Action.Execute", "verb": "dataCamera" }, "items": [ { "type": "Image", "url": "${iconCamera}", "width": "23px", "horizontalAlignment": "Center" }, { "type": "TextBlock", "text": "Monitor", "size": "Small", "color": "Default", "horizontalAlignment": "Center", "spacing": "None" } ] },
+            { "type": "Container", "selectAction": { "type": "Action.Execute", "verb": "dataAlerts" }, "items": [ { "type": "Image", "url": "${iconBell}", "width": "23px", "horizontalAlignment": "Center" }, { "type": "TextBlock", "text": "Alert", "size": "Small", "color": "Default", "isSubtle": true, "horizontalAlignment": "Center", "spacing": "None" } ] }
+          ]
+        },
+        {
+          "type": "Column",
+          "width": "stretch",
+          "items": [
+            {
+              "type": "ColumnSet",
+              "spacing": "None",
+              "columns": [
+                { "type": "Column", "width": "stretch", "items": [ { "type": "TextBlock", "text": "Data Full & Alert", "weight": "Bolder", "color": "Default", "wrap": true }, { "type": "TextBlock", "text": "${systemLine}", "size": "Small", "color": "Default", "isSubtle": true, "spacing": "None", "wrap": true } ] },
+                { "type": "Column", "width": "auto", "items": [ { "type": "TextBlock", "text": "${objectCountText} OBJ", "size": "Small", "weight": "Bolder", "color": "Attention", "horizontalAlignment": "Right" } ] }
+              ]
+            },
+            { "type": "Image", "url": "${cameraFrame}", "size": "Stretch", "altText": "${detectionSummary}", "spacing": "Small" },
+            { "type": "TextBlock", "text": "${topDetectionLine}", "weight": "Bolder", "color": "Default", "wrap": true, "spacing": "Small" },
+            {
+              "type": "ColumnSet",
+              "spacing": "Small",
+              "columns": [
+                { "type": "Column", "width": "stretch", "items": [ { "type": "Image", "url": "${iconCar}", "width": "18px" }, { "type": "TextBlock", "text": "Mobil", "size": "Small", "color": "Default", "isSubtle": true, "spacing": "None" }, { "type": "TextBlock", "text": "${carText}", "weight": "Bolder", "color": "Accent", "spacing": "None" } ] },
+                { "type": "Column", "width": "stretch", "items": [ { "type": "Image", "url": "${iconMotor}", "width": "18px" }, { "type": "TextBlock", "text": "Motor", "size": "Small", "color": "Default", "isSubtle": true, "spacing": "None" }, { "type": "TextBlock", "text": "${motorcycleText}", "weight": "Bolder", "color": "Accent", "spacing": "None" } ] },
+                { "type": "Column", "width": "stretch", "items": [ { "type": "Image", "url": "${iconBike}", "width": "18px" }, { "type": "TextBlock", "text": "Sepeda", "size": "Small", "color": "Default", "isSubtle": true, "spacing": "None" }, { "type": "TextBlock", "text": "${bicycleText}", "weight": "Bolder", "color": "Accent", "spacing": "None" } ] }
+              ]
+            },
+            {
+              "type": "ColumnSet",
+              "spacing": "Small",
+              "columns": [
+                { "type": "Column", "width": "stretch", "items": [ { "type": "Image", "url": "${iconBus}", "width": "18px" }, { "type": "TextBlock", "text": "Bus", "size": "Small", "color": "Default", "isSubtle": true, "spacing": "None" }, { "type": "TextBlock", "text": "${busText}", "weight": "Bolder", "color": "Accent", "spacing": "None" } ] },
+                { "type": "Column", "width": "stretch", "items": [ { "type": "Image", "url": "${iconTruck}", "width": "18px" }, { "type": "TextBlock", "text": "Truk", "size": "Small", "color": "Default", "isSubtle": true, "spacing": "None" }, { "type": "TextBlock", "text": "${truckText}", "weight": "Bolder", "color": "Accent", "spacing": "None" } ] },
+                { "type": "Column", "width": "stretch", "items": [ { "type": "Image", "url": "${iconTotal}", "width": "18px" }, { "type": "TextBlock", "text": "Objek", "size": "Small", "color": "Default", "isSubtle": true, "spacing": "None" }, { "type": "TextBlock", "text": "${objectCountText}", "weight": "Bolder", "color": "Accent", "spacing": "None" } ] }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

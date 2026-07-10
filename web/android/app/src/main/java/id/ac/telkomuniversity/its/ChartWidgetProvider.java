@@ -15,6 +15,7 @@ import android.graphics.Path;
 import android.graphics.RectF;
 import android.net.Uri;
 import android.text.TextUtils;
+import android.util.Log;
 import android.widget.RemoteViews;
 
 import androidx.core.content.ContextCompat;
@@ -36,6 +37,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class ChartWidgetProvider extends AppWidgetProvider {
+    private static final String TAG = "ITS-ChartWidget";
     private static final String ACTION_REFRESH_WIDGET = "id.ac.telkomuniversity.its.action.REFRESH_WIDGET";
     private static final String PREFS_NAME = "its_widget_prefs";
     private static final String PREF_POINTS = "chart_points";
@@ -46,6 +48,7 @@ public class ChartWidgetProvider extends AppWidgetProvider {
     private static final String STATE_SNAPSHOT_URL = "https://itstelkom.web.app/data/its-state.json";
     private static final String PRIMARY_DEVICE_ID = "raspberry-its";
     private static final long REFRESH_INTERVAL_MS = 10_000L;
+    private static final long STALE_AFTER_MS = 90_000L;
     private static final int POINT_LIMIT = 20;
     private static final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor();
 
@@ -110,9 +113,14 @@ public class ChartWidgetProvider extends AppWidgetProvider {
         try {
             snapshot = fetchSnapshot(context);
         } catch (Exception err) {
+            Log.w(TAG, "Snapshot realtime gagal, memakai cache", err);
             WidgetSnapshot cached = readCachedSnapshot(context);
             snapshot = cached != null ? cached : WidgetSnapshot.fallback();
         }
+
+        Log.i(TAG, "Render status=" + snapshot.statusChip()
+            + " telemetryAt=" + snapshot.lastSeen
+            + " road=" + snapshot.roadLine());
 
         for (int appWidgetId : appWidgetIds) {
             updateWidget(context, appWidgetManager, appWidgetId, snapshot);
@@ -136,13 +144,13 @@ public class ChartWidgetProvider extends AppWidgetProvider {
         views.setTextViewText(R.id.widget_chart_value_bus, String.valueOf(snapshot.bus));
         views.setTextViewText(R.id.widget_chart_value_truck, String.valueOf(snapshot.truck));
         views.setTextViewText(R.id.widget_chart_value_bicycle, String.valueOf(snapshot.bicycle));
-        views.setTextViewText(R.id.widget_chart_value_detector, snapshot.detectorStatus.toUpperCase(Locale.ROOT));
+        views.setTextViewText(R.id.widget_chart_value_detector, snapshot.aiStatusLabel());
 
         int statusColor = snapshot.isOnline()
             ? ContextCompat.getColor(context, R.color.its_widget_green)
             : ContextCompat.getColor(context, R.color.its_widget_red);
         int trafficColor = colorForTraffic(context, snapshot.trafficColor);
-        int aiColor = snapshot.detectorOnline()
+        int aiColor = snapshot.aiReady()
             ? ContextCompat.getColor(context, R.color.its_widget_green)
             : ContextCompat.getColor(context, R.color.its_widget_red);
         views.setTextColor(R.id.widget_chart_status, statusColor);
@@ -223,8 +231,10 @@ public class ChartWidgetProvider extends AppWidgetProvider {
                 String rawJson = fetchJson(url);
                 WidgetSnapshot snapshot = WidgetSnapshot.fromFirebase(rawJson);
                 saveCachedSnapshot(context, rawJson);
+                Log.i(TAG, "Snapshot diterima dari " + url);
                 return snapshot;
             } catch (Exception err) {
+                Log.w(TAG, "Snapshot gagal dari " + url + ": " + err.getMessage());
                 lastError = err;
             }
         }
@@ -268,6 +278,7 @@ public class ChartWidgetProvider extends AppWidgetProvider {
         try {
             return WidgetSnapshot.fromFirebase(raw);
         } catch (Exception err) {
+            Log.w(TAG, "Cache snapshot tidak dapat dibaca: " + err.getMessage());
             return null;
         }
     }
@@ -477,6 +488,7 @@ public class ChartWidgetProvider extends AppWidgetProvider {
         final String detectorStatus;
         final String trafficColor;
         final int trafficDurationSec;
+        final long lastSeen;
         final String lastSeenText;
         final int vehicleCount;
         final int car;
@@ -493,6 +505,7 @@ public class ChartWidgetProvider extends AppWidgetProvider {
             String detectorStatus,
             String trafficColor,
             int trafficDurationSec,
+            long lastSeen,
             String lastSeenText,
             int vehicleCount,
             int car,
@@ -508,6 +521,7 @@ public class ChartWidgetProvider extends AppWidgetProvider {
             this.detectorStatus = detectorStatus;
             this.trafficColor = trafficColor;
             this.trafficDurationSec = trafficDurationSec;
+            this.lastSeen = lastSeen;
             this.lastSeenText = lastSeenText;
             this.vehicleCount = vehicleCount;
             this.car = car;
@@ -526,6 +540,7 @@ public class ChartWidgetProvider extends AppWidgetProvider {
                 "error",
                 "red",
                 0,
+                0L,
                 "Update -",
                 0,
                 0,
@@ -550,20 +565,32 @@ public class ChartWidgetProvider extends AppWidgetProvider {
 
             String id = device.optString("id", PRIMARY_DEVICE_ID);
             String label = firstNonEmpty(device.optString("label", ""), "Raspberry Pi 5 Controller");
-            String roadName = firstNonEmpty(device.optString("roadName", ""), firstNonEmpty(device.optString("locationLabel", ""), "Jalan -"));
+            String structuredLocation = cleanLocationLabel(locationFromObject(device.optJSONObject("location")));
+            String positionLocation = cleanLocationLabel(locationFromObject(device.optJSONObject("position")));
+            String roadName = firstNonEmpty(
+                cleanLocationLabel(device.optString("roadName", "")),
+                firstNonEmpty(
+                    cleanLocationLabel(device.optString("address", "")),
+                    firstNonEmpty(
+                        structuredLocation,
+                        firstNonEmpty(positionLocation, firstNonEmpty(cleanLocationLabel(device.optString("locationLabel", "")), "Jalan -"))
+                    )
+                )
+            );
             String status = firstNonEmpty(device.optString("status", ""), "offline");
+            String cameraStatus = firstNonEmpty(device.optString("cameraStatus", ""), "offline");
+            if ("online".equalsIgnoreCase(cameraStatus)) status = "online";
             String detectorStatus = firstNonEmpty(device.optString("detectorStatus", ""), "-");
             String trafficColor = firstNonEmpty(device.optString("trafficColor", ""), "-");
             int trafficDurationSec = Math.max(0, device.optInt("trafficDurationSec", 0));
-            String lastSeenText = device.optString("lastSeenText", "");
-            if (TextUtils.isEmpty(lastSeenText)) {
-                long lastSeen = device.optLong("lastSeen", root.optLong("updatedAt", 0L));
-                if (lastSeen > 0) {
-                    lastSeenText = String.format(Locale.getDefault(), "%tA, %td %<tb %<tY %<tH:%<tM:%<tS", lastSeen);
-                } else {
-                    lastSeenText = "Update -";
-                }
-            }
+            long lastSeen = latestTelemetryAt(device, root);
+            String lastSeenText = lastSeen > 0
+                ? String.format(
+                    new Locale("id", "ID"),
+                    "%1$tA, %1$td %1$tb %1$tY %1$tH:%1$tM:%1$tS",
+                    lastSeen
+                )
+                : "Update -";
 
             return new WidgetSnapshot(
                 id,
@@ -573,6 +600,7 @@ public class ChartWidgetProvider extends AppWidgetProvider {
                 detectorStatus,
                 trafficColor,
                 trafficDurationSec,
+                lastSeen,
                 lastSeenText,
                 total,
                 car,
@@ -616,7 +644,7 @@ public class ChartWidgetProvider extends AppWidgetProvider {
             long bestLastSeen = Long.MIN_VALUE;
             int bestScore = Integer.MIN_VALUE;
             for (JSONObject candidate : candidates) {
-                long lastSeen = candidate.optLong("lastSeen", 0L);
+                long lastSeen = latestTelemetryAt(candidate, candidate);
                 int score = scoreCandidate(candidate);
                 if (lastSeen > bestLastSeen || (lastSeen == bestLastSeen && score > bestScore)) {
                     best = candidate;
@@ -638,7 +666,7 @@ public class ChartWidgetProvider extends AppWidgetProvider {
             long bestLastSeen = Long.MIN_VALUE;
             int bestScore = Integer.MIN_VALUE;
             for (JSONObject candidate : candidates) {
-                long lastSeen = candidate.optLong("lastSeen", 0L);
+                long lastSeen = latestTelemetryAt(candidate, candidate);
                 int score = scoreCandidate(candidate);
                 if (lastSeen > bestLastSeen || (lastSeen == bestLastSeen && score > bestScore)) {
                     best = candidate;
@@ -681,12 +709,53 @@ public class ChartWidgetProvider extends AppWidgetProvider {
             return score;
         }
 
+        private static long latestTelemetryAt(JSONObject device, JSONObject root) {
+            long latest = Math.max(
+                device.optLong("lastSeen", 0L),
+                Math.max(device.optLong("updatedAt", 0L), device.optLong("cameraUpdatedAt", 0L))
+            );
+            latest = Math.max(latest, device.optLong("detectorUpdatedAt", 0L));
+            JSONObject camera = device.optJSONObject("camera");
+            if (camera != null) {
+                latest = Math.max(latest, camera.optLong("updatedAt", camera.optLong("heartbeatAt", 0L)));
+            }
+            JSONObject runtime = device.optJSONObject("runtime");
+            if (runtime != null) {
+                latest = Math.max(latest, runtime.optLong("heartbeatAt", runtime.optLong("updatedAt", 0L)));
+            }
+            latest = Math.max(latest, root.optLong("updatedAt", 0L));
+            return normalizeEpoch(latest);
+        }
+
         boolean isOnline() {
-            return "online".equalsIgnoreCase(status);
+            return isFresh(System.currentTimeMillis())
+                && ("online".equalsIgnoreCase(status) || "degraded".equalsIgnoreCase(status));
         }
 
         boolean detectorOnline() {
-            return "online".equalsIgnoreCase(detectorStatus) || "ok".equalsIgnoreCase(detectorStatus);
+            String value = detectorStatus == null ? "" : detectorStatus.trim().toLowerCase(Locale.ROOT);
+            return "online".equals(value)
+                || "ok".equals(value)
+                || value.startsWith("browser-rfdetr")
+                || value.startsWith("rf-detr");
+        }
+
+        boolean aiReady() {
+            String value = detectorStatus == null ? "" : detectorStatus.trim().toLowerCase(Locale.ROOT);
+            return detectorOnline()
+                || "disabled".equals(value)
+                || "-".equals(value)
+                || vehicleCount > 0;
+        }
+
+        String aiStatusLabel() {
+            if (detectorOnline()) return "AKTIF";
+            if (aiReady()) return "READY";
+            return "OFF";
+        }
+
+        boolean isFresh(long now) {
+            return lastSeen > 0L && now - lastSeen <= STALE_AFTER_MS && lastSeen - now <= 300_000L;
         }
 
         String statusChip() {
@@ -697,7 +766,10 @@ public class ChartWidgetProvider extends AppWidgetProvider {
             if (TextUtils.isEmpty(lastSeenText) || "Update -".equalsIgnoreCase(lastSeenText)) {
                 return isOnline() ? "Update realtime tersedia" : "Terakhir online: data belum tersedia";
             }
-            return isOnline() ? "Terakhir update: " + lastSeenText : "Terakhir online: " + lastSeenText;
+            if (!isOnline()) return "Terakhir online: " + lastSeenText;
+            return isFresh(System.currentTimeMillis())
+                ? "Terakhir update: " + lastSeenText
+                : "Online - update terakhir: " + lastSeenText;
         }
 
         String deviceLine() {
@@ -712,8 +784,46 @@ public class ChartWidgetProvider extends AppWidgetProvider {
             return TextUtils.isEmpty(roadName) ? "Jalan -" : roadName;
         }
 
+        private static String cleanLocationLabel(String value) {
+            if (TextUtils.isEmpty(value)) return "";
+            String safe = value.trim();
+            String lower = safe.toLowerCase(Locale.ROOT);
+            if (lower.contains("mencari satelit")
+                || lower.contains("gps aktif")
+                || lower.contains("gps-waiting")
+                || lower.contains("waiting")
+                || "lokasi sistem".equals(lower)
+                || "jalan -".equals(lower)) {
+                return "";
+            }
+            return safe;
+        }
+
+        private static String locationFromObject(JSONObject location) {
+            if (location == null) return "";
+            String label = firstNonEmpty(
+                location.optString("label", ""),
+                firstNonEmpty(
+                    location.optString("name", ""),
+                    firstNonEmpty(location.optString("address", ""), location.optString("roadName", ""))
+                )
+            );
+            if (!TextUtils.isEmpty(label)) return label;
+            if ((location.has("lat") || location.has("latitude")) && (location.has("lng") || location.has("lon") || location.has("longitude"))) {
+                double lat = location.optDouble("lat", location.optDouble("latitude", 0d));
+                double lng = location.optDouble("lng", location.optDouble("lon", location.optDouble("longitude", 0d)));
+                return String.format(Locale.US, "%.6f, %.6f", lat, lng);
+            }
+            return "";
+        }
+
         int greenDurationSec() {
             return "green".equalsIgnoreCase(trafficColor) ? trafficDurationSec : 0;
+        }
+
+        private static long normalizeEpoch(long value) {
+            if (value <= 0L) return 0L;
+            return value < 100_000_000_000L ? value * 1000L : value;
         }
 
         private static String trafficLabel(String color) {

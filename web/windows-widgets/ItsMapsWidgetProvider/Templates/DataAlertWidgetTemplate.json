@@ -1,0 +1,67 @@
+{
+  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+  "type": "AdaptiveCard",
+  "version": "1.5",
+  "body": [
+    {
+      "type": "ColumnSet",
+      "spacing": "None",
+      "columns": [
+        {
+          "type": "Column",
+          "width": "50px",
+          "items": [
+            { "type": "TextBlock", "text": "ITS", "weight": "Bolder", "color": "Default", "horizontalAlignment": "Center" },
+            { "type": "Container", "selectAction": { "type": "Action.Execute", "verb": "dataCounts" }, "items": [ { "type": "Image", "url": "${iconChart}", "width": "23px", "horizontalAlignment": "Center" }, { "type": "TextBlock", "text": "Data", "size": "Small", "color": "Default", "isSubtle": true, "horizontalAlignment": "Center", "spacing": "None" } ] },
+            { "type": "Container", "selectAction": { "type": "Action.Execute", "verb": "dataCamera" }, "items": [ { "type": "Image", "url": "${iconCamera}", "width": "23px", "horizontalAlignment": "Center" }, { "type": "TextBlock", "text": "Monitor", "size": "Small", "color": "Default", "isSubtle": true, "horizontalAlignment": "Center", "spacing": "None" } ] },
+            { "type": "Container", "selectAction": { "type": "Action.Execute", "verb": "dataAlerts" }, "items": [ { "type": "Image", "url": "${iconBell}", "width": "23px", "horizontalAlignment": "Center" }, { "type": "TextBlock", "text": "Alert", "size": "Small", "color": "Default", "horizontalAlignment": "Center", "spacing": "None" } ] }
+          ]
+        },
+        {
+          "type": "Column",
+          "width": "stretch",
+          "items": [
+            {
+              "type": "ColumnSet",
+              "spacing": "None",
+              "columns": [
+                { "type": "Column", "width": "stretch", "items": [ { "type": "TextBlock", "text": "Data Full & Alert", "weight": "Bolder", "color": "Default", "wrap": true }, { "type": "TextBlock", "text": "${systemLine}", "size": "Small", "color": "Default", "isSubtle": true, "spacing": "None", "wrap": true } ] },
+                { "type": "Column", "width": "auto", "items": [ { "type": "TextBlock", "text": "${statusLabel}", "size": "Small", "weight": "Bolder", "color": "${statusTextColor}", "horizontalAlignment": "Right" } ] }
+              ]
+            },
+            { "type": "TextBlock", "text": "Pemberitahuan", "weight": "Bolder", "color": "Default", "spacing": "Small" },
+            {
+              "type": "ColumnSet",
+              "spacing": "Small",
+              "columns": [
+                { "type": "Column", "width": "32px", "items": [ { "type": "Image", "url": "${iconPower}", "width": "25px" } ] },
+                { "type": "Column", "width": "stretch", "items": [ { "type": "TextBlock", "text": "${alert1Title}", "weight": "Bolder", "color": "Default", "wrap": true }, { "type": "TextBlock", "text": "${alert1Body}", "size": "Small", "color": "Default", "isSubtle": true, "wrap": true, "spacing": "None" } ] },
+                { "type": "Column", "width": "auto", "items": [ { "type": "TextBlock", "text": "${alert1Time}", "size": "Small", "color": "Default", "isSubtle": true, "horizontalAlignment": "Right" } ] }
+              ]
+            },
+            {
+              "type": "ColumnSet",
+              "spacing": "Small",
+              "separator": true,
+              "columns": [
+                { "type": "Column", "width": "32px", "items": [ { "type": "Image", "url": "${iconTraffic}", "width": "25px" } ] },
+                { "type": "Column", "width": "stretch", "items": [ { "type": "TextBlock", "text": "${alert2Title}", "weight": "Bolder", "color": "Default", "wrap": true }, { "type": "TextBlock", "text": "${alert2Body}", "size": "Small", "color": "Default", "isSubtle": true, "wrap": true, "spacing": "None" } ] },
+                { "type": "Column", "width": "auto", "items": [ { "type": "TextBlock", "text": "${alert2Time}", "size": "Small", "color": "Default", "isSubtle": true, "horizontalAlignment": "Right" } ] }
+              ]
+            },
+            {
+              "type": "ColumnSet",
+              "spacing": "Small",
+              "separator": true,
+              "columns": [
+                { "type": "Column", "width": "32px", "items": [ { "type": "Image", "url": "${iconInfo}", "width": "25px" } ] },
+                { "type": "Column", "width": "stretch", "items": [ { "type": "TextBlock", "text": "${alert3Title}", "weight": "Bolder", "color": "Default", "wrap": true }, { "type": "TextBlock", "text": "${alert3Body}", "size": "Small", "color": "Default", "isSubtle": true, "wrap": true, "spacing": "None" } ] },
+                { "type": "Column", "width": "auto", "items": [ { "type": "TextBlock", "text": "${alert3Time}", "size": "Small", "color": "Default", "isSubtle": true, "horizontalAlignment": "Right" } ] }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

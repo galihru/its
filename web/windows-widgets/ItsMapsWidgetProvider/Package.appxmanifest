@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
+  IgnorableNamespaces="uap uap3 rescap">
+
+  <Identity
+    Name="HanifaTeams.ITSMaps"
+    Publisher="CN=79B6244C-1730-4472-9953-3D2B3B9A1FB4"
+    Version="1.0.50.0" />
+
+  <Properties>
+    <DisplayName>ITS Maps</DisplayName>
+    <PublisherDisplayName>Hanifa Teams</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Universal" MinVersion="10.0.22621.0" MaxVersionTested="10.0.26200.0" />
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.22621.0" MaxVersionTested="10.0.26200.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="id-ID" />
+    <Resource Language="en-US" />
+  </Resources>
+
+  <Applications>
+    <Application
+      Id="ItsMapsWidgetProvider"
+      Executable="$targetnametoken$.exe"
+      EntryPoint="$targetentrypoint$">
+      <uap:VisualElements
+        DisplayName="ITS Maps"
+        Description="ITS Maps Windows Widgets"
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png"
+        AppListEntry="none">
+        <uap:LockScreen Notification="badgeAndTileText" BadgeLogo="Assets\LockScreenLogo.png" />
+        <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" />
+        <uap:SplashScreen Image="Assets\SplashScreen.png" />
+      </uap:VisualElements>
+      <Extensions>
+        <com:Extension Category="windows.comServer">
+          <com:ComServer>
+            <com:ExeServer Executable="ItsMapsWidgetProvider.exe" Arguments="-RegisterProcessAsComServer" DisplayName="ITS Maps Widget Provider">
+              <com:Class Id="94384B84-2F7F-46AB-8CC8-86D9A3C1BAB7" DisplayName="ITS Maps Widget Provider" />
+            </com:ExeServer>
+          </com:ComServer>
+        </com:Extension>
+        <uap3:Extension Category="windows.appExtension">
+          <uap3:AppExtension Name="com.microsoft.windows.widgets" DisplayName="ITS Maps" Id="HanifaTeams.ITSMaps.Widgets" PublicFolder="Public">
+            <uap3:Properties>
+              <WidgetProvider>
+                <ProviderIcons>
+                  <Icon Path="ProviderAssets\Its_Icon.png" />
+                </ProviderIcons>
+                <Activation>
+                  <CreateInstance ClassId="94384B84-2F7F-46AB-8CC8-86D9A3C1BAB7" />
+                </Activation>
+                <Definitions>
+                  <Definition Id="ITS_Map_Widget" DisplayName="ITS Maps" Description="Peta lokasi Raspberry Pi dan lokasi pengguna dengan marker realtime.">
+                    <Capabilities>
+                      <Capability><Size Name="small" /></Capability>
+                      <Capability><Size Name="medium" /></Capability>
+                      <Capability><Size Name="large" /></Capability>
+                    </Capabilities>
+                    <ThemeResources>
+                      <Icons><Icon Path="ProviderAssets\Its_Icon.png" /></Icons>
+                      <Screenshots><Screenshot Path="ProviderAssets\Map_Screenshot.png" DisplayAltText="Widget peta ITS Maps" /></Screenshots>
+                      <DarkMode />
+                      <LightMode />
+                    </ThemeResources>
+                  </Definition>
+                  <Definition Id="ITS_Traffic_Widget" DisplayName="ITS Live" Description="Grafik realtime, durasi lampu, dan hitungan kendaraan ITS Maps.">
+                    <Capabilities>
+                      <Capability><Size Name="small" /></Capability>
+                      <Capability><Size Name="medium" /></Capability>
+                      <Capability><Size Name="large" /></Capability>
+                    </Capabilities>
+                    <ThemeResources>
+                      <Icons><Icon Path="ProviderAssets\Its_Icon.png" /></Icons>
+                      <Screenshots><Screenshot Path="ProviderAssets\Traffic_Screenshot.png" DisplayAltText="Widget grafik lalu lintas ITS Maps" /></Screenshots>
+                      <DarkMode />
+                      <LightMode />
+                    </ThemeResources>
+                  </Definition>
+                  <Definition Id="ITS_AI_Widget" DisplayName="Kamera AI ITS" Description="Widget AI scanning RF-DETR untuk kamera Raspberry Pi ITS Maps.">
+                    <Capabilities>
+                      <Capability><Size Name="small" /></Capability>
+                      <Capability><Size Name="medium" /></Capability>
+                      <Capability><Size Name="large" /></Capability>
+                    </Capabilities>
+                    <ThemeResources>
+                      <Icons><Icon Path="ProviderAssets\Its_Icon.png" /></Icons>
+                      <Screenshots><Screenshot Path="ProviderAssets\AI_Screenshot.png" DisplayAltText="Widget kamera AI ITS Maps" /></Screenshots>
+                      <DarkMode />
+                      <LightMode />
+                    </ThemeResources>
+                  </Definition>
+                  <Definition Id="ITS_Data_Widget" DisplayName="Data Full &amp; Alert" Description="Data kendaraan, pemantauan kamera, dan notifikasi ITS Maps.">
+                    <Capabilities>
+                      <Capability><Size Name="small" /></Capability>
+                      <Capability><Size Name="medium" /></Capability>
+                      <Capability><Size Name="large" /></Capability>
+                    </Capabilities>
+                    <ThemeResources>
+                      <Icons><Icon Path="ProviderAssets\Its_Icon.png" /></Icons>
+                      <Screenshots><Screenshot Path="ProviderAssets\Data_Screenshot.png" DisplayAltText="Widget data lengkap ITS Maps" /></Screenshots>
+                      <DarkMode />
+                      <LightMode />
+                    </ThemeResources>
+                  </Definition>
+                </Definitions>
+              </WidgetProvider>
+            </uap3:Properties>
+          </uap3:AppExtension>
+        </uap3:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <Capability Name="internetClient" />
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>

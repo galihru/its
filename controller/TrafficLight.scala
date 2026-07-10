@@ -1,5 +1,6 @@
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, Paths, StandardOpenOption}
+import java.util.concurrent.ThreadLocalRandom
 import java.util.Locale
 import scala.util.control.NonFatal
 
@@ -27,9 +28,9 @@ object TrafficSignalController {
       backend = GpioBackend.auto(enabled, pins, activeLow),
       pins = pins,
       vehicleCount = vehicleCount,
-      baseRedSec = envInt("ITS_TRAFFIC_RED_SECONDS", 7),
+      baseRedSec = envInt("ITS_TRAFFIC_RED_SECONDS", 10),
       baseYellowSec = envInt("ITS_TRAFFIC_YELLOW_SECONDS", 3),
-      baseGreenSec = envInt("ITS_TRAFFIC_GREEN_SECONDS", 8),
+      baseGreenSec = envInt("ITS_TRAFFIC_GREEN_SECONDS", 7),
       maxGreenExtraSec = envInt("ITS_TRAFFIC_MAX_GREEN_EXTRA_SECONDS", 20),
       vehiclesPerGreenSecond = math.max(1, envInt("ITS_TRAFFIC_VEHICLES_PER_GREEN_SECOND", 3)),
       selfTestEnabled = env("ITS_GPIO_SELF_TEST", "true").toLowerCase(Locale.ROOT) != "false",
@@ -108,27 +109,50 @@ final class TrafficSignalController(
     }
 
     while (running) {
-      runPhase("red", redDurationSec())
-      runPhase("green", greenDurationSec())
-      runPhase("yellow", math.max(1, baseYellowSec))
+      val red = redPhasePlan()
+      runPhase("red", red.durationSec, red.source)
+      val green = greenPhasePlan()
+      runPhase("green", green.durationSec, green.source)
+      val yellow = yellowPhasePlan()
+      runPhase("yellow", yellow.durationSec, yellow.source)
     }
   }
 
-  private def redDurationSec(): Int = {
+  private case class PhasePlan(durationSec: Int, source: String)
+
+  private def redPhasePlan(): PhasePlan = {
     val detected = safeVehicleCount()
-    val reduction = math.min(math.max(0, baseRedSec / 2), detected / math.max(1, vehiclesPerGreenSecond * 2))
-    math.max(3, baseRedSec - reduction)
+    if (detected <= 0) return PhasePlan(randomDuration(6, 12), "random-no-vehicle")
+    if (detected < 5) return PhasePlan(math.max(8, baseRedSec), "adaptive-yolo-low")
+    if (detected <= 10) return PhasePlan(5, "adaptive-yolo-medium")
+    PhasePlan(3, "adaptive-yolo-high")
   }
 
-  private def greenDurationSec(): Int = {
+  private def greenPhasePlan(): PhasePlan = {
     val detected = safeVehicleCount()
-    val extra = math.min(math.max(0, maxGreenExtraSec), detected / vehiclesPerGreenSecond)
-    math.max(3, baseGreenSec + extra)
+    if (detected <= 0) return PhasePlan(randomDuration(6, 12), "random-no-vehicle")
+    if (detected < 5) return PhasePlan(math.max(5, baseGreenSec), "adaptive-yolo-low")
+    if (detected <= 10) return PhasePlan(math.max(9, baseGreenSec + 3), "adaptive-yolo-medium")
+    val extra = math.min(math.max(0, maxGreenExtraSec), (detected - 10) / vehiclesPerGreenSecond)
+    PhasePlan(math.max(13, baseGreenSec + 7 + extra), "adaptive-yolo-high")
+  }
+
+  private def yellowPhasePlan(): PhasePlan = {
+    val detected = safeVehicleCount()
+    val source = if (detected <= 0) "random-no-vehicle" else if (detected <= 10) "adaptive-yolo" else "adaptive-yolo-high"
+    val duration = if (detected <= 0) randomDuration(2, 4) else if (detected > 10) math.max(3, baseYellowSec + 1) else math.max(2, baseYellowSec)
+    PhasePlan(duration, source)
   }
 
   private def safeVehicleCount(): Int =
     try math.max(0, vehicleCount())
     catch { case NonFatal(_) => 0 }
+
+  private def randomDuration(min: Int, max: Int): Int = {
+    val lo = math.max(1, math.min(min, max))
+    val hi = math.max(lo, math.max(min, max))
+    ThreadLocalRandom.current().nextInt(lo, hi + 1)
+  }
 
   private def runPhase(color: String, durationSec: Int, source: String = "adaptive-yolo"): Unit = {
     if (!running) return

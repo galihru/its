@@ -1,14 +1,14 @@
 {
   "id": "/?source=pwa",
   "name": "ITS Maps",
-  "short_name": "ITS",
-  "description": "ITS Maps untuk peta realtime, Raspberry Pi, kamera lalu lintas, notifikasi, dan PWA.",
+  "short_name": "ITS Maps",
+  "description": "ITS Maps untuk peta realtime OSM, Raspberry Pi, kamera lalu lintas, notifikasi publik, dan aplikasi Windows.",
   "start_url": "/?source=pwa",
   "scope": "/",
   "display": "standalone",
-  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
-  "background_color": "#101820",
-  "theme_color": "#101820",
+  "display_override": ["standalone", "minimal-ui"],
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
   "orientation": "any",
   "categories": ["maps", "navigation", "utilities"],
   "prefer_related_applications": false,
@@ -16,30 +16,56 @@
     {
       "platform": "windows",
       "id": "id.ac.telkomuniversity.its.maps.windows",
-      "url": "https://itstelkom.web.app/artifacts/apps/ITS-Maps-Windows-Custom-Setup-1.0.13-x64.download"
+      "url": "https://itstelkom.web.app/artifacts/apps/ITS-Maps-Windows-Custom-Setup-1.0.14-x64.download"
     }
   ],
   "icons": [
     {
-      "src": "./favicon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml"
+      "src": "/icons/icon-96.png",
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ],
   "screenshots": [
     {
-      "src": "/screenshots/windows-home.svg",
+      "src": "/screenshots/desktop-home.png",
       "sizes": "1280x720",
-      "type": "image/svg+xml",
+      "type": "image/png",
       "form_factor": "wide",
-      "label": "Home ITS Maps Windows"
+      "label": "Dashboard desktop ITS Maps"
     },
     {
-      "src": "/screenshots/windows-map.svg",
+      "src": "/screenshots/desktop-map.png",
       "sizes": "1280x720",
-      "type": "image/svg+xml",
+      "type": "image/png",
       "form_factor": "wide",
-      "label": "Peta realtime ITS Maps"
+      "label": "Peta OSM desktop ITS Maps"
+    },
+    {
+      "src": "/screenshots/mobile-map.png",
+      "sizes": "390x844",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Peta mobile ITS Maps"
     }
   ],
   "shortcuts": [
@@ -47,13 +73,25 @@
       "name": "Buka Peta",
       "short_name": "Peta",
       "url": "/?route=map&source=pwa",
-      "icons": [{ "src": "./favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+      "icons": [{ "src": "/icons/shortcut-map-96.png", "sizes": "96x96", "type": "image/png" }]
     },
     {
       "name": "Buka Kamera",
       "short_name": "Camera",
       "url": "/?route=camera&source=pwa",
-      "icons": [{ "src": "./favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+      "icons": [{ "src": "/icons/shortcut-camera-96.png", "sizes": "96x96", "type": "image/png" }]
+    },
+    {
+      "name": "Documentation",
+      "short_name": "Docs",
+      "url": "/documentation?source=pwa",
+      "icons": [{ "src": "/icons/icon-96.png", "sizes": "96x96", "type": "image/png" }]
+    },
+    {
+      "name": "What's New",
+      "short_name": "New",
+      "url": "/new?source=pwa",
+      "icons": [{ "src": "/icons/icon-96.png", "sizes": "96x96", "type": "image/png" }]
     }
   ]
 }

@@ -5,4 +5,8 @@ Description=ITS Controller Auto Update
 Type=oneshot
 User=root
 WorkingDirectory=/home/raspberry5its/its-controller
+Environment=ITS_UPDATE_STATUS_FIREBASE_ENABLED=true
+Environment=ITS_CONTROLLER_REBOOT_AFTER_UPDATE=false
+Environment=ITS_CONTROLLER_BUNDLE_URL=https://itstelkom.web.app/artifacts/its-controller-files.tar.gz?v=20260616-hls-nested-health
+Environment=ITS_CONTROLLER_JAR_URL=https://itstelkom.web.app/artifacts/ItsController.jar?v=20260616-hls-nested-health
 ExecStart=/usr/bin/bash /home/raspberry5its/its-controller/update-controller.sh

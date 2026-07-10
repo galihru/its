@@ -1,0 +1,75 @@
+{
+  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+  "type": "AdaptiveCard",
+  "version": "1.5",
+  "body": [
+    {
+      "type": "ColumnSet",
+      "spacing": "None",
+      "columns": [
+        {
+          "type": "Column",
+          "width": "stretch",
+          "selectAction": { "type": "Action.Execute", "verb": "mapTheme" },
+          "items": [
+            { "type": "TextBlock", "text": "Peta ITS \u25be", "weight": "Bolder", "color": "Default", "wrap": true }
+          ]
+        },
+        {
+          "type": "Column",
+          "width": "auto",
+          "items": [
+            { "type": "TextBlock", "text": "${trafficStatusLine}", "size": "Small", "weight": "Bolder", "color": "${statusColor}", "horizontalAlignment": "Right", "wrap": true }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "Container",
+      "spacing": "Small",
+      "minHeight": "262px",
+      "backgroundImage": { "url": "${mapImage}", "fillMode": "cover" },
+      "items": [
+        {
+          "type": "ColumnSet",
+          "spacing": "None",
+          "columns": [
+            { "type": "Column", "width": "stretch", "items": [ { "type": "TextBlock", "text": " " } ] },
+            {
+              "type": "Column",
+              "width": "auto",
+              "selectAction": { "type": "Action.Execute", "verb": "mapUser" },
+              "items": [
+                { "type": "Image", "url": "${mapUserButton}", "width": "44px", "altText": "${mapUserChoice}", "selectAction": { "type": "Action.Execute", "verb": "mapUser" } }
+              ]
+            },
+            {
+              "type": "Column",
+              "width": "auto",
+              "selectAction": { "type": "Action.Execute", "verb": "mapRaspi" },
+              "items": [
+                { "type": "Image", "url": "${mapRaspiButton}", "width": "44px", "altText": "${mapRaspiChoice}", "selectAction": { "type": "Action.Execute", "verb": "mapRaspi" } }
+              ]
+            }
+          ]
+        },
+        { "type": "TextBlock", "text": " ", "height": "stretch" },
+        {
+          "type": "ColumnSet",
+          "spacing": "None",
+          "columns": [
+            { "type": "Column", "width": "stretch", "items": [ { "type": "TextBlock", "text": " " } ] },
+            {
+              "type": "Column",
+              "width": "auto",
+              "selectAction": { "type": "Action.Execute", "verb": "mapZoom" },
+              "items": [
+                { "type": "Image", "url": "${mapZoomButton}", "width": "44px", "altText": "${mapZoomAction}", "selectAction": { "type": "Action.Execute", "verb": "mapZoom" } }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -58,7 +58,8 @@ public class AlertFullDataWidgetProvider extends AppWidgetProvider {
     private static final String PREF_PHASE_PREFIX = "alert_full_data_phase_";
     private static final String PREF_PHASE_STARTED_PREFIX = "alert_full_data_phase_started_";
     private static final String PRIMARY_DEVICE_ID = "raspberry-its";
-    private static final String FIREBASE_DATASET_URL = "https://itstelkom-default-rtdb.asia-southeast1.firebasedatabase.app/trafficObjectDetectionDataset/devices/raspberry-its.json";
+    private static final String FIREBASE_DATASET_URL = "https://itstelkom-default-rtdb.asia-southeast1.firebasedatabase.app/snapshotHistory.json";
+    private static final String FIREBASE_DEVICES_URL = "https://itstelkom-default-rtdb.asia-southeast1.firebasedatabase.app/devices.json";
     private static final String FIREBASE_DEVICE_URL = "https://itstelkom-default-rtdb.asia-southeast1.firebasedatabase.app/devices/raspberry-its.json";
     private static final String FIREBASE_APK_UPDATE_URL = "https://itstelkom-default-rtdb.asia-southeast1.firebasedatabase.app/apk.json";
     private static final long REFRESH_INTERVAL_MS = 10_000L;
@@ -228,9 +229,14 @@ public class AlertFullDataWidgetProvider extends AppWidgetProvider {
         }
 
         try {
-            deviceJson = fetchJson(FIREBASE_DEVICE_URL);
+            deviceJson = fetchJson(FIREBASE_DEVICES_URL);
             prefs.edit().putString(PREF_DEVICE, deviceJson).apply();
         } catch (Exception ignored) {
+            try {
+                deviceJson = fetchJson(FIREBASE_DEVICE_URL);
+                prefs.edit().putString(PREF_DEVICE, deviceJson).apply();
+            } catch (Exception secondIgnored) {
+            }
         }
 
         try {
@@ -477,14 +483,15 @@ public class AlertFullDataWidgetProvider extends AppWidgetProvider {
 
     private void drawTrafficLiveChart(Canvas canvas, RectF rect, List<HistoryPoint> points) {
         Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        paint.setColor(0xFF101827);
+        paint.setColor(0xFFFFFFFF);
         canvas.drawRoundRect(rect, 24f, 24f, paint);
-
-        paint.setShader(new LinearGradient(rect.left, rect.top, rect.right, rect.bottom, 0xFF111D32, 0xFF0B1220, Shader.TileMode.CLAMP));
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(2f);
+        paint.setColor(0xFFE1EAF5);
         canvas.drawRoundRect(rect, 24f, 24f, paint);
-        paint.setShader(null);
+        paint.setStyle(Paint.Style.FILL);
 
-        Paint title = textPaint(0xFFEAF2FF, 21f, true);
+        Paint title = textPaint(0xFF16233D, 21f, true);
         canvas.drawText("Traffic merah / kuning / hijau", rect.left + 30f, rect.top + 38f, title);
         drawLegend(canvas, rect.right - 272f, rect.top + 32f, "Merah", 0xFFEF4444);
         drawLegend(canvas, rect.right - 174f, rect.top + 32f, "Kuning", 0xFFFACC15);
@@ -502,7 +509,7 @@ public class AlertFullDataWidgetProvider extends AppWidgetProvider {
         }
 
         Paint grid = new Paint(Paint.ANTI_ALIAS_FLAG);
-        grid.setColor(0x223D5A80);
+        grid.setColor(0xFFE7EEF8);
         grid.setStrokeWidth(2f);
         for (int i = 0; i < 5; i++) {
             float y = top + (bottom - top) * i / 4f;
@@ -510,12 +517,12 @@ public class AlertFullDataWidgetProvider extends AppWidgetProvider {
         }
 
         Paint axis = new Paint(Paint.ANTI_ALIAS_FLAG);
-        axis.setColor(0xFF72819D);
+        axis.setColor(0xFF94A3B8);
         axis.setStrokeWidth(3f);
         canvas.drawLine(left, top, left, bottom, axis);
         canvas.drawLine(left, bottom, right, bottom, axis);
 
-        Paint axisText = textPaint(0xFF91A2BE, 17f, false);
+        Paint axisText = textPaint(0xFF64748B, 17f, false);
         canvas.drawText(String.valueOf(maxY), rect.left + 28f, top + 7f, axisText);
         canvas.drawText(String.valueOf(maxY / 2), rect.left + 28f, top + (bottom - top) / 2f + 7f, axisText);
         canvas.drawText("0", rect.left + 38f, bottom + 7f, axisText);
@@ -542,7 +549,7 @@ public class AlertFullDataWidgetProvider extends AppWidgetProvider {
         area.lineTo(lastX, bottom);
         area.close();
         Paint areaPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        areaPaint.setColor(0x222F80ED);
+        areaPaint.setColor(0x182F80ED);
         canvas.drawPath(area, areaPaint);
 
         Paint linePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -671,7 +678,7 @@ public class AlertFullDataWidgetProvider extends AppWidgetProvider {
         Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         paint.setColor(color);
         canvas.drawCircle(x, y, 7f, paint);
-        Paint text = textPaint(0xFFEAF2FF, 17f, true);
+        Paint text = textPaint(0xFF334155, 17f, true);
         canvas.drawText(label, x + 12f, y + 6f, text);
     }
 
@@ -685,11 +692,12 @@ public class AlertFullDataWidgetProvider extends AppWidgetProvider {
         boolean online = snapshot.raspberryOnline(now);
         int imageIndex = phase == PHASE_CAMERA_TWO ? 1 : 0;
         Bitmap image = online ? decodeImageValue(snapshot.imageForIndex(imageIndex)) : null;
-        if (image == null) image = loadFallbackBitmap(context);
+        boolean hasCameraFrame = image != null;
+        if (!hasCameraFrame) image = loadFallbackBitmap(context);
 
         RectF imageRect = new RectF(224f, 128f, 1218f, 574f);
         DrawInfo drawInfo = drawRoundedImage(canvas, image, imageRect, 28f);
-        if (online) drawDetectionBoxes(canvas, snapshot, drawInfo);
+        if (online && hasCameraFrame) drawDetectionBoxes(canvas, snapshot, drawInfo);
 
         Paint overlay = new Paint(Paint.ANTI_ALIAS_FLAG);
         overlay.setShader(new LinearGradient(0, imageRect.top, 0, imageRect.top + 140f, 0xB8000000, 0x00000000, Shader.TileMode.CLAMP));
@@ -813,7 +821,7 @@ public class AlertFullDataWidgetProvider extends AppWidgetProvider {
         if (!snapshot.detectorOnline()) {
             String detector = emptyAs(snapshot.detectorStatus, "offline");
             if (!"online".equalsIgnoreCase(detector) && !"ok".equalsIgnoreCase(detector)) {
-                notices.add(new NoticeItem("Deteksi YOLO", "Status deteksi: " + detector, time, 0xFF8B5CF6));
+                notices.add(new NoticeItem("Deteksi RF-DETR", "Status deteksi: " + detector, time, 0xFF8B5CF6));
             }
         }
 
@@ -1399,20 +1407,32 @@ public class AlertFullDataWidgetProvider extends AppWidgetProvider {
             JSONArray detectionArray = dataset.optJSONArray("detections");
             if (detectionArray == null || detectionArray.length() == 0) detectionArray = device.optJSONArray("detections");
 
+            String structuredLocation = cleanLocationLabel(locationFromObject(device.optJSONObject("location")));
+            String positionLocation = cleanLocationLabel(locationFromObject(device.optJSONObject("position")));
+
             List<NoticeItem> notices = parseNoticeItems(dataset, device);
             appendApkUpdateNotice(notices, apkUpdate, localVersionCode);
 
             return new TrafficSnapshot(
-                firstNonEmpty(dataset.optString("nama1", ""), dataset.optString("snapshot1Url", "")),
-                firstNonEmpty(dataset.optString("nama2", ""), dataset.optString("snapshot2Url", "")),
+                firstNonEmpty(dataset.optString("image1", ""), firstNonEmpty(dataset.optString("gambar1", ""), firstNonEmpty(dataset.optString("nama1", ""), dataset.optString("snapshot1Url", "")))),
+                firstNonEmpty(dataset.optString("image2", ""), firstNonEmpty(dataset.optString("gambar2", ""), firstNonEmpty(dataset.optString("nama2", ""), dataset.optString("snapshot2Url", "")))),
                 firstNonEmpty(device.optString("status", ""), "offline"),
                 firstNonEmpty(device.optString("cameraStatus", ""), dataset.optString("cameraStatus", "")),
                 firstNonEmpty(dataset.optString("detectorStatus", ""), device.optString("detectorStatus", "")),
                 firstNonEmpty(dataset.optString("trafficColor", ""), device.optString("trafficColor", "red")),
                 dataset.optInt("trafficDurationSec", device.optInt("trafficDurationSec", 0)),
-                firstNonEmpty(dataset.optString("locationLabel", ""), firstNonEmpty(device.optString("locationLabel", ""), device.optString("roadName", "Lokasi sistem"))),
+                firstNonEmpty(
+                    cleanLocationLabel(device.optString("roadName", "")),
+                    firstNonEmpty(
+                        cleanLocationLabel(device.optString("address", "")),
+                        firstNonEmpty(
+                            structuredLocation,
+                            firstNonEmpty(positionLocation, firstNonEmpty(cleanLocationLabel(device.optString("locationLabel", "")), cleanLocationLabel(dataset.optString("locationLabel", ""))))
+                        )
+                    )
+                ),
                 firstNonEmpty(dataset.optString("source", ""), "raspberry-camera"),
-                dataset.optLong("updatedAt", device.optLong("lastSeen", 0L)),
+                latestTelemetryAt(dataset, device),
                 device.optString("lastSeenText", ""),
                 dataset.optInt("detectorFrameWidth", device.optInt("detectorFrameWidth", 0)),
                 dataset.optInt("detectorFrameHeight", device.optInt("detectorFrameHeight", 0)),
@@ -1438,24 +1458,54 @@ public class AlertFullDataWidgetProvider extends AppWidgetProvider {
         }
 
         boolean isFresh(long now) {
-            return updatedAt > 0L && now - updatedAt <= STALE_AFTER_MS;
+            return updatedAt > 0L && now - updatedAt <= STALE_AFTER_MS && updatedAt - now <= 300_000L;
         }
 
         boolean detectorOnline() {
             return "online".equalsIgnoreCase(detectorStatus)
                 || "ok".equalsIgnoreCase(detectorStatus)
-                || detectorStatus.toLowerCase(Locale.ROOT).startsWith("browser-yolo");
+                || detectorStatus.toLowerCase(Locale.ROOT).startsWith("browser-rfdetr");
         }
 
         boolean raspberryOnline(long now) {
             return isFresh(now)
                 && ("online".equalsIgnoreCase(status)
                     || "online".equalsIgnoreCase(cameraStatus)
-                    || detectorOnline());
+                    || detectorOnline()
+                    || !"offline".equalsIgnoreCase(status));
         }
 
         String locationLabel() {
             return TextUtils.isEmpty(locationLabel) ? "Lokasi sistem" : locationLabel;
+        }
+
+        private static String cleanLocationLabel(String value) {
+            if (TextUtils.isEmpty(value)) return "";
+            String safe = value.trim();
+            String lower = safe.toLowerCase(Locale.ROOT);
+            if (lower.contains("mencari satelit")
+                || lower.contains("gps aktif")
+                || lower.contains("gps-waiting")
+                || lower.contains("waiting")
+                || "jalan -".equals(lower)) {
+                return "";
+            }
+            return safe;
+        }
+
+        private static String locationFromObject(JSONObject location) {
+            if (location == null) return "";
+            String label = firstNonEmpty(
+                location.optString("label", ""),
+                firstNonEmpty(location.optString("name", ""), firstNonEmpty(location.optString("address", ""), location.optString("roadName", "")))
+            );
+            if (!TextUtils.isEmpty(label)) return label;
+            if ((location.has("lat") || location.has("latitude")) && (location.has("lng") || location.has("lon") || location.has("longitude"))) {
+                double lat = location.optDouble("lat", location.optDouble("latitude", 0d));
+                double lng = location.optDouble("lng", location.optDouble("lon", location.optDouble("longitude", 0d)));
+                return String.format(Locale.US, "%.6f, %.6f", lat, lng);
+            }
+            return "";
         }
 
         String lastOnlineShort() {
@@ -1463,6 +1513,24 @@ public class AlertFullDataWidgetProvider extends AppWidgetProvider {
             if (updatedAt <= 0L) return "belum ada data";
             SimpleDateFormat format = new SimpleDateFormat("dd MMM HH:mm", new Locale("id", "ID"));
             return format.format(new Date(updatedAt));
+        }
+
+        private static long latestTelemetryAt(JSONObject dataset, JSONObject device) {
+            long latest = Math.max(
+                dataset.optLong("updatedAt", 0L),
+                Math.max(device.optLong("lastSeen", 0L), device.optLong("updatedAt", 0L))
+            );
+            latest = Math.max(latest, device.optLong("cameraUpdatedAt", 0L));
+            latest = Math.max(latest, device.optLong("detectorUpdatedAt", 0L));
+            JSONObject camera = device.optJSONObject("camera");
+            if (camera != null) {
+                latest = Math.max(latest, camera.optLong("updatedAt", camera.optLong("heartbeatAt", 0L)));
+            }
+            JSONObject runtime = device.optJSONObject("runtime");
+            if (runtime != null) {
+                latest = Math.max(latest, runtime.optLong("heartbeatAt", runtime.optLong("updatedAt", 0L)));
+            }
+            return normalizeEpoch(latest);
         }
 
         private static JSONObject parseObject(String raw) {
@@ -1589,6 +1657,11 @@ public class AlertFullDataWidgetProvider extends AppWidgetProvider {
         private static String firstNonEmpty(String first, String fallback) {
             if (first != null && !first.trim().isEmpty()) return first.trim();
             return fallback == null ? "" : fallback.trim();
+        }
+
+        private static long normalizeEpoch(long value) {
+            if (value <= 0L) return 0L;
+            return value < 100_000_000_000L ? value * 1000L : value;
         }
     }
 }

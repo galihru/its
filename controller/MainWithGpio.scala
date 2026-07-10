@@ -36,7 +36,7 @@ object ItsController {
   private val explicitLongitude  = envDoubleOpt("ITS_LONGITUDE")
   private val locationMode       = env("ITS_LOCATION_MODE", "ip").toLowerCase(Locale.ROOT)
 
-  private val intervalSeconds     = math.max(5, envInt("ITS_INTERVAL_SECONDS", 15))
+  private val intervalSeconds     = math.max(1, envInt("ITS_INTERVAL_SECONDS", 1))
   private val geoRefreshMs        = math.max(5_000L, envInt("ITS_GEO_REFRESH_SECONDS", intervalSeconds).toLong * 1000L)
   private val outputPath          = env("ITS_OUTPUT_PATH", "../web/public/data/its-state.json")
   private val ipGeolocationUrls   = env(
@@ -47,6 +47,7 @@ object ItsController {
     "ITS_FIREBASE_BASE_URL",
     "https://itstelkom-default-rtdb.asia-southeast1.firebasedatabase.app/devices"
   )
+  private val firebaseRootUrl = env("ITS_FIREBASE_ROOT_URL", firebaseRootFromDevicesUrl(firebaseUrl))
   private val firebaseAuth    = env("ITS_FIREBASE_AUTH", "")
   private var firebaseEnabled = env("ITS_FIREBASE_ENABLED", "true").toLowerCase(Locale.ROOT) != "false"
   private var cachedLocation: Option[(Long, GeoLocation)] = None
@@ -209,8 +210,8 @@ object ItsController {
    * Dipanggil sekali saat startup.
    */
   private def migrateLegacyFirebaseNode(): Unit = {
-    if (!firebaseEnabled || firebaseUrl.trim.isEmpty) return
-    val nodePath = s"${firebaseUrl.stripSuffix("/")}/${deviceId}.json${authSuffixQuery()}"
+    if (!firebaseEnabled || firebaseRootUrl.trim.isEmpty) return
+    val nodePath = firebaseDeviceUrl(deviceId)
     try {
       val getReq = HttpRequest.newBuilder(URI.create(nodePath))
         .header("Accept", "application/json").GET().build()
@@ -275,7 +276,7 @@ object ItsController {
     val location = currentLocation()
 
     // Device JSON — struktur flat yang sesuai dengan SnapshotDevice di frontend
-    val deviceJson =
+    val deviceJsonLegacy =
       s"""{
          |  "id": "${escapeJson(deviceId)}",
          |  "label": "${escapeJson(label)}",
@@ -297,6 +298,64 @@ object ItsController {
          |}""".stripMargin
 
     // Snapshot JSON — wrapper untuk file lokal (web frontend membaca ini)
+    val deviceJson =
+      s"""{
+         |  "id": "${escapeJson(deviceId)}",
+         |  "label": "${escapeJson(label)}",
+         |  "status": "${escapeJson(status)}",
+         |  "lastSeen": $lastSeen,
+         |  "updatedAt": $updatedAt,
+         |  "note": "${escapeJson(note)}",
+         |  "location": {
+         |    "lat": ${location.lat},
+         |    "lng": ${location.lng},
+         |    "label": "${escapeJson(location.label)}",
+         |    "source": "${escapeJson(location.source)}",
+         |    "accuracyM": ${location.accuracyM}
+         |  },
+         |  "camera": {
+         |    "enabled": false,
+         |    "mode": "mjpeg",
+         |    "tunnelUrl": "",
+         |    "status": "disabled",
+         |    "ready": false,
+         |    "updatedAt": 0,
+         |    "note": "MainWithGpio tidak menjalankan kamera"
+         |  },
+         |  "traffic": {
+         |    "current": "${escapeJson(currentTrafficColor)}",
+         |    "red": ${currentTrafficColor == "red"},
+         |    "yellow": ${currentTrafficColor == "yellow"},
+         |    "green": ${currentTrafficColor == "green"},
+         |    "startedAt": ${trafficStartedAt},
+         |    "durationSec": ${trafficDurationSec},
+         |    "source": "gpio",
+         |    "gpioBackend": "sysfs",
+         |    "gpioReady": true,
+         |    "gpioNote": ""
+         |  },
+         |  "objectDetection": {
+         |    "source": "none",
+         |    "status": "disabled",
+         |    "note": "YOLO tidak aktif di MainWithGpio",
+         |    "updatedAt": 0,
+         |    "fps": 0,
+         |    "frameWidth": 0,
+         |    "frameHeight": 0,
+         |    "cameraSource": "",
+         |    "confidence": 0,
+         |    "outputShape": "",
+         |    "car": 0,
+         |    "motorcycle": 0,
+         |    "truck": 0,
+         |    "bus": 0,
+         |    "bicycle": 0,
+         |    "total": 0,
+         |    "objectCount": 0,
+         |    "detections": []
+         |  }
+         |}""".stripMargin
+
     val snapshotJson =
       s"""{
          |  "updatedAt": $updatedAt,
@@ -318,10 +377,9 @@ object ItsController {
    * devices sebagai Record<string, SnapshotDevice>.
    */
   private def publishFirebaseDevice(deviceJson: String): Unit = {
-    if (!firebaseEnabled || firebaseUrl.trim.isEmpty) return
+    if (!firebaseEnabled || firebaseRootUrl.trim.isEmpty) return
 
-    val devicePath = s"${firebaseUrl.stripSuffix("/")}/${deviceId}.json" +
-      authSuffix()
+    val devicePath = firebaseDeviceUrl(deviceId)
 
     try {
       val request = HttpRequest
@@ -350,11 +408,11 @@ object ItsController {
   // ─── Firebase: cleanup stale nodes ────────────────────────────
 
   private def cleanupStaleNonRaspberryNodes(): Unit = {
-    if (!firebaseEnabled || firebaseUrl.trim.isEmpty) return
+    if (!firebaseEnabled || firebaseRootUrl.trim.isEmpty) return
 
     try {
       val request = HttpRequest
-        .newBuilder(URI.create(s"${firebaseUrl.stripSuffix("/")}.json${authSuffixQuery()}"))
+        .newBuilder(URI.create(firebasePathUrl("devices")))
         .header("Accept", "application/json")
         .GET()
         .build()
@@ -377,7 +435,7 @@ object ItsController {
   }
 
   private def deleteDeviceNode(id: String): Unit = {
-    val deleteUrl = s"${firebaseUrl.stripSuffix("/")}/${id}.json${authSuffixQuery()}"
+    val deleteUrl = firebaseDeviceUrl(id)
     try {
       val request = HttpRequest
         .newBuilder(URI.create(deleteUrl))
@@ -407,6 +465,15 @@ object ItsController {
   // ─── Helpers ──────────────────────────────────────────────────
 
   /** Mengembalikan "?auth=..." atau "" */
+  private def firebaseRootFromDevicesUrl(value: String): String =
+    value.trim.stripSuffix("/").stripSuffix("/devices")
+
+  private def firebasePathUrl(path: String): String =
+    s"${firebaseRootUrl.stripSuffix("/")}/${path.stripPrefix("/")}.json${authSuffixQuery()}"
+
+  private def firebaseDeviceUrl(id: String): String =
+    s"${firebaseRootUrl.stripSuffix("/")}/devices/${URLEncoder.encode(id, StandardCharsets.UTF_8)}.json${authSuffixQuery()}"
+
   private def authSuffix(): String =
     if (firebaseAuth.trim.isEmpty) ""
     else s"?auth=${URLEncoder.encode(firebaseAuth.trim, StandardCharsets.UTF_8)}"
@@ -415,11 +482,11 @@ object ItsController {
   private def authSuffixQuery(): String = authSuffix()
 
   private def publishOfflineDevice(): Unit = {
-    if (!firebaseEnabled || firebaseUrl.trim.isEmpty) return
+    if (!firebaseEnabled || firebaseRootUrl.trim.isEmpty) return
     val lastSeen = System.currentTimeMillis()
     val lastSeenText = lastSeenFormatter.format(Instant.ofEpochMilli(lastSeen))
     val location = currentLocation()
-    val body =
+    val bodyLegacy =
       s"""{
          |  "id": "${escapeJson(deviceId)}",
          |  "label": "${escapeJson(label)}",
@@ -434,6 +501,63 @@ object ItsController {
          |  "position": {
          |    "lat": ${location.lat},
          |    "lng": ${location.lng}
+         |  }
+         |}""".stripMargin
+    val body =
+      s"""{
+         |  "id": "${escapeJson(deviceId)}",
+         |  "label": "${escapeJson(label)}",
+         |  "status": "offline",
+         |  "lastSeen": $lastSeen,
+         |  "updatedAt": $lastSeen,
+         |  "note": "${escapeJson(note)}; controller berhenti",
+         |  "location": {
+         |    "lat": ${location.lat},
+         |    "lng": ${location.lng},
+         |    "label": "${escapeJson(location.label)}",
+         |    "source": "${escapeJson(location.source)}",
+         |    "accuracyM": ${location.accuracyM}
+         |  },
+         |  "camera": {
+         |    "enabled": false,
+         |    "mode": "mjpeg",
+         |    "tunnelUrl": "",
+         |    "status": "offline",
+         |    "ready": false,
+         |    "updatedAt": $lastSeen,
+         |    "note": "controller offline"
+         |  },
+         |  "traffic": {
+         |    "current": "${escapeJson(currentTrafficColor)}",
+         |    "red": ${currentTrafficColor == "red"},
+         |    "yellow": ${currentTrafficColor == "yellow"},
+         |    "green": ${currentTrafficColor == "green"},
+         |    "startedAt": ${trafficStartedAt},
+         |    "durationSec": ${trafficDurationSec},
+         |    "source": "gpio",
+         |    "gpioBackend": "sysfs",
+         |    "gpioReady": true,
+         |    "gpioNote": ""
+         |  },
+         |  "objectDetection": {
+         |    "source": "none",
+         |    "status": "disabled",
+         |    "note": "controller offline",
+         |    "updatedAt": 0,
+         |    "fps": 0,
+         |    "frameWidth": 0,
+         |    "frameHeight": 0,
+         |    "cameraSource": "",
+         |    "confidence": 0,
+         |    "outputShape": "",
+         |    "car": 0,
+         |    "motorcycle": 0,
+         |    "truck": 0,
+         |    "bus": 0,
+         |    "bicycle": 0,
+         |    "total": 0,
+         |    "objectCount": 0,
+         |    "detections": []
          |  }
          |}""".stripMargin
     try publishFirebaseDevice(body)
@@ -532,8 +656,8 @@ object ItsController {
   }
 
   private def firebaseLocation(): Option[GeoLocation] = {
-    if (!firebaseEnabled || firebaseUrl.trim.isEmpty) return None
-    val nodePath = s"${firebaseUrl.stripSuffix("/")}/${deviceId}.json${authSuffixQuery()}"
+    if (!firebaseEnabled || firebaseRootUrl.trim.isEmpty) return None
+    val nodePath = firebaseDeviceUrl(deviceId)
     try {
       val request = HttpRequest
         .newBuilder(URI.create(nodePath))

@@ -7,6 +7,7 @@ SERVICE_DIR="${ITS_SYSTEMD_DIR:-/etc/systemd/system}"
 SERVICE_NAME="${ITS_CONTROLLER_SERVICE_NAME:-its-controller.service}"
 UPDATE_SERVICE_NAME="${ITS_CONTROLLER_UPDATE_SERVICE_NAME:-its-controller-update.service}"
 UPDATE_TIMER_NAME="${ITS_CONTROLLER_UPDATE_TIMER_NAME:-its-controller-update.timer}"
+HEARTBEAT_SERVICE_NAME="${ITS_HEARTBEAT_SERVICE_NAME:-its-heartbeat-agent.service}"
 ENABLE_WEBRTC_SERVICE="${ITS_ENABLE_WEBRTC_SERVICE:-false}"
 ENABLE_CAMERA_STREAM_SERVICE="${ITS_ENABLE_CAMERA_STREAM_SERVICE:-true}"
 
@@ -52,8 +53,10 @@ copy_controller_file "build-jar.sh" 0755
 copy_controller_file "controller-classpath.sh" 0755
 copy_controller_file "run-controller.sh" 0755
 copy_controller_file "run-controller-public.sh" 0755
+copy_controller_file "gps-init-ublox.py" 0755
 copy_controller_file "run-controller-with-updates.sh" 0755
 copy_controller_file "update-controller.sh" 0755
+copy_controller_file "its-heartbeat-agent.sh" 0755
 copy_controller_file "install-yolo-runtime.sh" 0755
 copy_controller_file "test-leds.sh" 0755
 copy_controller_file "diagnose-controller.sh" 0755
@@ -61,19 +64,23 @@ copy_controller_file "requirements-webrtc.txt" 0644
 copy_controller_file "webrtc-camera.py" 0755
 copy_controller_file "webrtc-camera.sh" 0755
 copy_controller_file "camera-gateway.py" 0755
+copy_controller_file "camera-public-proxy.py" 0755
 copy_controller_file "camera-stream.sh" 0755
+copy_controller_file "mediamtx.yml" 0644
 
 $SUDO chown -R raspberry5its:raspberry5its "$TARGET_DIR" || true
 
 install_service_file "its-controller.service" "$SERVICE_DIR/$SERVICE_NAME"
 install_service_file "its-controller-update.service" "$SERVICE_DIR/$UPDATE_SERVICE_NAME"
 install_service_file "its-controller-update.timer" "$SERVICE_DIR/$UPDATE_TIMER_NAME"
+install_service_file "its-heartbeat-agent.service" "$SERVICE_DIR/$HEARTBEAT_SERVICE_NAME"
 install_service_file "webrtc-camera.service" "$SERVICE_DIR/webrtc-camera.service"
 install_service_file "camera-stream.service" "$SERVICE_DIR/camera-stream.service"
 
 $SUDO systemctl daemon-reload
 $SUDO systemctl enable "$SERVICE_NAME"
 $SUDO systemctl enable "$UPDATE_TIMER_NAME"
+$SUDO systemctl enable "$HEARTBEAT_SERVICE_NAME"
 
 if [ "${ENABLE_CAMERA_STREAM_SERVICE,,}" = "true" ] || [ "$ENABLE_CAMERA_STREAM_SERVICE" = "1" ]; then
   $SUDO systemctl enable camera-stream.service
@@ -92,6 +99,7 @@ else
 fi
 
 $SUDO systemctl restart "$SERVICE_NAME"
+$SUDO systemctl restart "$HEARTBEAT_SERVICE_NAME"
 $SUDO systemctl restart "$UPDATE_TIMER_NAME"
 
 echo "Installed controller files to $TARGET_DIR"
@@ -99,3 +107,4 @@ echo "Controller: sudo systemctl status $SERVICE_NAME"
 echo "WebRTC:     sudo systemctl status webrtc-camera.service"
 echo "MJPEG:      sudo systemctl status camera-stream.service"
 echo "Updates:    sudo systemctl status $UPDATE_TIMER_NAME"
+echo "Heartbeat:  sudo systemctl status $HEARTBEAT_SERVICE_NAME"

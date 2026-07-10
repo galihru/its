@@ -1,0 +1,20 @@
+[Unit]
+Description=ITS Raspberry Hardware Heartbeat Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=raspberry5its
+WorkingDirectory=/home/raspberry5its/its-controller
+Environment=ITS_FIREBASE_ROOT_URL=https://itstelkom-default-rtdb.asia-southeast1.firebasedatabase.app
+Environment=ITS_DEVICE_ID=raspberry-its
+Environment=ITS_HEARTBEAT_INTERVAL_SECONDS=5
+Environment=ITS_CAMERA_WEBRTC_PORT=8080
+Environment=ITS_CAMERA_LOCAL_HEALTH_PATH=health
+ExecStart=/usr/bin/bash /home/raspberry5its/its-controller/its-heartbeat-agent.sh
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

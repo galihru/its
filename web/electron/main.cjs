@@ -7,12 +7,28 @@ const { pathToFileURL } = require("node:url");
 
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
 const APP_UPDATE_URL = "https://itstelkom.web.app/app-update.json";
-const WINDOWS_EXE_NAME = "ITS-Maps-Windows-Custom-Setup-1.0.13-x64.exe";
+const WINDOWS_EXE_NAME = "ITS-Maps-Windows-Custom-Setup-1.0.21-x64.exe";
+const BACKGROUND_UPDATE_ARG = "--background-update-check";
+const APP_USER_MODEL_ID = "id.ac.telkomuniversity.its";
 const UPDATE_HISTORY_FILE = "update-history.json";
+const isBackgroundUpdate = process.argv.includes(BACKGROUND_UPDATE_ARG);
 let mainWindow = null;
 let splashWindow = null;
 let updateTimer = null;
 let forceQuit = false;
+let mainWindowReady = false;
+let rendererDataReady = false;
+let splashFallbackTimer = null;
+
+if (process.platform === "win32") {
+  app.setName("ITS Maps");
+  app.setAppUserModelId(APP_USER_MODEL_ID);
+}
+
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+}
 
 function iconPath() {
   const candidates = [
@@ -23,6 +39,15 @@ function iconPath() {
   return candidates.find((candidate) => candidate && fs.existsSync(candidate)) || path.join(__dirname, "..", "public", "its.png");
 }
 
+function logoDataUrl() {
+  const icon = iconPath();
+  try {
+    return `data:image/png;base64,${fs.readFileSync(icon).toString("base64")}`;
+  } catch {
+    return pathToFileURL(icon).toString();
+  }
+}
+
 function readWindowsLocation() {
   if (process.platform !== "win32") {
     return Promise.resolve({ ok: false, error: "unsupported-platform" });
@@ -31,10 +56,10 @@ function readWindowsLocation() {
   const script = `
 Add-Type -AssemblyName System.Device
 $watcher = New-Object System.Device.Location.GeoCoordinateWatcher ([System.Device.Location.GeoPositionAccuracy]::High)
-$started = $watcher.TryStart($false, [TimeSpan]::FromSeconds(10))
+$started = $watcher.TryStart($true, [TimeSpan]::FromSeconds(15))
 $loc = $watcher.Position.Location
 if ($loc.IsUnknown) {
-  [pscustomobject]@{ ok=$false; error="windows-location-unknown"; started=$started } | ConvertTo-Json -Compress
+  [pscustomobject]@{ ok=$false; error="windows-location-unknown"; started=$started; status=[string]$watcher.Status } | ConvertTo-Json -Compress
 } else {
   [pscustomobject]@{
     ok=$true
@@ -44,10 +69,11 @@ if ($loc.IsUnknown) {
     source="windows-location"
   } | ConvertTo-Json -Compress
 }
+$watcher.Stop()
 `;
   return new Promise((resolve) => {
     execFile("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script], {
-      timeout: 14_000,
+      timeout: 22_000,
       windowsHide: true,
       maxBuffer: 64 * 1024,
     }, (error, stdout) => {
@@ -110,7 +136,7 @@ function compareVersion(left, right) {
 
 function fetchJson(url) {
   return new Promise((resolve, reject) => {
-    https.get(url, { headers: { "user-agent": "ITS Maps Windows" } }, (res) => {
+    https.get(url, { headers: { "user-agent": "ITS Maps" } }, (res) => {
       if (res.statusCode < 200 || res.statusCode >= 300) {
         reject(new Error(`HTTP ${res.statusCode}`));
         res.resume();
@@ -162,9 +188,53 @@ function downloadFile(url, destination, onProgress) {
   });
 }
 
-function notifyUpdate(title, body) {
+function openRendererPanel(panel) {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    if (!splashWindow || splashWindow.isDestroyed()) createSplashWindow();
+    createWindow();
+    const sendPanelWhenReady = setInterval(() => {
+      if (!mainWindow || mainWindow.isDestroyed()) {
+        clearInterval(sendPanelWhenReady);
+        return;
+      }
+      if (mainWindowReady && rendererDataReady) {
+        clearInterval(sendPanelWhenReady);
+        openRendererPanel(panel);
+      }
+    }, 500);
+    setTimeout(() => clearInterval(sendPanelWhenReady), 15_000);
+    return;
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+  mainWindow.webContents.send("its:open-panel", panel);
+}
+
+function notifyUpdate(title, body, panel = "settings") {
   if (!Notification.isSupported()) return;
-  new Notification({ title, body, icon: iconPath() }).show();
+  const notification = new Notification({
+    title,
+    body,
+    icon: iconPath(),
+    silent: false,
+  });
+  notification.on("click", () => openRendererPanel(panel));
+  notification.show();
+}
+
+function enableBackgroundUpdateAtLogin() {
+  if (process.platform !== "win32" || isDev) return;
+  try {
+    app.setLoginItemSettings({
+      openAtLogin: true,
+      path: app.getPath("exe"),
+      args: [BACKGROUND_UPDATE_ARG],
+      name: "ITS Maps",
+    });
+  } catch (error) {
+    console.warn("[ITS Maps] Background update registration failed:", error);
+  }
 }
 
 function createSplashWindow() {
@@ -177,7 +247,7 @@ function createSplashWindow() {
     show: false,
     center: true,
     alwaysOnTop: false,
-    backgroundColor: "#101820",
+    backgroundColor: "#202020",
     icon: iconPath(),
     webPreferences: {
       contextIsolation: true,
@@ -186,7 +256,7 @@ function createSplashWindow() {
     },
   });
 
-  const logo = pathToFileURL(iconPath()).toString();
+  const logo = logoDataUrl();
   const html = `
 <!doctype html>
 <html>
@@ -195,15 +265,7 @@ function createSplashWindow() {
   <style>
     * { box-sizing: border-box; }
     html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; font-family: "Segoe UI", Arial, sans-serif; }
-    body {
-      display: grid;
-      place-items: center;
-      background:
-        radial-gradient(circle at 22% 18%, rgba(45, 140, 255, 0.48), transparent 38%),
-        radial-gradient(circle at 84% 82%, rgba(55, 221, 134, 0.28), transparent 36%),
-        linear-gradient(135deg, #101820, #1d2735 58%, #0d131b);
-      color: white;
-    }
+    body { display: grid; place-items: center; background: #202020; color: #f3f3f3; }
     .card {
       width: 100%;
       height: 100%;
@@ -211,20 +273,20 @@ function createSplashWindow() {
       place-items: center;
       gap: 14px;
       padding: 34px;
-      border: 1px solid rgba(255,255,255,0.11);
+      border: 1px solid rgba(255,255,255,0.12);
     }
-    img { width: 86px; height: 86px; object-fit: contain; filter: drop-shadow(0 20px 34px rgba(45,140,255,.48)); }
-    strong { font-size: 28px; font-weight: 900; letter-spacing: 0; }
-    span { color: #bfdbfe; font-size: 13px; font-weight: 800; }
-    .bar { width: 190px; height: 5px; border-radius: 99px; overflow: hidden; background: rgba(255,255,255,.14); }
-    .bar::before { content: ""; display: block; width: 42%; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #27d889, #2d8cff); animation: move 1.25s ease-in-out infinite; }
-    @keyframes move { 0% { transform: translateX(-110%); } 100% { transform: translateX(260%); } }
+    img { width: 72px; height: 72px; object-fit: contain; }
+    strong { font-size: 24px; font-weight: 700; letter-spacing: 0; }
+    span { color: #d0d0d0; font-size: 12px; font-weight: 600; }
+    .bar { width: 190px; height: 4px; overflow: hidden; background: rgba(255,255,255,.16); }
+    .bar::before { content: ""; display: block; width: 38%; height: 100%; background: #0078d4; animation: move 1.15s ease-in-out infinite; }
+    @keyframes move { 0% { transform: translateX(-110%); } 100% { transform: translateX(290%); } }
   </style>
 </head>
 <body>
   <div class="card">
     <img src="${logo}" alt="ITS Maps">
-    <strong>ITS Maps Windows</strong>
+    <strong>ITS Maps</strong>
     <span>Menyiapkan peta, kamera, dan sinkronisasi realtime...</span>
     <div class="bar"></div>
   </div>
@@ -241,6 +303,17 @@ function closeSplashWindow() {
   const splash = splashWindow;
   splashWindow = null;
   if (splash && !splash.isDestroyed()) splash.close();
+}
+
+function maybeShowMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed() || !mainWindowReady || !rendererDataReady) return;
+  if (splashFallbackTimer) {
+    clearTimeout(splashFallbackTimer);
+    splashFallbackTimer = null;
+  }
+  closeSplashWindow();
+  mainWindow.show();
+  mainWindow.focus();
 }
 
 async function checkForUpdates({ autoInstall = false } = {}) {
@@ -287,7 +360,7 @@ async function checkForUpdates({ autoInstall = false } = {}) {
     };
     appendUpdateHistory(downloaded);
     sendToRenderer("its:update-status", downloaded);
-    notifyUpdate("Update ITS Maps siap", "Pembaruan akan dipasang otomatis.");
+    notifyUpdate("Update ITS Maps siap", "Pembaruan akan dipasang otomatis.", "new");
 
     if (autoInstall) {
       const installing = { status: "installing", message: "Menjalankan custom setup secara silent", current, latest };
@@ -303,44 +376,70 @@ async function checkForUpdates({ autoInstall = false } = {}) {
     const failed = { status: "failed", message: error.message || "Gagal memeriksa pembaruan", current };
     appendUpdateHistory(failed);
     sendToRenderer("its:update-status", failed);
-    notifyUpdate("Update ITS Maps gagal", failed.message);
+    notifyUpdate("Update ITS Maps gagal", failed.message, "settings");
     return failed;
   }
 }
 
 function createWindow() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.show();
+    mainWindow.focus();
+    return;
+  }
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 920,
     minWidth: 1040,
     minHeight: 680,
-    title: "ITS Maps Windows",
-    backgroundColor: "#171b20",
+    title: "ITS Maps",
+    backgroundColor: "#202020",
     icon: iconPath(),
+    frame: false,
     show: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
-      webSecurity: true,
+      webSecurity: false,
+      allowRunningInsecureContent: true,
     },
   });
+  mainWindow.on("enter-full-screen", () => {
+    mainWindow?.webContents.send("its:window-fullscreen-changed", true);
+  });
+  mainWindow.on("leave-full-screen", () => {
+    mainWindow?.webContents.send("its:window-fullscreen-changed", false);
+  });
+
+  splashFallbackTimer = setTimeout(() => {
+    mainWindowReady = true;
+    rendererDataReady = true;
+    maybeShowMainWindow();
+  }, 12_000);
 
   mainWindow.once("ready-to-show", () => {
-    setTimeout(() => {
-      closeSplashWindow();
-      mainWindow?.show();
-    }, 450);
+    mainWindowReady = true;
+    maybeShowMainWindow();
   });
 
   mainWindow.on("closed", () => {
     mainWindow = null;
+    mainWindowReady = false;
+    rendererDataReady = false;
   });
 
   mainWindow.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedUrl) => {
-    console.error(`[ITS Maps Windows] Renderer load failed (${errorCode}): ${errorDescription} - ${validatedUrl}`);
+    console.error(`[ITS Maps] Renderer load failed (${errorCode}): ${errorDescription} - ${validatedUrl}`);
+    mainWindowReady = true;
+    rendererDataReady = true;
+    closeSplashWindow();
     mainWindow?.show();
+  });
+  mainWindow.webContents.once("did-finish-load", () => {
+    mainWindowReady = true;
+    maybeShowMainWindow();
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -356,20 +455,47 @@ function createWindow() {
     const asarRendererPath = path.join(__dirname, "..", "dist", "desktop", "renderer.html");
     const rendererPath = fs.existsSync(resourceRendererPath) ? resourceRendererPath : asarRendererPath;
     mainWindow.loadFile(rendererPath).catch((error) => {
-      console.error("[ITS Maps Windows] Renderer loadFile failed:", error);
+      console.error("[ITS Maps] Renderer loadFile failed:", error);
       mainWindow?.show();
     });
   }
 }
 
+app.on("second-instance", (_event, argv) => {
+  if (argv.includes(BACKGROUND_UPDATE_ARG)) return;
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    if (!splashWindow || splashWindow.isDestroyed()) createSplashWindow();
+    createWindow();
+    return;
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+});
+
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
+  enableBackgroundUpdateAtLogin();
 
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
     callback(permission === "geolocation" || permission === "media" || permission === "notifications");
   });
   session.defaultSession.setPermissionCheckHandler((_webContents, permission) => {
     return permission === "geolocation" || permission === "media" || permission === "notifications";
+  });
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    const responseHeaders = { ...(details.responseHeaders || {}) };
+    for (const key of Object.keys(responseHeaders)) {
+      const lower = key.toLowerCase();
+      if (lower === "x-frame-options") delete responseHeaders[key];
+      if (lower === "content-security-policy" || lower === "content-security-policy-report-only") {
+        const values = responseHeaders[key];
+        responseHeaders[key] = Array.isArray(values)
+          ? values.filter((value) => !/frame-ancestors/i.test(value))
+          : values;
+      }
+    }
+    callback({ responseHeaders });
   });
 
   ipcMain.handle("its:get-current-position", readWindowsLocation);
@@ -379,6 +505,38 @@ app.whenReady().then(() => {
   });
   ipcMain.handle("its:check-update", (_event, options) => checkForUpdates(options || {}));
   ipcMain.handle("its:get-update-history", () => readUpdateHistory());
+  ipcMain.handle("its:window-minimize", () => mainWindow?.minimize());
+  ipcMain.handle("its:window-toggle-maximize", () => {
+    if (!mainWindow) return false;
+    if (mainWindow.isMaximized()) mainWindow.unmaximize();
+    else mainWindow.maximize();
+    return mainWindow.isMaximized();
+  });
+  ipcMain.handle("its:window-toggle-fullscreen", () => {
+    if (!mainWindow) return false;
+    const active = !mainWindow.isFullScreen();
+    mainWindow.setFullScreen(active);
+    return active;
+  });
+  ipcMain.handle("its:window-close", () => mainWindow?.close());
+  ipcMain.on("its:renderer-ready", () => {
+    rendererDataReady = true;
+    maybeShowMainWindow();
+  });
+
+  if (isBackgroundUpdate) {
+    rendererDataReady = true;
+    mainWindowReady = true;
+    setTimeout(() => void checkForUpdates({ autoInstall: true }), 4_000);
+    updateTimer = setInterval(() => void checkForUpdates({ autoInstall: true }), 6 * 60 * 60 * 1000);
+    app.on("activate", () => {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        createSplashWindow();
+        createWindow();
+      }
+    });
+    return;
+  }
 
   createSplashWindow();
   createWindow();
@@ -391,7 +549,7 @@ app.whenReady().then(() => {
 });
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
+  if (process.platform !== "darwin" && !isBackgroundUpdate) app.quit();
 });
 
 app.on("before-quit", () => {

@@ -32,7 +32,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public string InstallPath => _services.InstallPath;
     public StepVisual[] Steps { get; private set; } = BuildSteps(UninstallPage.Welcome);
     public string TitleText { get; private set; } = "Uninstall ITS Maps";
-    public string BodyText { get; private set; } = "Wizard ini akan membantu menghapus ITS Maps Windows dari komputer Anda dengan aman.";
+    public string BodyText { get; private set; } = "Wizard ini akan membantu menghapus ITS Maps dari komputer Anda dengan aman.";
     public string NextButtonText { get; private set; } = "Berikutnya >";
 
     public bool RemoveAppData
@@ -221,11 +221,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         BodyText = _page switch
         {
-            UninstallPage.Welcome => "Wizard ini akan membantu menghapus ITS Maps Windows dari komputer Anda.",
+            UninstallPage.Welcome => "Wizard ini akan membantu menghapus ITS Maps dari komputer Anda.",
             UninstallPage.Confirm => "Apakah Anda yakin menguninstall aplikasi ini? Jika iya, silakan klik Berikutnya.",
             UninstallPage.Data => "Pilih data yang ikut dibersihkan agar instalasi berikutnya benar-benar segar.",
             UninstallPage.Progress => "Mohon tunggu, proses penghapusan sedang berjalan dan setiap bagian ditampilkan di bawah.",
-            UninstallPage.Done => "ITS Maps Windows telah berhasil dihapus dari komputer Anda.",
+            UninstallPage.Done => "ITS Maps telah berhasil dihapus dari komputer Anda.",
             _ => ""
         };
 

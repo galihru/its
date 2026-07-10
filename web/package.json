@@ -1,8 +1,8 @@
 {
   "name": "its-maps-web",
   "private": true,
-  "version": "1.0.13",
-  "productName": "ITS Maps Windows",
+  "version": "1.0.50",
+  "productName": "ITS Maps",
   "description": "Aplikasi Windows ITS Maps untuk sinkronisasi Raspberry Pi, website, peta realtime, grafik lalu lintas, kamera, dan auto-update.",
   "author": {
     "name": "Hanifa Septhi Larasati - Telkom University"
@@ -16,31 +16,42 @@
     "desktop:dev": "npm run build && electron electron/main.cjs",
     "desktop:open": "electron electron/main.cjs",
     "desktop:build": "npm run build && electron-builder --win nsis portable",
+    "widgets:publish": "powershell -ExecutionPolicy Bypass -File scripts/publish-windows-widget-provider.ps1",
+    "desktop:msix": "powershell -ExecutionPolicy Bypass -File scripts/build-windows-msix-with-widgets.ps1",
     "desktop:portable": "npm run build && electron-builder --win portable",
     "desktop:custom-installer": "powershell -ExecutionPolicy Bypass -File scripts/build-custom-windows-installer.ps1"
   },
   "devDependencies": {
+    "@capacitor/android": "^6.2.1",
+    "@capacitor/app": "^6.0.3",
+    "@capacitor/cli": "^6.2.1",
+    "@capacitor/core": "^6.2.1",
+    "@huggingface/transformers": "^4.2.0",
     "@types/leaflet": "^1.9.21",
+    "@yume-chan/adb": "^2.6.0",
+    "@yume-chan/adb-credential-web": "^2.1.0",
+    "@yume-chan/adb-daemon-webusb": "^2.3.2",
     "electron": "^38.8.6",
     "electron-builder": "^26.8.1",
     "esbuild": "^0.28.0",
+    "firebase": "^12.15.0",
     "firebase-tools": "^15.18.0",
-    "typescript": "^5.9.3",
-    "vite": "^8.0.1"
-  },
-  "dependencies": {
+    "jszip": "^3.10.1",
     "leaflet": "^1.9.4",
     "leaflet-rotate": "^0.2.8",
     "mapbox-gl-leaflet": "^0.0.16",
-    "maplibre-gl": "^5.24.0"
+    "maplibre-gl": "^5.24.0",
+    "typescript": "^5.9.3",
+    "vite": "^8.0.1"
   },
   "build": {
-    "appId": "id.ac.telkomuniversity.its.maps.windows",
-    "productName": "ITS Maps Windows",
+    "appId": "id.ac.telkomuniversity.its",
+    "productName": "ITS Maps",
     "copyright": "Copyright (c) 2026 Hanifa Septhi Larasati - Telkom University",
     "asar": true,
+    "afterPack": "scripts/after-pack-windows.cjs",
+    "appxManifestCreated": "scripts/appx-manifest-created.cjs",
     "files": [
-      "dist/**/*",
       "electron/**/*",
       "src/icon/its.png",
       "package.json"
@@ -48,7 +59,19 @@
     "extraResources": [
       {
         "from": "dist",
-        "to": "dist"
+        "to": "dist",
+        "filter": [
+          "**/*",
+          "!artifacts",
+          "!artifacts/**/*"
+        ]
+      },
+      {
+        "from": "windows-widgets/ItsMapsWidgetProvider/bin/Release/net9.0-windows10.0.22621.0/win-x64/publish",
+        "to": "ItsMapsWidgetProvider",
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "directories": {
@@ -71,8 +94,8 @@
         }
       ],
       "icon": "build/icon.ico",
-      "executableName": "ITS Maps Windows",
-      "legalTrademarks": "ITS Maps Windows - Hanifa Septhi Larasati - Telkom University",
+      "executableName": "ITS Maps",
+      "legalTrademarks": "ITS Maps - Hanifa Septhi Larasati - Telkom University",
       "requestedExecutionLevel": "asInvoker"
     },
     "nsis": {
@@ -83,7 +106,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "ITS Maps Windows",
+      "shortcutName": "ITS Maps",
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
       "installerHeaderIcon": "build/icon.ico",
@@ -91,7 +114,7 @@
       "installerSidebar": "build/installerSidebar.bmp",
       "uninstallerSidebar": "build/uninstallerSidebar.bmp",
       "include": "build/installer.nsh",
-      "uninstallDisplayName": "ITS Maps Windows",
+      "uninstallDisplayName": "ITS Maps",
       "language": "1057",
       "installerLanguages": [
         "id_ID"
@@ -102,9 +125,31 @@
     "portable": {
       "artifactName": "ITS-Maps-Windows-Portable-${version}-${arch}.${ext}"
     },
+    "appx": {
+      "identityName": "HanifaTeams.ITSMaps",
+      "applicationId": "ITSMaps",
+      "publisher": "CN=79B6244C-1730-4472-9953-3D2B3B9A1FB4",
+      "publisherDisplayName": "Hanifa Teams",
+      "displayName": "ITS Maps",
+      "backgroundColor": "transparent",
+      "minVersion": "10.0.22621.0",
+      "maxVersionTested": "10.0.26100.0",
+      "languages": [
+        "id-ID",
+        "en-US"
+      ],
+      "capabilities": [
+        "internetClient",
+        "privateNetworkClientServer",
+        "location",
+        "runFullTrust"
+      ],
+      "customExtensionsPath": "build/appx-widgets-extensions.xml",
+      "artifactName": "ITS-Maps-Windows-Store-${version}-${arch}.${ext}"
+    },
     "extraMetadata": {
       "name": "its-maps-windows",
-      "version": "1.0.13"
+      "version": "1.0.50"
     }
   }
 }

@@ -57,7 +57,9 @@ public partial class App : System.Windows.Application
     {
         var allUsers = HasArg(args, "--all-users");
         var runAfterInstall = HasArg(args, "--run-after-install");
-        var installPath = ValueArg(args, "--install-dir") ?? InstallerServices.GetDefaultInstallPath(allUsers);
+        var installPath = ValueArg(args, "--install-dir")
+            ?? InstallerServices.GetExistingInstallPath()
+            ?? InstallerServices.GetDefaultInstallPath(allUsers);
         var logPath = Path.Combine(Path.GetTempPath(), "ITSMapsWindowsSetup-silent.log");
         var service = new InstallerServices();
 
@@ -73,7 +75,7 @@ public partial class App : System.Windows.Application
 
         if (runAfterInstall)
         {
-            var appExe = Path.Combine(installPath, "ITS Maps Windows.exe");
+            var appExe = Path.Combine(installPath, InstallerServices.AppExeName);
             if (File.Exists(appExe))
             {
                 Process.Start(new ProcessStartInfo(appExe) { UseShellExecute = true });
@@ -103,8 +105,8 @@ public partial class App : System.Windows.Application
         if (!showMessage) return;
 
         System.Windows.MessageBox.Show(
-            $"ITS Maps Windows Setup gagal dibuka.\n\nLog: {logPath}\n\n{ex.Message}",
-            "ITS Maps Windows Setup",
+            $"ITS Maps Setup gagal dibuka.\n\nLog: {logPath}\n\n{ex.Message}",
+            "ITS Maps Setup",
             MessageBoxButton.OK,
             MessageBoxImage.Error);
     }

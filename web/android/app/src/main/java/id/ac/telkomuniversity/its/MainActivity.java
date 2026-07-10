@@ -6,12 +6,15 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
+import android.content.pm.ActivityInfo;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.PowerManager;
 import android.provider.Settings;
 import android.text.TextUtils;
+import android.util.Base64;
+import android.util.Base64InputStream;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 import android.widget.Toast;
@@ -36,6 +39,7 @@ import java.util.concurrent.Executors;
 
 public class MainActivity extends BridgeActivity {
 	private boolean bootstrapHandled;
+	private boolean lockScreenSetupPending;
 	private static final int REQ_LOCATION = 2001;
 	private static final int REQ_BACKGROUND_LOCATION = 2002;
 	private static final int REQ_NOTIFICATIONS = 2003;
@@ -59,18 +63,17 @@ public class MainActivity extends BridgeActivity {
 	@Override
 	public void onResume() {
 		super.onResume();
-		if (bootstrapHandled) {
-			return;
+		if (!bootstrapHandled) {
+			bootstrapHandled = true;
+			getWindow().getDecorView().post(this::bootstrapApp);
 		}
-		bootstrapHandled = true;
-		getWindow().getDecorView().post(this::bootstrapApp);
+		if (lockScreenSetupPending) {
+			getWindow().getDecorView().postDelayed(this::continueLockScreenSetup, 250L);
+		}
 	}
 
 	private void bootstrapApp() {
 		requestLocationPermissionIfNeeded();
-		requestNotificationPermissionIfNeeded();
-		requestBackgroundLocationIfNeeded();
-		requestIgnoreBatteryOptimizationIfNeeded();
 		WidgetRealtimeService.start(this);
 	}
 
@@ -93,6 +96,90 @@ public class MainActivity extends BridgeActivity {
 		@JavascriptInterface
 		public void notifyUpdate(String title, String message, String targetUrl) {
 			showUpdateNotification(title, message, targetUrl);
+		}
+
+		@JavascriptInterface
+		public void activateLockScreenWidget() {
+			runOnUiThread(() -> setLockScreenMonitoringEnabled(true));
+		}
+
+		@JavascriptInterface
+		public void previewLockScreenWidget() {
+			runOnUiThread(() -> MainActivity.this.openLockScreenPreview());
+		}
+
+		@JavascriptInterface
+		public void openNotificationAccessSettings() {
+			runOnUiThread(() -> MainActivity.this.openNotificationAccessSettings());
+		}
+
+		@JavascriptInterface
+		public boolean isLockScreenMonitoringEnabled() {
+			return LockScreenPreferences.isEnabled(MainActivity.this);
+		}
+
+		@JavascriptInterface
+		public void setLockScreenMonitoringEnabled(boolean enabled) {
+			runOnUiThread(() -> MainActivity.this.setLockScreenMonitoringEnabled(enabled));
+		}
+
+		@JavascriptInterface
+		public void setVideoFullscreen(boolean enabled) {
+			runOnUiThread(() -> setRequestedOrientation(enabled
+				? ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+				: ActivityInfo.SCREEN_ORIENTATION_PORTRAIT));
+		}
+	}
+
+	private void setLockScreenMonitoringEnabled(boolean enabled) {
+		LockScreenPreferences.setEnabled(this, enabled);
+		if (!enabled) {
+			lockScreenSetupPending = false;
+			WidgetRealtimeService.setLockScreenMonitoringEnabled(this, false);
+			Toast.makeText(this, "Pemantauan layar kunci dinonaktifkan", Toast.LENGTH_SHORT).show();
+			return;
+		}
+		lockScreenSetupPending = true;
+		continueLockScreenSetup();
+	}
+
+	private void continueLockScreenSetup() {
+		if (!lockScreenSetupPending || !LockScreenPreferences.isEnabled(this)) return;
+		if (requestNotificationPermissionIfNeeded()) return;
+		if (requestIgnoreBatteryOptimizationIfNeeded()) return;
+		if (requestFullScreenIntentAccessIfNeeded()) return;
+		lockScreenSetupPending = false;
+		WidgetRealtimeService.setLockScreenMonitoringEnabled(this, true);
+		Toast.makeText(this, "Pemantauan layar kunci aktif", Toast.LENGTH_SHORT).show();
+	}
+
+	private void openLockScreenPreview() {
+		Intent intent = new Intent(this, LockScreenDashboardActivity.class);
+		intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+		startActivity(intent);
+	}
+
+	private void openNotificationAccessSettings() {
+		try {
+			startActivity(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS));
+			Toast.makeText(this, "Aktifkan akses notifikasi untuk ITS Maps", Toast.LENGTH_LONG).show();
+		} catch (ActivityNotFoundException err) {
+			Toast.makeText(this, "Pengaturan akses notifikasi tidak tersedia di perangkat ini", Toast.LENGTH_LONG).show();
+		}
+	}
+
+	private boolean requestFullScreenIntentAccessIfNeeded() {
+		if (Build.VERSION.SDK_INT < 34) return false;
+		NotificationManager manager = getSystemService(NotificationManager.class);
+		if (manager == null || manager.canUseFullScreenIntent()) return false;
+		try {
+			Intent intent = new Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT);
+			intent.setData(Uri.parse("package:" + getPackageName()));
+			startActivity(intent);
+			return true;
+		} catch (RuntimeException ignored) {
+			Toast.makeText(this, "Izinkan notifikasi layar penuh agar panel tampil saat perangkat terkunci", Toast.LENGTH_LONG).show();
+			return false;
 		}
 	}
 
@@ -149,7 +236,11 @@ public class MainActivity extends BridgeActivity {
 			connection.disconnect();
 			throw new IllegalStateException("HTTP " + code);
 		}
-		try (InputStream input = new BufferedInputStream(connection.getInputStream());
+		InputStream networkInput = new BufferedInputStream(connection.getInputStream());
+		InputStream apkInput = isBase64ApkUrl(rawUrl)
+			? new Base64InputStream(networkInput, Base64.DEFAULT)
+			: networkInput;
+		try (InputStream input = apkInput;
 			 FileOutputStream outputStream = new FileOutputStream(output, false)) {
 			byte[] buffer = new byte[32 * 1024];
 			int read;
@@ -160,6 +251,12 @@ public class MainActivity extends BridgeActivity {
 			connection.disconnect();
 		}
 		return output;
+	}
+
+	private boolean isBase64ApkUrl(String url) {
+		if (TextUtils.isEmpty(url)) return false;
+		String lower = url.toLowerCase(Locale.ROOT);
+		return lower.contains(".apk.b64") || lower.contains("format=apk-base64");
 	}
 
 	private String safeApkFileName(String rawFileName) {
@@ -264,9 +361,9 @@ public class MainActivity extends BridgeActivity {
 		}
 	}
 
-	private void requestNotificationPermissionIfNeeded() {
+	private boolean requestNotificationPermissionIfNeeded() {
 		if (Build.VERSION.SDK_INT < 33) {
-			return;
+			return false;
 		}
 		if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
 			ActivityCompat.requestPermissions(
@@ -274,22 +371,34 @@ public class MainActivity extends BridgeActivity {
 				new String[] { Manifest.permission.POST_NOTIFICATIONS },
 				REQ_NOTIFICATIONS
 			);
+			return true;
 		}
+		return false;
 	}
 
-	private void requestIgnoreBatteryOptimizationIfNeeded() {
+	private boolean requestIgnoreBatteryOptimizationIfNeeded() {
 		if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
-			return;
+			return false;
 		}
 		PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
 		if (powerManager == null || powerManager.isIgnoringBatteryOptimizations(getPackageName())) {
-			return;
+			return false;
 		}
 		try {
 			Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
 			intent.setData(Uri.parse("package:" + getPackageName()));
 			startActivity(intent);
+			return true;
 		} catch (RuntimeException ignored) {
+			return false;
+		}
+	}
+
+	@Override
+	public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+		super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+		if (requestCode == REQ_NOTIFICATIONS && lockScreenSetupPending) {
+			getWindow().getDecorView().postDelayed(this::continueLockScreenSetup, 250L);
 		}
 	}
 }

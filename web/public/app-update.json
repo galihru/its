@@ -1,20 +1,16 @@
 {
-  "appId": "id.ac.telkomuniversity.its",
-  "appName": "ITS Maps",
-  "ownerName": "Hanifa Septhi Larasati",
-  "institution": "Telkom University",
-  "versionCode": 13,
-  "versionName": "1.0.13",
-  "windowsUrl": "https://itstelkom.web.app/artifacts/apps/ITS-Maps-Windows-Custom-Setup-1.0.13-x64.download",
-  "desktopUrl": "https://itstelkom.web.app/artifacts/apps/ITS-Maps-Windows-Custom-Setup-1.0.13-x64.download",
-  "pwaUrl": "https://itstelkom.web.app/",
-  "logoUrl": "https://itstelkom.web.app/favicon.svg",
-  "updatedAt": "2026-06-11T00:00:00+07:00",
-  "force": false,
-  "autoDownload": false,
+  "platform": "android",
+  "versionName": "1.0.36",
+  "versionCode": 36,
+  "fileName": "ITS-Maps-Android-1.0.36.apk",
+  "url": "https://itstelkom.web.app/artifacts/apps/ITS-Maps-Android-1.0.36.apk.b64",
+  "sha256": "F0CCC3E5A4F6900D6C036200E280D1D28B1CE169745D519785FE6440232530B0",
+  "size": 64201737,
+  "updatedAt": "2026-06-23T21:51:49.7570307Z",
   "releaseNotes": [
-    "Memperbaiki video Windows agar memakai URL kamera/HLS publik dari Firebase dan fallback halaman kamera saat HLS gagal.",
-    "Mengambil snapshot 10 detik, status YOLO, statistik kendaraan, dan lokasi Raspberry dari dataset realtime Firebase.",
-    "Menambahkan splash screen aplikasi, tombol download Windows di website, dan mencegah installer ikut terbungkus ulang ke payload aplikasi."
+    "Bentuk tombol lock screen, shortcut, handle geser, dan tombol tutup modal dikunci agar tetap bulat pada layar tinggi.",
+    "Shortcut kamera dan telepon tetap menjaga dashboard lock widget di belakang aplikasi yang dibuka.",
+    "Riwayat AI diberi timeout analisis agar tidak tersangkut lama ketika gambar atau model browser gagal selesai.",
+    "Notifikasi lock widget dibersihkan lebih konsisten ketika notifikasi Android dihapus."
   ]
 }

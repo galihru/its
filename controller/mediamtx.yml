@@ -1,0 +1,37 @@
+logLevel: info
+webrtc: yes
+webrtcAddress: :8889
+webrtcLocalUDPAddress: :8189
+webrtcLocalTCPAddress: :8189
+webrtcIPsFromInterfaces: yes
+webrtcICEServers2:
+  - url: stun:stun.l.google.com:19302
+hls: yes
+hlsAddress: :8888
+hlsAlwaysRemux: yes
+hlsVariant: mpegts
+hlsSegmentCount: 5
+hlsSegmentDuration: 1s
+rtsp: yes
+rtmp: no
+srt: no
+paths:
+  cam:
+    source: rpiCamera
+    rpiCameraCamID: 0
+    rpiCameraWidth: 1280
+    rpiCameraHeight: 720
+    rpiCameraFPS: 15
+    rpiCameraBrightness: 0
+    rpiCameraContrast: 1.2
+    rpiCameraSaturation: 1.05
+    rpiCameraSharpness: 2.4
+    rpiCameraExposure: normal
+    rpiCameraAWB: auto
+    rpiCameraDenoise: cdn_fast
+    rpiCameraMetering: centre
+    rpiCameraCodec: softwareH264
+    rpiCameraIDRPeriod: 30
+    rpiCameraBitrate: 3000000
+    rpiCameraSoftwareH264Profile: baseline
+    rpiCameraSoftwareH264Level: "4.1"
