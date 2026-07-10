@@ -70,6 +70,14 @@
         "destination": "/license/index.html"
       },
       {
+        "source": "/pdf-preview",
+        "destination": "/pdf-preview/index.html"
+      },
+      {
+        "source": "/pdf-preview/**",
+        "destination": "/pdf-preview/index.html"
+      },
+      {
         "source": "/privacy",
         "destination": "/privacy/index.html"
       },

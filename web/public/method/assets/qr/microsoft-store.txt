@@ -1,0 +1,2 @@
+Microsoft Store protocol
+ms-windows-store://pdp/?productid=9MWFGGW3FD2C

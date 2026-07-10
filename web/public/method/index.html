@@ -16,7 +16,7 @@
     <header class="topbar">
       <a class="brand" href="/"><img src="/its.png" alt=""><span>ITS Maps</span></a>
       <nav aria-label="Navigasi dokumentasi">
-        <a href="/">Home</a><a href="/documentation">Documentation</a><a href="/method" aria-current="page">Method</a><a href="/method/webapp">WebApp</a><a href="/method/android">Android</a><a href="/method/windows">Windows</a><a href="/privacy">Privacy</a><a href="/licence">Licence</a>
+        <a href="/">Home</a><a href="/documentation">Documentation</a><a href="/method" aria-current="page">Method</a><a href="/method/webapp">WebApp</a><a href="/method/android">Android</a><a href="/method/windows">Windows</a><a href="/privacy">Privacy</a><a href="/licence">Licence</a><a href="/pdf-preview?id=documentation">PDF Preview</a>
       </nav>
     </header>
     <main id="content">
@@ -34,6 +34,7 @@
             <a href="/method/webapp">WebApp</a>
             <a href="/method/android">Android</a>
             <a href="/method/windows">Windows</a>
+            <a href="/pdf-preview?id=method">Preview PDF</a>
             <button type="button" data-print>Print A4</button>
           </div>
         </div>
@@ -76,6 +77,15 @@
           <span>Android</span>
           <h3>ITS Maps APK</h3>
           <p>Untuk pengguna Android yang ingin memasang aplikasi langsung.</p>
+
+    <div class="qr-card" data-qr-static="android-apk" >
+      <span class="qr-stack">
+        <img class="qr-image" src="/method/assets/qr/android-apk.svg" alt="QR code QR APK langsung" loading="lazy">
+        <img class="qr-logo" src="/its.png" alt="">
+      </span>
+      <span>QR APK langsung</span>
+    </div>
+
           <a href="https://itstelkom.web.app/artifacts/apps/ITS-Maps-Android-1.0.36.apk.b64">Download APK encoded (.b64)</a>
           <a href="https://github.com/hanifasepthi/its/releases/download/its-maps-android-1.0.36/ITS-Maps-Android-1.0.36.apk">Download APK langsung</a>
         </article>
@@ -83,12 +93,30 @@
           <span>Microsoft Store</span>
           <h3>ITS Maps Windows</h3>
           <p>Store ID: <strong>9MWFGGW3FD2C</strong>. Deep link web tersedia setelah produk live.</p>
+
+    <div class="qr-card" data-qr-static="microsoft-store" >
+      <span class="qr-stack">
+        <img class="qr-image" src="/method/assets/qr/microsoft-store.svg" alt="QR code QR Microsoft Store" loading="lazy">
+        <img class="qr-logo" src="/its.png" alt="">
+      </span>
+      <span>QR Microsoft Store</span>
+    </div>
+
           <a href="ms-windows-store://pdp/?productid=9MWFGGW3FD2C">Buka Microsoft Store app</a>
         </article>
         <article>
           <span>WebApp</span>
           <h3>ITS Maps Web</h3>
           <p>Versi web/PWA berjalan langsung dari Firebase Hosting.</p>
+
+    <div class="qr-card" data-qr-static="webapp" >
+      <span class="qr-stack">
+        <img class="qr-image" src="/method/assets/qr/webapp.svg" alt="QR code QR WebApp" loading="lazy">
+        <img class="qr-logo" src="/its.png" alt="">
+      </span>
+      <span>QR WebApp</span>
+    </div>
+
           <a href="https://itstelkom.web.app/">Buka WebApp</a>
           <a href="https://itstelkom.web.app/documentation">Buka Dokumentasi</a>
         </article>
@@ -99,7 +127,7 @@
         <div class="section-kicker">Coverage</div>
         <h2>Jumlah kode yang dibedah</h2>
         <div class="coverage-grid">
-          <article><strong>webapp</strong><span>11 file</span><b>23.159 baris</b></article><article><strong>android</strong><span>20 file</span><b>17.104 baris</b></article><article><strong>windows</strong><span>27 file</span><b>8.183 baris</b></article><article><strong>controller</strong><span>16 file</span><b>5.092 baris</b></article>
+          <article><strong>webapp</strong><span>11 file</span><b>23.168 baris</b></article><article><strong>android</strong><span>20 file</span><b>17.104 baris</b></article><article><strong>windows</strong><span>27 file</span><b>8.184 baris</b></article><article><strong>controller</strong><span>16 file</span><b>5.092 baris</b></article>
         </div>
       </section>
 
@@ -107,11 +135,37 @@
       <div class="section-kicker">Credits</div>
       <h2>Ucapan terima kasih</h2>
       <div class="credit-list">
-        <article><strong>Hanifa Septhi Larasati / Hanifa Teams</strong><span>Developer dan publisher ITS Maps.</span></article>
-        <article><strong>galihru</strong><span>Terima kasih untuk kontribusi akun/repository awal dan kolaborasi pengembangan ITS Maps.</span></article>
-        <article><strong>Roboflow RF-DETR</strong><span>Rujukan model deteksi objek RF-DETR yang menjadi dasar pipeline deteksi visual.</span></article>
-        <article><strong>Hugging Face onnx-community</strong><span>Model ONNX <code>onnx-community/rfdetr_nano-ONNX</code> yang dipanggil oleh kode browser.</span></article>
-        <article><strong>Transformers.js / Xenova</strong><span>Runtime model browser dan fallback object-detection/segmentation.</span></article>
+
+          <article>
+            <strong>Hanifa Septhi Larasati</strong>
+            <a href="https://github.com/hanifasepthi" rel="noopener">@hanifasepthi</a>
+            <span>Developer utama, publisher Hanifa Teams, dan pemilik repository ITS Maps.</span>
+          </article>
+
+          <article>
+            <strong>galihru</strong>
+            <a href="https://github.com/galihru" rel="noopener">@galihru</a>
+            <span>Kontributor repository awal dan kolaborasi pengembangan ITS Maps.</span>
+          </article>
+
+          <article>
+            <strong>Roboflow RF-DETR</strong>
+            <a href="https://github.com/roboflow/rf-detr" rel="noopener">roboflow/rf-detr</a>
+            <span>Rujukan arsitektur object detection RF-DETR untuk pipeline deteksi visual.</span>
+          </article>
+
+          <article>
+            <strong>Hugging Face onnx-community</strong>
+            <a href="https://huggingface.co/onnx-community/rfdetr_nano-ONNX" rel="noopener">onnx-community/rfdetr_nano-ONNX</a>
+            <span>Model ONNX yang dipakai oleh runtime browser object detection.</span>
+          </article>
+
+          <article>
+            <strong>Transformers.js / Xenova</strong>
+            <a href="https://github.com/huggingface/transformers.js" rel="noopener">transformers.js</a>
+            <span>Runtime inference JavaScript untuk model AI di browser.</span>
+          </article>
+
         <article><strong>OpenStreetMap, CARTO, Leaflet, MapLibre, Firebase, Microsoft, Android</strong><span>Ekosistem peta, hosting realtime, web, widget, dan distribusi aplikasi.</span></article>
       </div>
     </section>

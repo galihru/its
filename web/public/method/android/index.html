@@ -16,7 +16,7 @@
     <header class="topbar">
       <a class="brand" href="/"><img src="/its.png" alt=""><span>ITS Maps</span></a>
       <nav aria-label="Navigasi dokumentasi">
-        <a href="/">Home</a><a href="/documentation">Documentation</a><a href="/method">Method</a><a href="/method/webapp">WebApp</a><a href="/method/android" aria-current="page">Android</a><a href="/method/windows">Windows</a><a href="/privacy">Privacy</a><a href="/licence">Licence</a>
+        <a href="/">Home</a><a href="/documentation">Documentation</a><a href="/method">Method</a><a href="/method/webapp">WebApp</a><a href="/method/android" aria-current="page">Android</a><a href="/method/windows">Windows</a><a href="/privacy">Privacy</a><a href="/licence">Licence</a><a href="/pdf-preview?id=documentation">PDF Preview</a>
       </nav>
     </header>
     <main id="content">
@@ -45,6 +45,7 @@
           <div class="hero-actions">
             <a href="/method">Semua metode</a>
             <a href="/documentation">Dokumentasi utama</a>
+            <a href="/pdf-preview?id=android">Preview PDF</a>
             <button type="button" data-print>Print A4</button>
           </div>
         </div>
@@ -171,84 +172,180 @@ const green = Math.min(120, Math.max(10, 0.85 * total + 8));</code></pre>
           <span role="cell"><code>web/android/app/src/main/java/id/ac/telkomuniversity/its/MainActivity.java</code></span>
           <span role="cell">405</span>
           <span role="cell">366</span>
-          <span role="cell"><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mainactivity-java-51">onCreate</a>, <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mainactivity-java-58">onDestroy</a>, <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mainactivity-java-64">onResume</a>, <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mainactivity-java-75">bootstrapApp</a>, <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mainactivity-java-80">registerApkInstallerBridge</a></span>
+          <span role="cell">
+    <span class="symbol-cell">
+      <button class="symbol-trigger" type="button" aria-describedby="symbols-web-android-app-src-main-java-id-ac-telkomuniversity-its-mainactivity-java" aria-label="Lihat simbol utama web/android/app/src/main/java/id/ac/telkomuniversity/its/MainActivity.java">...</button>
+      <span class="symbol-popover" id="symbols-web-android-app-src-main-java-id-ac-telkomuniversity-its-mainactivity-java" role="tooltip">
+        <strong>Simbol utama</strong>
+        <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mainactivity-java-51"><b>L51</b> onCreate</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mainactivity-java-58"><b>L58</b> onDestroy</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mainactivity-java-64"><b>L64</b> onResume</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mainactivity-java-75"><b>L75</b> bootstrapApp</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mainactivity-java-80"><b>L80</b> registerApkInstallerBridge</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mainactivity-java-92"><b>L92</b> installApk</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mainactivity-java-97"><b>L97</b> notifyUpdate</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mainactivity-java-102"><b>L102</b> activateLockScreenWidget</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mainactivity-java-107"><b>L107</b> previewLockScreenWidget</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mainactivity-java-112"><b>L112</b> openNotificationAccessSettings</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mainactivity-java-117"><b>L117</b> isLockScreenMonitoringEnabled</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mainactivity-java-122"><b>L122</b> setLockScreenMonitoringEnabled</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mainactivity-java-127"><b>L127</b> setVideoFullscreen</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mainactivity-java-134"><b>L134</b> setLockScreenMonitoringEnabled</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mainactivity-java-146"><b>L146</b> continueLockScreenSetup</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mainactivity-java-156"><b>L156</b> openLockScreenPreview</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mainactivity-java-162"><b>L162</b> openNotificationAccessSettings</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mainactivity-java-171"><b>L171</b> requestFullScreenIntentAccessIfNeeded</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mainactivity-java-186"><b>L186</b> installApkFromUrl</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mainactivity-java-209"><b>L209</b> requestApkInstallPermission</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mainactivity-java-223"><b>L223</b> downloadApk</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mainactivity-java-256"><b>L256</b> isBase64ApkUrl</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mainactivity-java-262"><b>L262</b> safeApkFileName</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mainactivity-java-270"><b>L270</b> openPackageInstaller</a>
+      </span>
+    </span>
+  </span>
         </div>
 
         <div role="row">
           <span role="cell"><code>web/android/app/src/main/java/id/ac/telkomuniversity/its/WidgetRealtimeService.java</code></span>
           <span role="cell">474</span>
           <span role="cell">431</span>
-          <span role="cell"><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-widgetrealtimeservice-java-65">onLocationChanged</a>, <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-widgetrealtimeservice-java-71">onProviderEnabled</a>, <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-widgetrealtimeservice-java-75">onProviderDisabled</a>, <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-widgetrealtimeservice-java-79">onStatusChanged</a>, <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-widgetrealtimeservice-java-83">start</a></span>
+          <span role="cell">
+    <span class="symbol-cell">
+      <button class="symbol-trigger" type="button" aria-describedby="symbols-web-android-app-src-main-java-id-ac-telkomuniversity-its-widgetrealtimeservice-java" aria-label="Lihat simbol utama web/android/app/src/main/java/id/ac/telkomuniversity/its/WidgetRealtimeService.java">...</button>
+      <span class="symbol-popover" id="symbols-web-android-app-src-main-java-id-ac-telkomuniversity-its-widgetrealtimeservice-java" role="tooltip">
+        <strong>Simbol utama</strong>
+        <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-widgetrealtimeservice-java-65"><b>L65</b> onLocationChanged</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-widgetrealtimeservice-java-71"><b>L71</b> onProviderEnabled</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-widgetrealtimeservice-java-75"><b>L75</b> onProviderDisabled</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-widgetrealtimeservice-java-79"><b>L79</b> onStatusChanged</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-widgetrealtimeservice-java-83"><b>L83</b> start</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-widgetrealtimeservice-java-87"><b>L87</b> startFromLockScreen</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-widgetrealtimeservice-java-91"><b>L91</b> start</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-widgetrealtimeservice-java-106"><b>L106</b> onCreate</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-widgetrealtimeservice-java-120"><b>L120</b> onStartCommand</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-widgetrealtimeservice-java-130"><b>L130</b> onDestroy</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-widgetrealtimeservice-java-146"><b>L146</b> onBind</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-widgetrealtimeservice-java-150"><b>L150</b> listenLoop</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-widgetrealtimeservice-java-176"><b>L176</b> openStreamConnection</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-widgetrealtimeservice-java-192"><b>L192</b> drainStream</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-widgetrealtimeservice-java-221"><b>L221</b> handleEvent</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-widgetrealtimeservice-java-230"><b>L230</b> broadcastWidgetRefresh</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-widgetrealtimeservice-java-248"><b>L248</b> startLocationUpdates</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-widgetrealtimeservice-java-276"><b>L276</b> stopLocationUpdates</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-widgetrealtimeservice-java-286"><b>L286</b> saveUserLocation</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-widgetrealtimeservice-java-295"><b>L295</b> closeConnection</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-widgetrealtimeservice-java-302"><b>L302</b> createChannel</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-widgetrealtimeservice-java-327"><b>L327</b> buildNotification</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-widgetrealtimeservice-java-338"><b>L338</b> startLockScreenMonitor</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-widgetrealtimeservice-java-342"><b>L342</b> onReceive</a>
+      </span>
+    </span>
+  </span>
         </div>
 
         <div role="row">
           <span role="cell"><code>web/android/app/src/main/java/id/ac/telkomuniversity/its/ChartWidgetProvider.java</code></span>
           <span role="cell">842</span>
           <span role="cell">745</span>
-          <span role="cell"><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-chartwidgetprovider-java-56">onReceive</a>, <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-chartwidgetprovider-java-74">onEnabled</a>, <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-chartwidgetprovider-java-88">onDisabled</a>, <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-chartwidgetprovider-java-93">onUpdate</a>, <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-chartwidgetprovider-java-98">startRealtimeServiceSafely</a></span>
+          <span role="cell">
+    <span class="symbol-cell">
+      <button class="symbol-trigger" type="button" aria-describedby="symbols-web-android-app-src-main-java-id-ac-telkomuniversity-its-chartwidgetprovider-java" aria-label="Lihat simbol utama web/android/app/src/main/java/id/ac/telkomuniversity/its/ChartWidgetProvider.java">...</button>
+      <span class="symbol-popover" id="symbols-web-android-app-src-main-java-id-ac-telkomuniversity-its-chartwidgetprovider-java" role="tooltip">
+        <strong>Simbol utama</strong>
+        <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-chartwidgetprovider-java-56"><b>L56</b> onReceive</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-chartwidgetprovider-java-74"><b>L74</b> onEnabled</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-chartwidgetprovider-java-88"><b>L88</b> onDisabled</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-chartwidgetprovider-java-93"><b>L93</b> onUpdate</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-chartwidgetprovider-java-98"><b>L98</b> startRealtimeServiceSafely</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-chartwidgetprovider-java-106"><b>L106</b> refreshAllWidgets</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-chartwidgetprovider-java-130"><b>L130</b> updateWidget</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-chartwidgetprovider-java-167"><b>L167</b> scheduleRefresh</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-chartwidgetprovider-java-184"><b>L184</b> cancelRefresh</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-chartwidgetprovider-java-190"><b>L190</b> openIntent</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-chartwidgetprovider-java-202"><b>L202</b> refreshPendingIntent</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-chartwidgetprovider-java-213"><b>L213</b> scheduleRefresh</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-chartwidgetprovider-java-225"><b>L225</b> fetchSnapshot</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-chartwidgetprovider-java-247"><b>L247</b> fetchJson</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-chartwidgetprovider-java-275"><b>L275</b> readCachedSnapshot</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-chartwidgetprovider-java-286"><b>L286</b> saveCachedSnapshot</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-chartwidgetprovider-java-293"><b>L293</b> loadAndAppendPoints</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-chartwidgetprovider-java-342"><b>L342</b> createVehicleVsGreenChart</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-chartwidgetprovider-java-449"><b>L449</b> alignUp</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-chartwidgetprovider-java-458"><b>L458</b> colorForTraffic</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-chartwidgetprovider-java-465"><b>L465</b> adjustAlpha</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-chartwidgetprovider-java-469"><b>L469</b> colorFromHex</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-chartwidgetprovider-java-534"><b>L534</b> fallback</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-chartwidgetprovider-java-554"><b>L554</b> fromFirebase</a>
+      </span>
+    </span>
+  </span>
         </div>
 
         <div role="row">
           <span role="cell"><code>web/android/app/src/main/java/id/ac/telkomuniversity/its/TrafficDetectionWidgetProvider.java</code></span>
           <span role="cell">1.639</span>
           <span role="cell">1.464</span>
-          <span role="cell"><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-trafficdetectionwidgetprovider-java-65">onReceive</a>, <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-trafficdetectionwidgetprovider-java-83">onUpdate</a>, <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-trafficdetectionwidgetprovider-java-90">onEnabled</a>, <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-trafficdetectionwidgetprovider-java-97">onDisabled</a>, <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-trafficdetectionwidgetprovider-java-101">refreshAllWidgetsAsync</a></span>
+          <span role="cell">
+    <span class="symbol-cell">
+      <button class="symbol-trigger" type="button" aria-describedby="symbols-web-android-app-src-main-java-id-ac-telkomuniversity-its-trafficdetectionwidgetprovider-java" aria-label="Lihat simbol utama web/android/app/src/main/java/id/ac/telkomuniversity/its/TrafficDetectionWidgetProvider.java">...</button>
+      <span class="symbol-popover" id="symbols-web-android-app-src-main-java-id-ac-telkomuniversity-its-trafficdetectionwidgetprovider-java" role="tooltip">
+        <strong>Simbol utama</strong>
+        <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-trafficdetectionwidgetprovider-java-65"><b>L65</b> onReceive</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-trafficdetectionwidgetprovider-java-83"><b>L83</b> onUpdate</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-trafficdetectionwidgetprovider-java-90"><b>L90</b> onEnabled</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-trafficdetectionwidgetprovider-java-97"><b>L97</b> onDisabled</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-trafficdetectionwidgetprovider-java-101"><b>L101</b> refreshAllWidgetsAsync</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-trafficdetectionwidgetprovider-java-112"><b>L112</b> refreshAllWidgets</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-trafficdetectionwidgetprovider-java-124"><b>L124</b> updateWidget</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-trafficdetectionwidgetprovider-java-134"><b>L134</b> fetchSnapshot</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-trafficdetectionwidgetprovider-java-167"><b>L167</b> fetchJson</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-trafficdetectionwidgetprovider-java-195"><b>L195</b> renderWidget</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-trafficdetectionwidgetprovider-java-211"><b>L211</b> quickDetectObjects</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-trafficdetectionwidgetprovider-java-224"><b>L224</b> drawBackground</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-trafficdetectionwidgetprovider-java-244"><b>L244</b> drawShade</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-trafficdetectionwidgetprovider-java-255"><b>L255</b> drawHeader</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-trafficdetectionwidgetprovider-java-267"><b>L267</b> drawTrafficStatus</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-trafficdetectionwidgetprovider-java-291"><b>L291</b> drawCarouselDots</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-trafficdetectionwidgetprovider-java-302"><b>L302</b> drawRaspberryInfo</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-trafficdetectionwidgetprovider-java-321"><b>L321</b> drawMapMarkerIcon</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-trafficdetectionwidgetprovider-java-343"><b>L343</b> drawDetectionBoxes</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-trafficdetectionwidgetprovider-java-413"><b>L413</b> growFromCenter</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-trafficdetectionwidgetprovider-java-420"><b>L420</b> drawBoxCorners</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-trafficdetectionwidgetprovider-java-431"><b>L431</b> countSeed</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-trafficdetectionwidgetprovider-java-436"><b>L436</b> quickDetectObjects</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-trafficdetectionwidgetprovider-java-567"><b>L567</b> enqueue</a>
+      </span>
+    </span>
+  </span>
         </div>
 
         <div role="row">
           <span role="cell"><code>web/android/app/src/main/java/id/ac/telkomuniversity/its/MapsWidgetProvider.java</code></span>
           <span role="cell">970</span>
           <span role="cell">850</span>
-          <span role="cell"><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mapswidgetprovider-java-72">onReceive</a>, <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mapswidgetprovider-java-104">onUpdate</a>, <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mapswidgetprovider-java-110">onEnabled</a>, <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mapswidgetprovider-java-117">onDisabled</a>, <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mapswidgetprovider-java-121">handleSelectionAction</a></span>
+          <span role="cell">
+    <span class="symbol-cell">
+      <button class="symbol-trigger" type="button" aria-describedby="symbols-web-android-app-src-main-java-id-ac-telkomuniversity-its-mapswidgetprovider-java" aria-label="Lihat simbol utama web/android/app/src/main/java/id/ac/telkomuniversity/its/MapsWidgetProvider.java">...</button>
+      <span class="symbol-popover" id="symbols-web-android-app-src-main-java-id-ac-telkomuniversity-its-mapswidgetprovider-java" role="tooltip">
+        <strong>Simbol utama</strong>
+        <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mapswidgetprovider-java-72"><b>L72</b> onReceive</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mapswidgetprovider-java-104"><b>L104</b> onUpdate</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mapswidgetprovider-java-110"><b>L110</b> onEnabled</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mapswidgetprovider-java-117"><b>L117</b> onDisabled</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mapswidgetprovider-java-121"><b>L121</b> handleSelectionAction</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mapswidgetprovider-java-133"><b>L133</b> refreshAllWidgets</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mapswidgetprovider-java-152"><b>L152</b> refreshAllWidgetsAsync</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mapswidgetprovider-java-163"><b>L163</b> startRealtimeServiceSafely</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mapswidgetprovider-java-171"><b>L171</b> updateWidget</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mapswidgetprovider-java-206"><b>L206</b> openActionIntent</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mapswidgetprovider-java-220"><b>L220</b> scheduleRefresh</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mapswidgetprovider-java-239"><b>L239</b> cancelRefresh</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mapswidgetprovider-java-245"><b>L245</b> refreshPendingIntent</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mapswidgetprovider-java-256"><b>L256</b> readWidgetState</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mapswidgetprovider-java-264"><b>L264</b> writeWidgetState</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mapswidgetprovider-java-272"><b>L272</b> normalizeLocation</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mapswidgetprovider-java-276"><b>L276</b> clampZoom</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mapswidgetprovider-java-282"><b>L282</b> fetchSnapshot</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mapswidgetprovider-java-302"><b>L302</b> fetchJson</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mapswidgetprovider-java-330"><b>L330</b> readCachedSnapshot</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mapswidgetprovider-java-340"><b>L340</b> saveCachedSnapshot</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mapswidgetprovider-java-347"><b>L347</b> buildPreviewBitmap</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mapswidgetprovider-java-356"><b>L356</b> createFallbackBitmap</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-mapswidgetprovider-java-387"><b>L387</b> createFallbackBitmap</a>
+      </span>
+    </span>
+  </span>
         </div>
 
         <div role="row">
           <span role="cell"><code>web/android/app/src/main/java/id/ac/telkomuniversity/its/AlertFullDataWidgetProvider.java</code></span>
           <span role="cell">1.668</span>
           <span role="cell">1.508</span>
-          <span role="cell"><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-alertfulldatawidgetprovider-java-82">onReceive</a>, <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-alertfulldatawidgetprovider-java-147">onUpdate</a>, <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-alertfulldatawidgetprovider-java-154">onEnabled</a>, <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-alertfulldatawidgetprovider-java-161">onDisabled</a>, <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-alertfulldatawidgetprovider-java-166">onDeleted</a></span>
+          <span role="cell">
+    <span class="symbol-cell">
+      <button class="symbol-trigger" type="button" aria-describedby="symbols-web-android-app-src-main-java-id-ac-telkomuniversity-its-alertfulldatawidgetprovider-java" aria-label="Lihat simbol utama web/android/app/src/main/java/id/ac/telkomuniversity/its/AlertFullDataWidgetProvider.java">...</button>
+      <span class="symbol-popover" id="symbols-web-android-app-src-main-java-id-ac-telkomuniversity-its-alertfulldatawidgetprovider-java" role="tooltip">
+        <strong>Simbol utama</strong>
+        <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-alertfulldatawidgetprovider-java-82"><b>L82</b> onReceive</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-alertfulldatawidgetprovider-java-147"><b>L147</b> onUpdate</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-alertfulldatawidgetprovider-java-154"><b>L154</b> onEnabled</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-alertfulldatawidgetprovider-java-161"><b>L161</b> onDisabled</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-alertfulldatawidgetprovider-java-166"><b>L166</b> onDeleted</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-alertfulldatawidgetprovider-java-175"><b>L175</b> refreshAllWidgetsAsync</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-alertfulldatawidgetprovider-java-186"><b>L186</b> refreshAllWidgets</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-alertfulldatawidgetprovider-java-198"><b>L198</b> refreshWidget</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-alertfulldatawidgetprovider-java-207"><b>L207</b> updateWidget</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-alertfulldatawidgetprovider-java-219"><b>L219</b> fetchData</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-alertfulldatawidgetprovider-java-258"><b>L258</b> localVersionCode</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-alertfulldatawidgetprovider-java-269"><b>L269</b> fetchJson</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-alertfulldatawidgetprovider-java-293"><b>L293</b> updateHistory</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-alertfulldatawidgetprovider-java-319"><b>L319</b> loadHistory</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-alertfulldatawidgetprovider-java-339"><b>L339</b> renderWidget</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-alertfulldatawidgetprovider-java-359"><b>L359</b> drawBase</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-alertfulldatawidgetprovider-java-394"><b>L394</b> drawSidebarButton</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-alertfulldatawidgetprovider-java-416"><b>L416</b> drawVehicleData</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-alertfulldatawidgetprovider-java-424"><b>L424</b> StatCard</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-alertfulldatawidgetprovider-java-425"><b>L425</b> StatCard</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-alertfulldatawidgetprovider-java-426"><b>L426</b> StatCard</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-alertfulldatawidgetprovider-java-427"><b>L427</b> StatCard</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-alertfulldatawidgetprovider-java-428"><b>L428</b> StatCard</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-alertfulldatawidgetprovider-java-429"><b>L429</b> StatCard</a>
+      </span>
+    </span>
+  </span>
         </div>
 
         <div role="row">
           <span role="cell"><code>web/android/app/src/main/java/id/ac/telkomuniversity/its/LockScreenDashboardActivity.java</code></span>
           <span role="cell">3.316</span>
           <span role="cell">3.105</span>
-          <span role="cell"><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreendashboardactivity-java-105">run</a>, <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreendashboardactivity-java-116">run</a>, <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreendashboardactivity-java-126">onCreate</a>, <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreendashboardactivity-java-154">onStart</a>, <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreendashboardactivity-java-167">onResume</a></span>
+          <span role="cell">
+    <span class="symbol-cell">
+      <button class="symbol-trigger" type="button" aria-describedby="symbols-web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreendashboardactivity-java" aria-label="Lihat simbol utama web/android/app/src/main/java/id/ac/telkomuniversity/its/LockScreenDashboardActivity.java">...</button>
+      <span class="symbol-popover" id="symbols-web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreendashboardactivity-java" role="tooltip">
+        <strong>Simbol utama</strong>
+        <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreendashboardactivity-java-105"><b>L105</b> run</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreendashboardactivity-java-116"><b>L116</b> run</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreendashboardactivity-java-126"><b>L126</b> onCreate</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreendashboardactivity-java-154"><b>L154</b> onStart</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreendashboardactivity-java-167"><b>L167</b> onResume</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreendashboardactivity-java-180"><b>L180</b> onPause</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreendashboardactivity-java-189"><b>L189</b> onStop</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreendashboardactivity-java-201"><b>L201</b> onDestroy</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreendashboardactivity-java-220"><b>L220</b> onBackPressed</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreendashboardactivity-java-225"><b>L225</b> onActivityResult</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreendashboardactivity-java-233"><b>L233</b> handleBack</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreendashboardactivity-java-239"><b>L239</b> createDetectorWebView</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreendashboardactivity-java-255"><b>L255</b> onPageFinished</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreendashboardactivity-java-261"><b>L261</b> onConsoleMessage</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreendashboardactivity-java-272"><b>L272</b> onStatus</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreendashboardactivity-java-286"><b>L286</b> onDetection</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreendashboardactivity-java-356"><b>L356</b> from</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreendashboardactivity-java-370"><b>L370</b> configureLockScreenWindow</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreendashboardactivity-java-388"><b>L388</b> hideSystemBars</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreendashboardactivity-java-407"><b>L407</b> loadSnapshotAsync</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreendashboardactivity-java-425"><b>L425</b> requestSystemUnlock</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreendashboardactivity-java-431"><b>L431</b> onDismissSucceeded</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreendashboardactivity-java-436"><b>L436</b> onDismissCancelled</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreendashboardactivity-java-441"><b>L441</b> onDismissError</a>
+      </span>
+    </span>
+  </span>
         </div>
 
         <div role="row">
           <span role="cell"><code>web/android/app/src/main/java/id/ac/telkomuniversity/its/LockScreenRenderer.java</code></span>
           <span role="cell">6.898</span>
           <span role="cell">6.282</span>
-          <span role="cell"><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreenrenderer-java-157">trackPreviousSong</a>, <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreenrenderer-java-199">trackPlayHistory</a>, <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreenrenderer-java-219">mediaHistoryFor</a>, <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreenrenderer-java-225">clearMediaHistory</a>, <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreenrenderer-java-230">removeMediaHistoryEntry</a></span>
+          <span role="cell">
+    <span class="symbol-cell">
+      <button class="symbol-trigger" type="button" aria-describedby="symbols-web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreenrenderer-java" aria-label="Lihat simbol utama web/android/app/src/main/java/id/ac/telkomuniversity/its/LockScreenRenderer.java">...</button>
+      <span class="symbol-popover" id="symbols-web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreenrenderer-java" role="tooltip">
+        <strong>Simbol utama</strong>
+        <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreenrenderer-java-157"><b>L157</b> trackPreviousSong</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreenrenderer-java-199"><b>L199</b> trackPlayHistory</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreenrenderer-java-219"><b>L219</b> mediaHistoryFor</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreenrenderer-java-225"><b>L225</b> clearMediaHistory</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreenrenderer-java-230"><b>L230</b> removeMediaHistoryEntry</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreenrenderer-java-236"><b>L236</b> splitTitleArtist</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreenrenderer-java-243"><b>L243</b> mediaTrackTransitionFraction</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreenrenderer-java-255"><b>L255</b> clamp01</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreenrenderer-java-258"><b>L258</b> easeOutCubic</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreenrenderer-java-264"><b>L264</b> lerp</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreenrenderer-java-268"><b>L268</b> lerpRect</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreenrenderer-java-277"><b>L277</b> teaserRectCenteredAt</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreenrenderer-java-283"><b>L283</b> LockScreenRenderer</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreenrenderer-java-286"><b>L286</b> load</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreenrenderer-java-315"><b>L315</b> render</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreenrenderer-java-322"><b>L322</b> draw</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreenrenderer-java-326"><b>L326</b> draw</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreenrenderer-java-342"><b>L342</b> draw</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreenrenderer-java-378"><b>L378</b> drawBase</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreenrenderer-java-414"><b>L414</b> drawFluentBackdrop</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreenrenderer-java-436"><b>L436</b> drawFluentGlow</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreenrenderer-java-491"><b>L491</b> from</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreenrenderer-java-519"><b>L519</b> drawHeader</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreenrenderer-java-558"><b>L558</b> drawHeaderMeta</a>
+      </span>
+    </span>
+  </span>
         </div>
 
         <div role="row">
           <span role="cell"><code>web/android/app/src/main/java/id/ac/telkomuniversity/its/LockScreenPreferences.java</code></span>
           <span role="cell">27</span>
           <span role="cell">21</span>
-          <span role="cell"><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreenpreferences-java-10">LockScreenPreferences</a>, <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreenpreferences-java-13">isEnabled</a>, <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreenpreferences-java-19">setEnabled</a></span>
+          <span role="cell">
+    <span class="symbol-cell">
+      <button class="symbol-trigger" type="button" aria-describedby="symbols-web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreenpreferences-java" aria-label="Lihat simbol utama web/android/app/src/main/java/id/ac/telkomuniversity/its/LockScreenPreferences.java">...</button>
+      <span class="symbol-popover" id="symbols-web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreenpreferences-java" role="tooltip">
+        <strong>Simbol utama</strong>
+        <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreenpreferences-java-10"><b>L10</b> LockScreenPreferences</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreenpreferences-java-13"><b>L13</b> isEnabled</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-lockscreenpreferences-java-19"><b>L19</b> setEnabled</a>
+      </span>
+    </span>
+  </span>
         </div>
 
         <div role="row">
           <span role="cell"><code>web/android/app/src/main/java/id/ac/telkomuniversity/its/ItsNotificationListenerService.java</code></span>
           <span role="cell">279</span>
           <span role="cell">249</span>
-          <span role="cell"><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-itsnotificationlistenerservice-java-34">onListenerConnected</a>, <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-itsnotificationlistenerservice-java-41">onListenerDisconnected</a>, <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-itsnotificationlistenerservice-java-47">onNotificationPosted</a>, <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-itsnotificationlistenerservice-java-55">onNotificationRemoved</a>, <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-itsnotificationlistenerservice-java-61">replyToNotification</a></span>
+          <span role="cell">
+    <span class="symbol-cell">
+      <button class="symbol-trigger" type="button" aria-describedby="symbols-web-android-app-src-main-java-id-ac-telkomuniversity-its-itsnotificationlistenerservice-java" aria-label="Lihat simbol utama web/android/app/src/main/java/id/ac/telkomuniversity/its/ItsNotificationListenerService.java">...</button>
+      <span class="symbol-popover" id="symbols-web-android-app-src-main-java-id-ac-telkomuniversity-its-itsnotificationlistenerservice-java" role="tooltip">
+        <strong>Simbol utama</strong>
+        <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-itsnotificationlistenerservice-java-34"><b>L34</b> onListenerConnected</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-itsnotificationlistenerservice-java-41"><b>L41</b> onListenerDisconnected</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-itsnotificationlistenerservice-java-47"><b>L47</b> onNotificationPosted</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-itsnotificationlistenerservice-java-55"><b>L55</b> onNotificationRemoved</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-itsnotificationlistenerservice-java-61"><b>L61</b> replyToNotification</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-itsnotificationlistenerservice-java-67"><b>L67</b> dismissNotification</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-itsnotificationlistenerservice-java-81"><b>L81</b> openNotification</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-itsnotificationlistenerservice-java-100"><b>L100</b> syncActiveNotifications</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-itsnotificationlistenerservice-java-113"><b>L113</b> rememberNotification</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-itsnotificationlistenerservice-java-163"><b>L163</b> removeStoredNotification</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-itsnotificationlistenerservice-java-193"><b>L193</b> text</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-itsnotificationlistenerservice-java-197"><b>L197</b> readList</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-itsnotificationlistenerservice-java-206"><b>L206</b> replyInternal</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-itsnotificationlistenerservice-java-233"><b>L233</b> findActiveNotification</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-itsnotificationlistenerservice-java-243"><b>L243</b> findReplyActionIndex</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-itsnotificationlistenerservice-java-260"><b>L260</b> hasFreeFormRemoteInput</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-itsnotificationlistenerservice-java-269"><b>L269</b> refreshWidgets</a>
+      </span>
+    </span>
+  </span>
         </div>
 
         <div role="row">
           <span role="cell"><code>web/android/app/src/main/java/id/ac/telkomuniversity/its/IndonesianObjectLabels.java</code></span>
           <span role="cell">131</span>
           <span role="cell">123</span>
-          <span role="cell"><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-indonesianobjectlabels-java-102">IndonesianObjectLabels</a>, <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-indonesianobjectlabels-java-104">display</a>, <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-indonesianobjectlabels-java-118">put</a>, <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-indonesianobjectlabels-java-123">normalize</a></span>
+          <span role="cell">
+    <span class="symbol-cell">
+      <button class="symbol-trigger" type="button" aria-describedby="symbols-web-android-app-src-main-java-id-ac-telkomuniversity-its-indonesianobjectlabels-java" aria-label="Lihat simbol utama web/android/app/src/main/java/id/ac/telkomuniversity/its/IndonesianObjectLabels.java">...</button>
+      <span class="symbol-popover" id="symbols-web-android-app-src-main-java-id-ac-telkomuniversity-its-indonesianobjectlabels-java" role="tooltip">
+        <strong>Simbol utama</strong>
+        <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-indonesianobjectlabels-java-102"><b>L102</b> IndonesianObjectLabels</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-indonesianobjectlabels-java-104"><b>L104</b> display</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-indonesianobjectlabels-java-118"><b>L118</b> put</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-indonesianobjectlabels-java-123"><b>L123</b> normalize</a>
+      </span>
+    </span>
+  </span>
         </div>
 
         <div role="row">
           <span role="cell"><code>web/android/app/src/main/java/id/ac/telkomuniversity/its/WidgetBootReceiver.java</code></span>
           <span role="cell">26</span>
           <span role="cell">22</span>
-          <span role="cell"><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-widgetbootreceiver-java-9">onReceive</a>, <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-widgetbootreceiver-java-20">sendWidgetUpdate</a></span>
+          <span role="cell">
+    <span class="symbol-cell">
+      <button class="symbol-trigger" type="button" aria-describedby="symbols-web-android-app-src-main-java-id-ac-telkomuniversity-its-widgetbootreceiver-java" aria-label="Lihat simbol utama web/android/app/src/main/java/id/ac/telkomuniversity/its/WidgetBootReceiver.java">...</button>
+      <span class="symbol-popover" id="symbols-web-android-app-src-main-java-id-ac-telkomuniversity-its-widgetbootreceiver-java" role="tooltip">
+        <strong>Simbol utama</strong>
+        <a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-widgetbootreceiver-java-9"><b>L9</b> onReceive</a><a href="#web-android-app-src-main-java-id-ac-telkomuniversity-its-widgetbootreceiver-java-20"><b>L20</b> sendWidgetUpdate</a>
+      </span>
+    </span>
+  </span>
         </div>
 
         <div role="row">
@@ -290,7 +387,15 @@ const green = Math.min(120, Math.max(10, 0.85 * total + 8));</code></pre>
           <span role="cell"><code>web/android/app/build.gradle</code></span>
           <span role="cell">66</span>
           <span role="cell">57</span>
-          <span role="cell"><a href="#web-android-app-build-gradle-3">itsVersionCode</a>, <a href="#web-android-app-build-gradle-4">itsVersionName</a>, <a href="#web-android-app-build-gradle-33">getDefaultProguardFile</a>, <a href="#web-android-app-build-gradle-45">fileTree</a>, <a href="#web-android-app-build-gradle-49">project</a></span>
+          <span role="cell">
+    <span class="symbol-cell">
+      <button class="symbol-trigger" type="button" aria-describedby="symbols-web-android-app-build-gradle" aria-label="Lihat simbol utama web/android/app/build.gradle">...</button>
+      <span class="symbol-popover" id="symbols-web-android-app-build-gradle" role="tooltip">
+        <strong>Simbol utama</strong>
+        <a href="#web-android-app-build-gradle-3"><b>L3</b> itsVersionCode</a><a href="#web-android-app-build-gradle-4"><b>L4</b> itsVersionName</a><a href="#web-android-app-build-gradle-33"><b>L33</b> getDefaultProguardFile</a><a href="#web-android-app-build-gradle-45"><b>L45</b> fileTree</a><a href="#web-android-app-build-gradle-49"><b>L49</b> project</a><a href="#web-android-app-build-gradle-53"><b>L53</b> project</a><a href="#web-android-app-build-gradle-59"><b>L59</b> servicesJSON</a>
+      </span>
+    </span>
+  </span>
         </div>
 
         <div role="row">
@@ -103310,6 +103415,15 @@ const green = Math.min(120, Math.max(10, 0.85 * total + 8));</code></pre>
           <span>Android</span>
           <h3>ITS Maps APK</h3>
           <p>Untuk pengguna Android yang ingin memasang aplikasi langsung.</p>
+
+    <div class="qr-card" data-qr-static="android-apk" >
+      <span class="qr-stack">
+        <img class="qr-image" src="/method/assets/qr/android-apk.svg" alt="QR code QR APK langsung" loading="lazy">
+        <img class="qr-logo" src="/its.png" alt="">
+      </span>
+      <span>QR APK langsung</span>
+    </div>
+
           <a href="https://itstelkom.web.app/artifacts/apps/ITS-Maps-Android-1.0.36.apk.b64">Download APK encoded (.b64)</a>
           <a href="https://github.com/hanifasepthi/its/releases/download/its-maps-android-1.0.36/ITS-Maps-Android-1.0.36.apk">Download APK langsung</a>
         </article>
@@ -103317,12 +103431,30 @@ const green = Math.min(120, Math.max(10, 0.85 * total + 8));</code></pre>
           <span>Microsoft Store</span>
           <h3>ITS Maps Windows</h3>
           <p>Store ID: <strong>9MWFGGW3FD2C</strong>. Deep link web tersedia setelah produk live.</p>
+
+    <div class="qr-card" data-qr-static="microsoft-store" >
+      <span class="qr-stack">
+        <img class="qr-image" src="/method/assets/qr/microsoft-store.svg" alt="QR code QR Microsoft Store" loading="lazy">
+        <img class="qr-logo" src="/its.png" alt="">
+      </span>
+      <span>QR Microsoft Store</span>
+    </div>
+
           <a href="ms-windows-store://pdp/?productid=9MWFGGW3FD2C">Buka Microsoft Store app</a>
         </article>
         <article>
           <span>WebApp</span>
           <h3>ITS Maps Web</h3>
           <p>Versi web/PWA berjalan langsung dari Firebase Hosting.</p>
+
+    <div class="qr-card" data-qr-static="webapp" >
+      <span class="qr-stack">
+        <img class="qr-image" src="/method/assets/qr/webapp.svg" alt="QR code QR WebApp" loading="lazy">
+        <img class="qr-logo" src="/its.png" alt="">
+      </span>
+      <span>QR WebApp</span>
+    </div>
+
           <a href="https://itstelkom.web.app/">Buka WebApp</a>
           <a href="https://itstelkom.web.app/documentation">Buka Dokumentasi</a>
         </article>
@@ -103334,11 +103466,37 @@ const green = Math.min(120, Math.max(10, 0.85 * total + 8));</code></pre>
       <div class="section-kicker">Credits</div>
       <h2>Ucapan terima kasih</h2>
       <div class="credit-list">
-        <article><strong>Hanifa Septhi Larasati / Hanifa Teams</strong><span>Developer dan publisher ITS Maps.</span></article>
-        <article><strong>galihru</strong><span>Terima kasih untuk kontribusi akun/repository awal dan kolaborasi pengembangan ITS Maps.</span></article>
-        <article><strong>Roboflow RF-DETR</strong><span>Rujukan model deteksi objek RF-DETR yang menjadi dasar pipeline deteksi visual.</span></article>
-        <article><strong>Hugging Face onnx-community</strong><span>Model ONNX <code>onnx-community/rfdetr_nano-ONNX</code> yang dipanggil oleh kode browser.</span></article>
-        <article><strong>Transformers.js / Xenova</strong><span>Runtime model browser dan fallback object-detection/segmentation.</span></article>
+
+          <article>
+            <strong>Hanifa Septhi Larasati</strong>
+            <a href="https://github.com/hanifasepthi" rel="noopener">@hanifasepthi</a>
+            <span>Developer utama, publisher Hanifa Teams, dan pemilik repository ITS Maps.</span>
+          </article>
+
+          <article>
+            <strong>galihru</strong>
+            <a href="https://github.com/galihru" rel="noopener">@galihru</a>
+            <span>Kontributor repository awal dan kolaborasi pengembangan ITS Maps.</span>
+          </article>
+
+          <article>
+            <strong>Roboflow RF-DETR</strong>
+            <a href="https://github.com/roboflow/rf-detr" rel="noopener">roboflow/rf-detr</a>
+            <span>Rujukan arsitektur object detection RF-DETR untuk pipeline deteksi visual.</span>
+          </article>
+
+          <article>
+            <strong>Hugging Face onnx-community</strong>
+            <a href="https://huggingface.co/onnx-community/rfdetr_nano-ONNX" rel="noopener">onnx-community/rfdetr_nano-ONNX</a>
+            <span>Model ONNX yang dipakai oleh runtime browser object detection.</span>
+          </article>
+
+          <article>
+            <strong>Transformers.js / Xenova</strong>
+            <a href="https://github.com/huggingface/transformers.js" rel="noopener">transformers.js</a>
+            <span>Runtime inference JavaScript untuk model AI di browser.</span>
+          </article>
+
         <article><strong>OpenStreetMap, CARTO, Leaflet, MapLibre, Firebase, Microsoft, Android</strong><span>Ekosistem peta, hosting realtime, web, widget, dan distribusi aplikasi.</span></article>
       </div>
     </section>

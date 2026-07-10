@@ -14,6 +14,7 @@ const OFFLINE_URLS = [
   '/method/webapp',
   '/licence',
   '/license',
+  '/pdf-preview',
   '/new',
   '/manifest.webmanifest',
   '/manifest-mobile.webmanifest',

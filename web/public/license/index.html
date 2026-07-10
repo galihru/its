@@ -16,7 +16,7 @@
     <header class="topbar">
       <a class="brand" href="/"><img src="/its.png" alt=""><span>ITS Maps</span></a>
       <nav aria-label="Navigasi dokumentasi">
-        <a href="/">Home</a><a href="/documentation">Documentation</a><a href="/method">Method</a><a href="/method/webapp">WebApp</a><a href="/method/android">Android</a><a href="/method/windows">Windows</a><a href="/privacy">Privacy</a><a href="/licence" aria-current="page">Licence</a>
+        <a href="/">Home</a><a href="/documentation">Documentation</a><a href="/method">Method</a><a href="/method/webapp">WebApp</a><a href="/method/android">Android</a><a href="/method/windows">Windows</a><a href="/privacy">Privacy</a><a href="/licence" aria-current="page">Licence</a><a href="/pdf-preview?id=documentation">PDF Preview</a>
       </nav>
     </header>
     <main id="content">
@@ -32,6 +32,7 @@
           <p>Isi halaman ini sama dengan file <code>LICENSE</code> di GitHub. Jika file GitHub diperbarui lalu generator dijalankan, halaman website ikut berubah.</p>
           <div class="hero-actions">
             <a href="https://github.com/hanifasepthi/its/blob/main/LICENSE">Lihat di GitHub</a>
+            <a href="/pdf-preview?id=license">Preview PDF</a>
             <button type="button" data-print>Print A4</button>
           </div>
         </div>
@@ -68,11 +69,37 @@ SOFTWARE.
       <div class="section-kicker">Credits</div>
       <h2>Ucapan terima kasih</h2>
       <div class="credit-list">
-        <article><strong>Hanifa Septhi Larasati / Hanifa Teams</strong><span>Developer dan publisher ITS Maps.</span></article>
-        <article><strong>galihru</strong><span>Terima kasih untuk kontribusi akun/repository awal dan kolaborasi pengembangan ITS Maps.</span></article>
-        <article><strong>Roboflow RF-DETR</strong><span>Rujukan model deteksi objek RF-DETR yang menjadi dasar pipeline deteksi visual.</span></article>
-        <article><strong>Hugging Face onnx-community</strong><span>Model ONNX <code>onnx-community/rfdetr_nano-ONNX</code> yang dipanggil oleh kode browser.</span></article>
-        <article><strong>Transformers.js / Xenova</strong><span>Runtime model browser dan fallback object-detection/segmentation.</span></article>
+
+          <article>
+            <strong>Hanifa Septhi Larasati</strong>
+            <a href="https://github.com/hanifasepthi" rel="noopener">@hanifasepthi</a>
+            <span>Developer utama, publisher Hanifa Teams, dan pemilik repository ITS Maps.</span>
+          </article>
+
+          <article>
+            <strong>galihru</strong>
+            <a href="https://github.com/galihru" rel="noopener">@galihru</a>
+            <span>Kontributor repository awal dan kolaborasi pengembangan ITS Maps.</span>
+          </article>
+
+          <article>
+            <strong>Roboflow RF-DETR</strong>
+            <a href="https://github.com/roboflow/rf-detr" rel="noopener">roboflow/rf-detr</a>
+            <span>Rujukan arsitektur object detection RF-DETR untuk pipeline deteksi visual.</span>
+          </article>
+
+          <article>
+            <strong>Hugging Face onnx-community</strong>
+            <a href="https://huggingface.co/onnx-community/rfdetr_nano-ONNX" rel="noopener">onnx-community/rfdetr_nano-ONNX</a>
+            <span>Model ONNX yang dipakai oleh runtime browser object detection.</span>
+          </article>
+
+          <article>
+            <strong>Transformers.js / Xenova</strong>
+            <a href="https://github.com/huggingface/transformers.js" rel="noopener">transformers.js</a>
+            <span>Runtime inference JavaScript untuk model AI di browser.</span>
+          </article>
+
         <article><strong>OpenStreetMap, CARTO, Leaflet, MapLibre, Firebase, Microsoft, Android</strong><span>Ekosistem peta, hosting realtime, web, widget, dan distribusi aplikasi.</span></article>
       </div>
     </section>

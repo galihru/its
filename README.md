@@ -18,6 +18,7 @@ Website: <https://itstelkom.web.app/>
 | Method Android | <https://itstelkom.web.app/method/android> | Live |
 | Method Windows | <https://itstelkom.web.app/method/windows> | Live |
 | Method WebApp | <https://itstelkom.web.app/method/webapp> | Live |
+| Preview PDF | <https://itstelkom.web.app/pdf-preview?id=documentation> | Viewer dokumentasi gaya jurnal dengan sidebar, toolbar, print/save PDF, dan QR |
 | Licence | <https://itstelkom.web.app/licence> | Live, sama dengan `LICENSE` GitHub |
 | Android APK | <https://itstelkom.web.app/artifacts/apps/ITS-Maps-Android-1.0.36.apk.b64> | Public APK package encoded |
 | Android APK langsung | <https://github.com/hanifasepthi/its/releases/download/its-maps-android-1.0.36/ITS-Maps-Android-1.0.36.apk> | Public APK package via GitHub Release |
@@ -266,11 +267,11 @@ Kata kunci Store yang disarankan:
 
 Terima kasih untuk:
 
-- **Hanifa Septhi Larasati / Hanifa Teams** sebagai developer dan publisher ITS Maps.
-- **galihru** untuk kontribusi akun/repository awal dan kolaborasi pengembangan.
-- **Roboflow RF-DETR** sebagai rujukan model object detection.
-- **Hugging Face `onnx-community`** untuk model `onnx-community/rfdetr_nano-ONNX`.
-- **Transformers.js / Xenova** untuk runtime AI browser dan fallback model.
+- **Hanifa Septhi Larasati / Hanifa Teams** (`@hanifasepthi`, <https://github.com/hanifasepthi>) sebagai developer, publisher, dan pemilik repository ITS Maps.
+- **galihru** (`@galihru`, <https://github.com/galihru>) untuk kontribusi akun/repository awal dan kolaborasi pengembangan.
+- **Roboflow RF-DETR** (`roboflow/rf-detr`, <https://github.com/roboflow/rf-detr>) sebagai rujukan model object detection.
+- **Hugging Face `onnx-community`** (<https://huggingface.co/onnx-community/rfdetr_nano-ONNX>) untuk model `onnx-community/rfdetr_nano-ONNX`.
+- **Transformers.js / Xenova** (<https://github.com/huggingface/transformers.js>) untuk runtime AI browser dan fallback model.
 - **OpenStreetMap, CARTO, Leaflet, MapLibre, Firebase, Microsoft, Android** untuk ekosistem peta, realtime database, web, widget, dan distribusi aplikasi.
 
 ## License
