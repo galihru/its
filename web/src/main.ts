@@ -65,6 +65,26 @@ const AI_SERVICE_STACK = [
   ["Transformers.js / Hugging Face", "Dipakai untuk fitur vision peta eksperimental yang membaca segmentasi visual saat mode CV peta diaktifkan.", "https://huggingface.co/docs/transformers.js"],
 ] as const;
 
+const PRIVACY_INFO_STACK = [
+  ["Data realtime", "ITS Maps menampilkan status Raspberry Pi, lampu lalu lintas, jumlah kendaraan, lokasi perangkat, marker user jika diizinkan, dan snapshot kamera/AI.", "https://itstelkom.web.app/privacy"],
+  ["Izin lokasi", "Lokasi user hanya dipakai setelah user memberi izin dari browser, Android, atau Windows. Izin dapat dicabut dari pengaturan perangkat.", "https://itstelkom.web.app/privacy#location"],
+  ["Kamera dan AI", "Snapshot/stream dipakai untuk object detection dan ringkasan kendaraan. Hasil yang ditampilkan berupa bbox, label, confidence, dan timestamp.", "https://itstelkom.web.app/privacy#camera"],
+  ["Firebase RTDB", "Firebase Realtime Database dipakai untuk sinkronisasi status perangkat, grafik, widget, dan data operasional lintas platform.", "https://itstelkom.web.app/privacy#firebase"],
+] as const;
+
+const APP_LICENSE_INFO_STACK = [
+  ["ITS Maps application", "Aplikasi, dokumentasi, dan aset ITS Maps dipublikasikan oleh Hanifa Teams untuk dashboard peta, kamera, AI, Android APK, Windows app, dan PWA.", "https://itstelkom.web.app/licence"],
+  ["MIT License", "Kode sumber repository menggunakan MIT License kecuali aset/model/dependency pihak ketiga yang memiliki lisensi masing-masing.", "https://github.com/hanifasepthi/its/blob/main/LICENSE"],
+  ["Attribution", "Komponen pihak ketiga seperti Leaflet, MapLibre, CARTO/OSM, Firebase, Transformers.js, dan ONNX Runtime tetap mengikuti lisensi/persyaratan masing-masing.", "https://itstelkom.web.app/licence#credits"],
+] as const;
+
+const ABOUT_SITE_INFO_STACK = [
+  ["ITS Maps", "Dashboard realtime untuk peta ITS, Raspberry Pi controller, kamera lalu lintas, AI RF-DETR, Firebase RTDB, Android APK, Microsoft Store app, dan Windows Widgets.", "https://itstelkom.web.app/documentation"],
+  ["Developer", "Dikembangkan oleh Hanifa Septhi Larasati dan dipublikasikan oleh Hanifa Teams.", "https://github.com/hanifasepthi/its"],
+  ["AI-agent access", "Halaman menyediakan manifest PWA, sitemap, robots.txt, llms.txt, llms-full.txt, dan WebMCP annotations agar browser/AI agent memahami fitur utama.", "https://itstelkom.web.app/llms.txt"],
+  ["Download", "Link download Android APK, Microsoft Store/Windows app, PWA, dokumentasi, dan preview PDF tersedia di halaman dokumentasi.", "https://itstelkom.web.app/documentation#download"],
+] as const;
+
 function mapServiceStackHtml(): string {
   return FREE_MAP_SERVICE_STACK.map(([name, description, url]) => `
     <article>
@@ -77,6 +97,16 @@ function mapServiceStackHtml(): string {
 
 function aiServiceStackHtml(): string {
   return AI_SERVICE_STACK.map(([name, description, url]) => `
+    <article>
+      <strong>${escapeMapServiceHtml(name)}</strong>
+      <p>${escapeMapServiceHtml(description)}</p>
+      <a href="${escapeMapServiceHtml(url)}" target="_blank" rel="noopener">${escapeMapServiceHtml(url.replace(/^https?:\/\//, ""))}</a>
+    </article>
+  `).join("");
+}
+
+function infoStackHtml(items: readonly (readonly [string, string, string])[]): string {
+  return items.map(([name, description, url]) => `
     <article>
       <strong>${escapeMapServiceHtml(name)}</strong>
       <p>${escapeMapServiceHtml(description)}</p>
@@ -534,9 +564,9 @@ function terminalStatic(commands: string[]): string {
         <div>ITS Maps terminal siap. Ketik <strong>help</strong> lalu Enter.</div>
         ${commands.map((command) => `<div><span>$</span> ${escapeStaticHtml(command)}</div>`).join("")}
       </div>
-      <form class="static-terminal-form" data-terminal-form>
+      <form class="static-terminal-form" data-terminal-form toolname="run_its_maps_documentation_command" tooldescription="Run a safe ITS Maps documentation command or navigation helper in the public documentation terminal.">
         <span>$</span>
-        <input data-terminal-input autocomplete="off" spellcheck="false" aria-label="Terminal command" placeholder="help">
+        <input data-terminal-input name="command" autocomplete="off" spellcheck="false" aria-label="Terminal command" placeholder="help" toolparamdescription="A safe documentation command such as help, npm run build, firebase deploy, open /documentation, or open /new.">
         <button type="submit">Run</button>
       </form>
       <div class="static-terminal-chips">
@@ -1186,6 +1216,14 @@ if (staticRoute) {
     '<button type="button" class="map-license-link" data-map-license>Lisensi Peta</button>',
     '<span class="map-license-separator" aria-hidden="true">|</span>',
     '<button type="button" class="map-license-link" data-ai-license>Lisensi AI</button>',
+    '<span class="map-license-separator" aria-hidden="true">|</span>',
+    '<button type="button" class="map-license-link" data-privacy-modal>Privasi</button>',
+    '<span class="map-license-separator" aria-hidden="true">|</span>',
+    '<a class="map-license-link" href="https://itstelkom.web.app/documentation" target="_blank" rel="noopener">Dokumentasi</a>',
+    '<span class="map-license-separator" aria-hidden="true">|</span>',
+    '<button type="button" class="map-license-link" data-app-license>Licence</button>',
+    '<span class="map-license-separator" aria-hidden="true">|</span>',
+    '<button type="button" class="map-license-link" data-about-site>About</button>',
   ].join(" ");
 
   const streetLayer = L.tileLayer(CARTO_TILE_URL, {
@@ -4604,6 +4642,10 @@ if (staticRoute) {
     return [
       "#windows-download-modal.open",
       "#map-license-modal.open",
+      "#ai-license-modal.open",
+      "#privacy-info-modal.open",
+      "#app-license-info-modal.open",
+      "#about-site-info-modal.open",
       "#m-device-modal.open",
       "#m-poi-modal.open",
       "#m-ai-history-detail-modal.open",
@@ -4628,8 +4670,8 @@ if (staticRoute) {
   function closePromptPanels(): void {
     const downloadModal = document.getElementById("windows-download-modal");
     if (downloadModal) downloadModal.remove();
-    const licenseModal = document.getElementById("map-license-modal");
-    if (licenseModal) licenseModal.remove();
+    document.querySelectorAll("#map-license-modal, #ai-license-modal, #privacy-info-modal, #app-license-info-modal, #about-site-info-modal")
+      .forEach((modal) => modal.remove());
     document.body.classList.remove("app-download-panel-open", "map-license-panel-open");
     clearSidePanelWidth(0);
   }
@@ -10647,7 +10689,7 @@ function setPromptSidePanelWidthFromSheet(sheetEl: HTMLElement | null): void {
 function clearPromptSidePanelWidth(delayMs = 260): void {
   setPromptSidePanelWidth(0);
   window.setTimeout(() => {
-    if (!document.querySelector("#windows-download-modal.open, #map-license-modal.open, #m-device-modal.open, #m-poi-modal.open")) {
+    if (!document.querySelector("#windows-download-modal.open, #map-license-modal.open, #ai-license-modal.open, #privacy-info-modal.open, #app-license-info-modal.open, #about-site-info-modal.open, #m-device-modal.open, #m-poi-modal.open")) {
       document.body.classList.remove("side-panel-open", "app-download-panel-open", "map-license-panel-open", "map-modal-panel-open");
       document.documentElement.style.removeProperty("--side-panel-active-width");
     }
@@ -10701,7 +10743,7 @@ function installPromptWheelDismiss(sheetEl: HTMLElement, onClose: () => void): v
 }
 
 function closeFloatingMapPanels(): void {
-  document.querySelectorAll("#windows-download-modal, #map-license-modal, #m-device-modal, #m-poi-modal").forEach((modal) => modal.remove());
+  document.querySelectorAll("#windows-download-modal, #map-license-modal, #ai-license-modal, #privacy-info-modal, #app-license-info-modal, #about-site-info-modal, #m-device-modal, #m-poi-modal").forEach((modal) => modal.remove());
   document.body.classList.remove("app-download-panel-open", "map-license-panel-open", "map-modal-panel-open");
   clearPromptSidePanelWidth(0);
 }
@@ -10718,7 +10760,104 @@ document.addEventListener("click", (event) => {
     event.stopPropagation();
     itsShowAiLicenseModal();
   }
+  if (target?.closest("[data-privacy-modal]")) {
+    event.preventDefault();
+    event.stopPropagation();
+    itsShowSiteInfoModal("privacy");
+  }
+  if (target?.closest("[data-app-license]")) {
+    event.preventDefault();
+    event.stopPropagation();
+    itsShowSiteInfoModal("app-license");
+  }
+  if (target?.closest("[data-about-site]")) {
+    event.preventDefault();
+    event.stopPropagation();
+    itsShowSiteInfoModal("about-site");
+  }
 });
+
+type SiteInfoModalKind = "privacy" | "app-license" | "about-site";
+
+const SITE_INFO_MODAL_META: Record<SiteInfoModalKind, {
+  id: string;
+  eyebrow: string;
+  title: string;
+  closeLabel: string;
+  items: readonly (readonly [string, string, string])[];
+}> = {
+  privacy: {
+    id: "privacy-info-modal",
+    eyebrow: "ITS Maps",
+    title: "Privasi",
+    closeLabel: "Tutup Privasi",
+    items: PRIVACY_INFO_STACK,
+  },
+  "app-license": {
+    id: "app-license-info-modal",
+    eyebrow: "ITS Maps",
+    title: "Licence Aplikasi",
+    closeLabel: "Tutup Licence Aplikasi",
+    items: APP_LICENSE_INFO_STACK,
+  },
+  "about-site": {
+    id: "about-site-info-modal",
+    eyebrow: "About this site",
+    title: "ITS Maps",
+    closeLabel: "Tutup About this site",
+    items: ABOUT_SITE_INFO_STACK,
+  },
+};
+
+function itsShowSiteInfoModal(kind: SiteInfoModalKind): void {
+  const meta = SITE_INFO_MODAL_META[kind];
+  if (document.getElementById(meta.id)) return;
+  closeFloatingMapPanels();
+  const modal = document.createElement("div");
+  modal.id = meta.id;
+  modal.className = `map-license-modal site-info-modal site-info-${kind}`;
+  modal.innerHTML = `
+    <section class="map-license-sheet" role="dialog" aria-modal="true" aria-labelledby="${meta.id}-title">
+      <div class="map-license-grip" data-swipe-handle aria-hidden="true"></div>
+      <header class="map-license-head">
+        <div>
+          <span>${escapeMapServiceHtml(meta.eyebrow)}</span>
+          <h2 id="${meta.id}-title">${escapeMapServiceHtml(meta.title)}</h2>
+        </div>
+        <button type="button" aria-label="${escapeMapServiceHtml(meta.closeLabel)}" title="Tutup" data-license-close>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+      </header>
+      <div class="map-license-list">
+        ${infoStackHtml(meta.items)}
+      </div>
+    </section>
+  `;
+  document.body.appendChild(modal);
+  let closeInfoModal: () => void = () => undefined;
+  const keyHandler = (keyEvent: KeyboardEvent) => {
+    if (keyEvent.key === "Escape") closeInfoModal();
+  };
+  closeInfoModal = () => {
+    window.removeEventListener("keydown", keyHandler);
+    modal.classList.remove("open");
+    document.body.classList.remove("map-license-panel-open");
+    clearPromptSidePanelWidth();
+    window.setTimeout(() => modal.remove(), 220);
+  };
+  modal.addEventListener("click", (clickEvent) => {
+    if (clickEvent.target === modal) closeInfoModal();
+  });
+  modal.querySelector<HTMLButtonElement>("[data-license-close]")?.addEventListener("click", closeInfoModal);
+  const sheet = modal.querySelector<HTMLElement>(".map-license-sheet");
+  if (sheet) setupPromptSheetSwipe(sheet, closeInfoModal);
+  window.addEventListener("keydown", keyHandler);
+  window.setTimeout(() => {
+    modal.classList.add("open");
+    document.body.classList.add("map-license-panel-open");
+    setPromptSidePanelWidthFromSheet(sheet);
+  }, 20);
+}
 
 function itsShowMapLicenseModal(): void {
   if (document.getElementById("map-license-modal")) return;
@@ -11328,8 +11467,8 @@ async function itsShowWindowsDownloadModal(): Promise<void> {
   if (document.getElementById("windows-download-modal")) return;
   await refreshDynamicAppLinks(true);
   closeFloatingMapPanels();
-  const licenseModal = document.getElementById("map-license-modal");
-  if (licenseModal) licenseModal.remove();
+  document.querySelectorAll("#map-license-modal, #ai-license-modal, #privacy-info-modal, #app-license-info-modal, #about-site-info-modal")
+    .forEach((modal) => modal.remove());
   document.body.classList.remove("map-license-panel-open");
   const info = getAppDownloadInfo();
   const previews = appPreviewImages(info);

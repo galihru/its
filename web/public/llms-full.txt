@@ -1,0 +1,125 @@
+# ITS Maps Full LLM Context
+
+This file is generated from `web/scripts/generate-method-docs.mjs`. It expands the concise `/llms.txt` file with platform pages, PDF previews, contributors, and source-code links.
+
+## Site Identity
+
+- Title: ITS Maps
+- URL: https://itstelkom.web.app
+- Developer: Hanifa Septhi Larasati
+- Publisher: Hanifa Teams
+- Repository: https://github.com/hanifasepthi/its
+- Microsoft Store ID: 9MWFGGW3FD2C
+
+## Platform Documentation
+
+- [Metode WebApp ITS Maps](https://itstelkom.web.app/method/webapp)
+- [Metode Android APK ITS Maps](https://itstelkom.web.app/method/android)
+- [Metode Windows ITS Maps](https://itstelkom.web.app/method/windows)
+
+## PDF Documents
+
+- [ITS Maps Documentation](https://itstelkom.web.app/pdf-preview/documentation) - HTML documentation, 2026, authors: Hanifa Septhi Larasati
+- [Metode ITS Maps](https://itstelkom.web.app/pdf-preview/method) - HTML method, 2026, authors: Hanifa Septhi Larasati
+- [Metode Android APK](https://itstelkom.web.app/pdf-preview/android) - HTML method, 2026, authors: Hanifa Septhi Larasati
+- [Metode Windows](https://itstelkom.web.app/pdf-preview/windows) - HTML method, 2026, authors: Hanifa Septhi Larasati
+- [Metode WebApp](https://itstelkom.web.app/pdf-preview/webapp) - HTML method, 2026, authors: Hanifa Septhi Larasati
+- [ITS Maps Licence](https://itstelkom.web.app/pdf-preview/licence) - Legal page, 2026, authors: Hanifa Septhi Larasati
+- [ITS Maps License](https://itstelkom.web.app/pdf-preview/license) - Legal page, 2026, authors: Hanifa Septhi Larasati
+- [FTE-CD-6](https://itstelkom.web.app/pdf-preview/fte-cd-6) - DOCX template, 2026, authors: Hanifa Septhi Larasati
+
+## Downloads And App Distribution
+
+- [WebApp / PWA](https://itstelkom.web.app/)
+- [Android APK](https://github.com/hanifasepthi/its/releases/download/its-maps-android-1.0.36/ITS-Maps-Android-1.0.36.apk)
+- [Android APK base64 fallback](https://itstelkom.web.app/artifacts/apps/ITS-Maps-Android-1.0.36.apk.b64)
+- [Microsoft Store web listing](https://apps.microsoft.com/detail/9MWFGGW3FD2C)
+- [Microsoft Store protocol](ms-windows-store://pdp/?productid=9MWFGGW3FD2C)
+- [Manifest](https://itstelkom.web.app/manifest.webmanifest)
+- [Desktop manifest](https://itstelkom.web.app/manifest-desktop.webmanifest)
+- [Mobile manifest](https://itstelkom.web.app/manifest-mobile.webmanifest)
+
+## Contributors And Credits
+
+- [Hanifa Septhi Larasati](https://github.com/hanifasepthi) - Developer utama, publisher Hanifa Teams, dan pemilik repository ITS Maps.
+- [galihru](https://github.com/galihru) - Kontributor repository awal dan kolaborasi pengembangan ITS Maps.
+- [Roboflow RF-DETR](https://github.com/roboflow/rf-detr) - Rujukan arsitektur object detection RF-DETR untuk pipeline deteksi visual.
+- [Hugging Face onnx-community](https://huggingface.co/onnx-community/rfdetr_nano-ONNX) - Model ONNX yang dipakai oleh runtime browser object detection.
+- [Transformers.js / Xenova](https://github.com/huggingface/transformers.js) - Runtime inference JavaScript untuk model AI di browser.
+
+## Source File Map
+
+- [controller/camera-gateway.py](https://github.com/hanifasepthi/its/blob/main/controller/camera-gateway.py)
+- [controller/camera-public-proxy.py](https://github.com/hanifasepthi/its/blob/main/controller/camera-public-proxy.py)
+- [controller/gps-init-ublox.py](https://github.com/hanifasepthi/its/blob/main/controller/gps-init-ublox.py)
+- [controller/install-controller-files.sh](https://github.com/hanifasepthi/its/blob/main/controller/install-controller-files.sh)
+- [controller/its-controller-update.service](https://github.com/hanifasepthi/its/blob/main/controller/its-controller-update.service)
+- [controller/its-controller.service](https://github.com/hanifasepthi/its/blob/main/controller/its-controller.service)
+- [controller/its-heartbeat-agent.service](https://github.com/hanifasepthi/its/blob/main/controller/its-heartbeat-agent.service)
+- [controller/its-heartbeat-agent.sh](https://github.com/hanifasepthi/its/blob/main/controller/its-heartbeat-agent.sh)
+- [controller/Main.scala](https://github.com/hanifasepthi/its/blob/main/controller/Main.scala)
+- [controller/MainWithGpio.scala](https://github.com/hanifasepthi/its/blob/main/controller/MainWithGpio.scala)
+- [controller/mediamtx.yml](https://github.com/hanifasepthi/its/blob/main/controller/mediamtx.yml)
+- [controller/run-controller-public.sh](https://github.com/hanifasepthi/its/blob/main/controller/run-controller-public.sh)
+- [controller/TrafficLight.scala](https://github.com/hanifasepthi/its/blob/main/controller/TrafficLight.scala)
+- [controller/update-controller.sh](https://github.com/hanifasepthi/its/blob/main/controller/update-controller.sh)
+- [controller/webrtc-camera.py](https://github.com/hanifasepthi/its/blob/main/controller/webrtc-camera.py)
+- [controller/YoloDetector.scala](https://github.com/hanifasepthi/its/blob/main/controller/YoloDetector.scala)
+- [web/android/app/build.gradle](https://github.com/hanifasepthi/its/blob/main/web/android/app/build.gradle)
+- [web/android/app/src/main/AndroidManifest.xml](https://github.com/hanifasepthi/its/blob/main/web/android/app/src/main/AndroidManifest.xml)
+- [web/android/app/src/main/java/id/ac/telkomuniversity/its/AlertFullDataWidgetProvider.java](https://github.com/hanifasepthi/its/blob/main/web/android/app/src/main/java/id/ac/telkomuniversity/its/AlertFullDataWidgetProvider.java)
+- [web/android/app/src/main/java/id/ac/telkomuniversity/its/ChartWidgetProvider.java](https://github.com/hanifasepthi/its/blob/main/web/android/app/src/main/java/id/ac/telkomuniversity/its/ChartWidgetProvider.java)
+- [web/android/app/src/main/java/id/ac/telkomuniversity/its/IndonesianObjectLabels.java](https://github.com/hanifasepthi/its/blob/main/web/android/app/src/main/java/id/ac/telkomuniversity/its/IndonesianObjectLabels.java)
+- [web/android/app/src/main/java/id/ac/telkomuniversity/its/ItsNotificationListenerService.java](https://github.com/hanifasepthi/its/blob/main/web/android/app/src/main/java/id/ac/telkomuniversity/its/ItsNotificationListenerService.java)
+- [web/android/app/src/main/java/id/ac/telkomuniversity/its/LockScreenDashboardActivity.java](https://github.com/hanifasepthi/its/blob/main/web/android/app/src/main/java/id/ac/telkomuniversity/its/LockScreenDashboardActivity.java)
+- [web/android/app/src/main/java/id/ac/telkomuniversity/its/LockScreenPreferences.java](https://github.com/hanifasepthi/its/blob/main/web/android/app/src/main/java/id/ac/telkomuniversity/its/LockScreenPreferences.java)
+- [web/android/app/src/main/java/id/ac/telkomuniversity/its/LockScreenRenderer.java](https://github.com/hanifasepthi/its/blob/main/web/android/app/src/main/java/id/ac/telkomuniversity/its/LockScreenRenderer.java)
+- [web/android/app/src/main/java/id/ac/telkomuniversity/its/MainActivity.java](https://github.com/hanifasepthi/its/blob/main/web/android/app/src/main/java/id/ac/telkomuniversity/its/MainActivity.java)
+- [web/android/app/src/main/java/id/ac/telkomuniversity/its/MapsWidgetProvider.java](https://github.com/hanifasepthi/its/blob/main/web/android/app/src/main/java/id/ac/telkomuniversity/its/MapsWidgetProvider.java)
+- [web/android/app/src/main/java/id/ac/telkomuniversity/its/TrafficDetectionWidgetProvider.java](https://github.com/hanifasepthi/its/blob/main/web/android/app/src/main/java/id/ac/telkomuniversity/its/TrafficDetectionWidgetProvider.java)
+- [web/android/app/src/main/java/id/ac/telkomuniversity/its/WidgetBootReceiver.java](https://github.com/hanifasepthi/its/blob/main/web/android/app/src/main/java/id/ac/telkomuniversity/its/WidgetBootReceiver.java)
+- [web/android/app/src/main/java/id/ac/telkomuniversity/its/WidgetRealtimeService.java](https://github.com/hanifasepthi/its/blob/main/web/android/app/src/main/java/id/ac/telkomuniversity/its/WidgetRealtimeService.java)
+- [web/android/app/src/main/res/layout/widget_alert_full_data.xml](https://github.com/hanifasepthi/its/blob/main/web/android/app/src/main/res/layout/widget_alert_full_data.xml)
+- [web/android/app/src/main/res/layout/widget_maps.xml](https://github.com/hanifasepthi/its/blob/main/web/android/app/src/main/res/layout/widget_maps.xml)
+- [web/android/app/src/main/res/xml/widget_alert_full_data_info.xml](https://github.com/hanifasepthi/its/blob/main/web/android/app/src/main/res/xml/widget_alert_full_data_info.xml)
+- [web/android/app/src/main/res/xml/widget_maps_info.xml](https://github.com/hanifasepthi/its/blob/main/web/android/app/src/main/res/xml/widget_maps_info.xml)
+- [web/android/app/src/main/res/xml/widget_traffic_detection_info.xml](https://github.com/hanifasepthi/its/blob/main/web/android/app/src/main/res/xml/widget_traffic_detection_info.xml)
+- [web/capacitor.config.json](https://github.com/hanifasepthi/its/blob/main/web/capacitor.config.json)
+- [web/database.rules.json](https://github.com/hanifasepthi/its/blob/main/web/database.rules.json)
+- [web/electron/main.cjs](https://github.com/hanifasepthi/its/blob/main/web/electron/main.cjs)
+- [web/electron/preload.cjs](https://github.com/hanifasepthi/its/blob/main/web/electron/preload.cjs)
+- [web/firebase.json](https://github.com/hanifasepthi/its/blob/main/web/firebase.json)
+- [web/index.html](https://github.com/hanifasepthi/its/blob/main/web/index.html)
+- [web/package.json](https://github.com/hanifasepthi/its/blob/main/web/package.json)
+- [web/public/sw.js](https://github.com/hanifasepthi/its/blob/main/web/public/sw.js)
+- [web/scripts/after-pack-windows.cjs](https://github.com/hanifasepthi/its/blob/main/web/scripts/after-pack-windows.cjs)
+- [web/scripts/appx-manifest-created.cjs](https://github.com/hanifasepthi/its/blob/main/web/scripts/appx-manifest-created.cjs)
+- [web/scripts/build-windows-msix-with-widgets.ps1](https://github.com/hanifasepthi/its/blob/main/web/scripts/build-windows-msix-with-widgets.ps1)
+- [web/scripts/generate-transparent-windows-assets.ps1](https://github.com/hanifasepthi/its/blob/main/web/scripts/generate-transparent-windows-assets.ps1)
+- [web/src/browserRfDetr.ts](https://github.com/hanifasepthi/its/blob/main/web/src/browserRfDetr.ts)
+- [web/src/browserRfDetrWorker.ts](https://github.com/hanifasepthi/its/blob/main/web/src/browserRfDetrWorker.ts)
+- [web/src/lockScreenDetector.ts](https://github.com/hanifasepthi/its/blob/main/web/src/lockScreenDetector.ts)
+- [web/src/main.ts](https://github.com/hanifasepthi/its/blob/main/web/src/main.ts)
+- [web/src/style.css](https://github.com/hanifasepthi/its/blob/main/web/src/style.css)
+- [web/src/windows.ts](https://github.com/hanifasepthi/its/blob/main/web/src/windows.ts)
+- [web/sw.js](https://github.com/hanifasepthi/its/blob/main/web/sw.js)
+- [web/vite.config.ts](https://github.com/hanifasepthi/its/blob/main/web/vite.config.ts)
+- [web/windows-widgets/ItsMapsWidgetProvider/ItsLockScreenStatusUpdater.cs](https://github.com/hanifasepthi/its/blob/main/web/windows-widgets/ItsMapsWidgetProvider/ItsLockScreenStatusUpdater.cs)
+- [web/windows-widgets/ItsMapsWidgetProvider/ItsWidget.cs](https://github.com/hanifasepthi/its/blob/main/web/windows-widgets/ItsMapsWidgetProvider/ItsWidget.cs)
+- [web/windows-widgets/ItsMapsWidgetProvider/ItsWidgetDataService.cs](https://github.com/hanifasepthi/its/blob/main/web/windows-widgets/ItsMapsWidgetProvider/ItsWidgetDataService.cs)
+- [web/windows-widgets/ItsMapsWidgetProvider/ItsWidgetIconRenderer.cs](https://github.com/hanifasepthi/its/blob/main/web/windows-widgets/ItsMapsWidgetProvider/ItsWidgetIconRenderer.cs)
+- [web/windows-widgets/ItsMapsWidgetProvider/ItsWidgetMediaRenderer.cs](https://github.com/hanifasepthi/its/blob/main/web/windows-widgets/ItsMapsWidgetProvider/ItsWidgetMediaRenderer.cs)
+- [web/windows-widgets/ItsMapsWidgetProvider/Package.appxmanifest](https://github.com/hanifasepthi/its/blob/main/web/windows-widgets/ItsMapsWidgetProvider/Package.appxmanifest)
+- [web/windows-widgets/ItsMapsWidgetProvider/Program.cs](https://github.com/hanifasepthi/its/blob/main/web/windows-widgets/ItsMapsWidgetProvider/Program.cs)
+- [web/windows-widgets/ItsMapsWidgetProvider/Templates/AiWidgetTemplate.json](https://github.com/hanifasepthi/its/blob/main/web/windows-widgets/ItsMapsWidgetProvider/Templates/AiWidgetTemplate.json)
+- [web/windows-widgets/ItsMapsWidgetProvider/Templates/DataAlertWidgetTemplate.json](https://github.com/hanifasepthi/its/blob/main/web/windows-widgets/ItsMapsWidgetProvider/Templates/DataAlertWidgetTemplate.json)
+- [web/windows-widgets/ItsMapsWidgetProvider/Templates/DataMonitorWidgetTemplate.json](https://github.com/hanifasepthi/its/blob/main/web/windows-widgets/ItsMapsWidgetProvider/Templates/DataMonitorWidgetTemplate.json)
+- [web/windows-widgets/ItsMapsWidgetProvider/Templates/DataWidgetTemplate.json](https://github.com/hanifasepthi/its/blob/main/web/windows-widgets/ItsMapsWidgetProvider/Templates/DataWidgetTemplate.json)
+- [web/windows-widgets/ItsMapsWidgetProvider/Templates/MapWidgetTemplate.json](https://github.com/hanifasepthi/its/blob/main/web/windows-widgets/ItsMapsWidgetProvider/Templates/MapWidgetTemplate.json)
+- [web/windows-widgets/ItsMapsWidgetProvider/Templates/TrafficWidgetTemplate.json](https://github.com/hanifasepthi/its/blob/main/web/windows-widgets/ItsMapsWidgetProvider/Templates/TrafficWidgetTemplate.json)
+- [web/windows-widgets/ItsMapsWidgetProvider/WidgetDiagnostics.cs](https://github.com/hanifasepthi/its/blob/main/web/windows-widgets/ItsMapsWidgetProvider/WidgetDiagnostics.cs)
+- [web/windows-widgets/ItsMapsWidgetProvider/WidgetHelper/RegistrationManager.cs](https://github.com/hanifasepthi/its/blob/main/web/windows-widgets/ItsMapsWidgetProvider/WidgetHelper/RegistrationManager.cs)
+- [web/windows-widgets/ItsMapsWidgetProvider/WidgetHelper/WidgetProviderFactory.cs](https://github.com/hanifasepthi/its/blob/main/web/windows-widgets/ItsMapsWidgetProvider/WidgetHelper/WidgetProviderFactory.cs)
+- [web/windows-widgets/ItsMapsWidgetProvider/WidgetImplBase.cs](https://github.com/hanifasepthi/its/blob/main/web/windows-widgets/ItsMapsWidgetProvider/WidgetImplBase.cs)
+- [web/windows-widgets/ItsMapsWidgetProvider/WidgetProvider.cs](https://github.com/hanifasepthi/its/blob/main/web/windows-widgets/ItsMapsWidgetProvider/WidgetProvider.cs)
+- [web/windows.html](https://github.com/hanifasepthi/its/blob/main/web/windows.html)

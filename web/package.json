@@ -11,7 +11,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build && node scripts/prepare-hosting-artifacts.mjs",
+    "build": "node scripts/generate-method-docs.mjs && tsc && vite build && node scripts/prepare-hosting-artifacts.mjs",
     "preview": "vite preview",
     "desktop:dev": "npm run build && electron electron/main.cjs",
     "desktop:open": "electron electron/main.cjs",

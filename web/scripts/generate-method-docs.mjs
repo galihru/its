@@ -351,7 +351,7 @@ function generateOgAssets() {
   <rect width="1200" height="630" fill="url(#bg)"/>
   <rect x="78" y="72" width="1044" height="486" rx="34" fill="#fff" stroke="#cddceb" filter="url(#shadow)"/>
   <rect x="126" y="116" width="272" height="356" rx="8" fill="#ffffff" stroke="#d8e2ee"/>
-  <image href="https://itstelkom.web.app/its.png" x="214" y="190" width="96" height="96" preserveAspectRatio="xMidYMid meet"/>
+  <image href="https://itstelkom.web.app/icons/icon-192.png" x="214" y="190" width="96" height="96" preserveAspectRatio="xMidYMid meet"/>
   <text x="262" y="338" text-anchor="middle" font-family="Arial, sans-serif" font-size="24" font-weight="700" fill="#142033">ITS Maps</text>
   <text x="262" y="374" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" fill="#5f6e7c">${kind}</text>
   <text x="452" y="172" font-family="Arial, sans-serif" font-size="22" font-weight="800" fill="#087568" letter-spacing="2">PDF VIEWER</text>
@@ -361,7 +361,7 @@ function generateOgAssets() {
   <text x="452" y="430" font-family="Arial, sans-serif" font-size="26" fill="#334155">Dibuat oleh ${authors}</text>
   <text x="452" y="468" font-family="Arial, sans-serif" font-size="24" fill="#64748b">Tahun ${year} • Hanifa Teams • itstelkom.web.app</text>
   <rect x="1006" y="482" width="74" height="74" rx="18" fill="#fff" stroke="#d8e2ee"/>
-  <image href="https://itstelkom.web.app/its.png" x="1019" y="495" width="48" height="48" preserveAspectRatio="xMidYMid meet"/>
+  <image href="https://itstelkom.web.app/icons/icon-96.png" x="1019" y="495" width="48" height="48" preserveAspectRatio="xMidYMid meet"/>
 </svg>`;
     fs.writeFileSync(path.join(ogRoot, `${doc.id}.svg`), svg, "utf8");
   }
@@ -692,7 +692,7 @@ function qrCard(slug, label, className = "qr-card", extraAttrs = "") {
     <div class="${esc(className)}" data-qr-static="${esc(slug)}" ${extraAttrs}>
       <span class="qr-stack">
         <img class="qr-image" src="${qrFile(slug)}" alt="QR code ${esc(label)}" loading="lazy">
-        <img class="qr-logo" src="/its.png" alt="">
+        <img class="qr-logo" src="/icons/icon-96.png" alt="">
       </span>
       <span>${esc(label)}</span>
     </div>
@@ -989,8 +989,9 @@ function pdfPreviewPage(initialId = "documentation") {
     <meta name="twitter:image" content="${esc(ogImage)}" />
     <meta name="theme-color" content="#2a2a35" />
     <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="alternate" type="text/markdown" href="/llms.txt" title="ITS Maps llms.txt" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
-    <link rel="icon" type="image/png" href="/its.png" />
+    <link rel="icon" type="image/png" href="/icons/icon-96.png" />
     <link rel="stylesheet" href="/method/method.css" />
     <script src="/method/method.js" defer></script>
   </head>
@@ -1023,7 +1024,7 @@ function pdfPreviewPage(initialId = "documentation") {
         <section class="pdf-panel is-active" data-pdf-panel="details">
           <div class="pdf-cover-wrap">
             <div class="pdf-cover-page" data-pdf-cover-page aria-label="Cover halaman pertama"></div>
-            <img data-pdf-cover src="/method/assets/its.png" alt="">
+            <img data-pdf-cover src="${esc(pdfOgPath(initialDoc.id))}" alt="">
           </div>
           <p class="pdf-kicker" data-pdf-kind>Documentation</p>
           <h1 data-pdf-title>ITS Maps Documentation</h1>
@@ -1048,10 +1049,10 @@ function pdfPreviewPage(initialId = "documentation") {
         </section>
       </aside>
       <div class="pdf-sidebar-scrim" data-pdf-sidebar-scrim></div>
-      <section class="pdf-search-panel" data-pdf-search-panel hidden aria-label="Pencarian dokumen">
+      <form class="pdf-search-panel" data-pdf-search-panel hidden aria-label="Pencarian dokumen" toolname="search_its_maps_pdf_preview" tooldescription="Search the active ITS Maps PDF preview document and navigate to matching pages.">
         <label>
           <span>Search document</span>
-          <input type="search" data-pdf-search-input placeholder="Ketik kata kunci..." autocomplete="off" />
+          <input type="search" name="query" data-pdf-search-input placeholder="Ketik kata kunci..." autocomplete="off" toolparamdescription="Keyword or phrase to find inside the active ITS Maps documentation PDF preview." />
         </label>
         <output data-pdf-search-count>0 hasil</output>
         <div>
@@ -1059,7 +1060,7 @@ function pdfPreviewPage(initialId = "documentation") {
           <button type="button" data-pdf-search-next>Next</button>
           <button type="button" data-pdf-search-close>Close</button>
         </div>
-      </section>
+      </form>
       <main class="pdf-stage" aria-label="PDF document preview">
         <nav class="pdf-rail" aria-label="Viewer shortcut">
           <button type="button" data-pdf-rail="info" aria-label="Info">i</button>
@@ -1087,15 +1088,16 @@ function privacyPage() {
     <meta name="description" content="Privacy Policy for ITS Maps by Hanifa Teams, including web, Android APK, Microsoft Store Windows app, Windows widgets, maps, camera AI, Firebase, and Raspberry Pi telemetry." />
     <meta name="theme-color" content="#ffffff" />
     <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="alternate" type="text/markdown" href="/llms.txt" title="ITS Maps llms.txt" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
-    <link rel="icon" type="image/png" href="/its.png" />
+    <link rel="icon" type="image/png" href="/icons/icon-96.png" />
     <link rel="stylesheet" href="/method/method.css" />
   </head>
   <body class="policy-page">
     <a class="skip-link" href="#content">Lewati ke konten</a>
     <header class="policy-top">
       <nav aria-label="Privacy navigation">
-        <a class="brand" href="/"><img src="/its.png" alt=""> <span>ITS Maps</span></a>
+        <a class="brand" href="/"><img src="/icons/icon-96.png" alt=""> <span>ITS Maps</span></a>
         <div>
           <a href="/documentation">Documentation</a>
           <a href="/method">Method</a>
@@ -1197,8 +1199,9 @@ function pageShell({ title, bodyClass, navActive, main }) {
     <meta name="description" content="ITS Maps documentation with line-by-line source explanation, Mermaid diagrams, LaTeX formulas, screenshots, and app download links." />
     <meta name="theme-color" content="#ffffff" />
     <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="alternate" type="text/markdown" href="/llms.txt" title="ITS Maps llms.txt" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
-    <link rel="icon" type="image/png" href="/its.png" />
+    <link rel="icon" type="image/png" href="/icons/icon-96.png" />
     <link rel="stylesheet" href="/method/method.css" />
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" defer></script>
@@ -1207,7 +1210,7 @@ function pageShell({ title, bodyClass, navActive, main }) {
   <body class="${esc(bodyClass)}">
     <a class="skip-link" href="#content">Lewati ke konten</a>
     <header class="topbar">
-      <a class="brand" href="/"><img src="/its.png" alt=""><span>ITS Maps</span></a>
+      <a class="brand" href="/"><img src="/icons/icon-96.png" alt=""><span>ITS Maps</span></a>
       <nav aria-label="Navigasi dokumentasi">
         ${nav.map(([href, label]) => `<a href="${href}"${href === navActive ? ' aria-current="page"' : ""}>${label}</a>`).join("")}
         <details class="nav-more">
@@ -1582,7 +1585,7 @@ window.addEventListener("DOMContentLoaded", () => {
       ctx.fill();
       ctx.drawImage(img, x + 6, y + 6, size - 12, size - 12);
     };
-    img.src = "/its.png";
+    img.src = "/icons/icon-96.png";
   };
 
   const renderQr = (box) => {
@@ -1739,7 +1742,7 @@ window.addEventListener("DOMContentLoaded", () => {
     qrEl.innerHTML = [
       "<span class=\\"qr-stack\\">",
       "<img class=\\"qr-image\\" src=\\"/method/assets/qr/" + slug + ".svg\\" alt=\\"QR code preview\\">",
-      "<img class=\\"qr-logo\\" src=\\"/its.png\\" alt=\\"\\">",
+      "<img class=\\"qr-logo\\" src=\\"/icons/icon-96.png\\" alt=\\"\\">",
       "</span>",
       "<span>QR Preview</span>"
     ].join("");
@@ -2105,6 +2108,10 @@ window.addEventListener("DOMContentLoaded", () => {
     window.clearTimeout(searchTimer);
     searchTimer = window.setTimeout(runSearch, 180);
   });
+  searchPanel?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    runSearch();
+  });
   document.querySelector("[data-pdf-search-prev]")?.addEventListener("click", () => goSearch(-1));
   document.querySelector("[data-pdf-search-next]")?.addEventListener("click", () => goSearch(1));
   document.querySelector("[data-pdf-search-close]")?.addEventListener("click", () => { if (searchPanel) searchPanel.hidden = true; });
@@ -2145,6 +2152,114 @@ window.addEventListener("DOMContentLoaded", () => {
 `;
 }
 
+function mdLink(label, url) {
+  const absolute = url.startsWith("http") || url.startsWith("ms-") ? url : `${site.url}${url}`;
+  return `- [${label}](${absolute})`;
+}
+
+function uniqueSourceFiles() {
+  return Array.from(new Set(Object.values(sourceGroups).flat())).sort((a, b) => a.localeCompare(b));
+}
+
+function llmsTxt() {
+  const sourceFiles = uniqueSourceFiles();
+  return `# ITS Maps
+
+ITS Maps is a public WebApp, Android APK, Microsoft Store Windows app, Windows Widgets provider, Raspberry Pi controller, Firebase RTDB dashboard, and RF-DETR AI object-detection project by ${site.developer} / ${site.publisher}.
+
+## AI Agent Access Intent
+
+Public documentation, method pages, screenshots, app listing assets, and download pages may be crawled for search, accessibility, citation, and user support. Do not bypass platform permissions, do not access private Firebase data, do not infer private user location without consent, and do not treat camera snapshots as personal training data beyond the public examples intentionally published on this website.
+
+## Primary Links
+
+${[
+  mdLink("Home", "/"),
+  mdLink("Documentation", "/documentation"),
+  mdLink("Method portal", "/method"),
+  mdLink("WebApp method", "/method/webapp"),
+  mdLink("Android method", "/method/android"),
+  mdLink("Windows method", "/method/windows"),
+  mdLink("Privacy Policy", "/privacy"),
+  mdLink("Application Licence", "/licence"),
+  mdLink("AI Licence", "/license"),
+  mdLink("PDF viewer for documentation", "/pdf-preview/documentation"),
+  mdLink("Sitemap", "/sitemap.xml"),
+  mdLink("Robots", "/robots.txt"),
+  mdLink("Full LLM context", "/llms-full.txt"),
+].join("\n")}
+
+## App Links
+
+${[
+  mdLink("Android APK", site.androidApkDirect),
+  mdLink("Android APK base64 fallback", site.androidApk),
+  mdLink("Microsoft Store product", `https://apps.microsoft.com/detail/${site.storeId}`),
+  mdLink("Microsoft Store protocol", site.storeProtocol),
+  mdLink("GitHub repository", site.github),
+].join("\n")}
+
+## PDF Preview Links
+
+${pdfDocuments.map((doc) => mdLink(doc.label, `/pdf-preview/${doc.id}`)).join("\n")}
+
+## Public Source Coverage
+
+The generated documentation currently indexes ${sourceFiles.length} important source/configuration files across WebApp, Android, Windows, Windows Widgets, and controller code. See [llms-full.txt](${site.url}/llms-full.txt) for the full file map.
+`;
+}
+
+function llmsFullTxt() {
+  const sourceFiles = uniqueSourceFiles();
+  const sourceLinks = sourceFiles.map((file) => {
+    const url = `${site.github}/blob/main/${file.replaceAll("\\", "/")}`;
+    return `- [${file}](${url})`;
+  }).join("\n");
+  const contributorLinks = contributorProfiles.map((profile) => `- [${profile.name}](${profile.url}) - ${profile.role}`).join("\n");
+  return `# ITS Maps Full LLM Context
+
+This file is generated from \`web/scripts/generate-method-docs.mjs\`. It expands the concise \`/llms.txt\` file with platform pages, PDF previews, contributors, and source-code links.
+
+## Site Identity
+
+- Title: ${site.title}
+- URL: ${site.url}
+- Developer: ${site.developer}
+- Publisher: ${site.publisher}
+- Repository: ${site.github}
+- Microsoft Store ID: ${site.storeId}
+
+## Platform Documentation
+
+${Object.values(platformMeta).map((meta) => mdLink(meta.heading, `/method/${meta.slug}`)).join("\n")}
+
+## PDF Documents
+
+${pdfDocuments.map((doc) => `- [${doc.label}](${site.url}/pdf-preview/${doc.id}) - ${doc.kind}, ${doc.year}, authors: ${(doc.authors || []).join(", ")}`).join("\n")}
+
+## Downloads And App Distribution
+
+${[
+  mdLink("WebApp / PWA", "/"),
+  mdLink("Android APK", site.androidApkDirect),
+  mdLink("Android APK base64 fallback", site.androidApk),
+  mdLink("Microsoft Store web listing", `https://apps.microsoft.com/detail/${site.storeId}`),
+  mdLink("Microsoft Store protocol", site.storeProtocol),
+  mdLink("Manifest", "/manifest.webmanifest"),
+  mdLink("Desktop manifest", "/manifest-desktop.webmanifest"),
+  mdLink("Mobile manifest", "/manifest-mobile.webmanifest"),
+].join("\n")}
+
+## Contributors And Credits
+
+${contributorLinks}
+
+## Source File Map
+
+${sourceLinks}
+`;
+}
+
 function writeFile(rel, text) {
   const target = path.join(publicRoot, rel);
   ensureDir(path.dirname(target));
@@ -2176,6 +2291,8 @@ async function main() {
     writeFile(`pdf-preview/${doc.id}/index.html`, pdfPreviewPage(doc.id));
   }
   writeFile("privacy/index.html", privacyPage());
+  writeFile("llms.txt", llmsTxt());
+  writeFile("llms-full.txt", llmsFullTxt());
 }
 
 await main();

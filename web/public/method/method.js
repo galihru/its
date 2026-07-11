@@ -77,7 +77,7 @@ window.addEventListener("DOMContentLoaded", () => {
       ctx.fill();
       ctx.drawImage(img, x + 6, y + 6, size - 12, size - 12);
     };
-    img.src = "/its.png";
+    img.src = "/icons/icon-96.png";
   };
 
   const renderQr = (box) => {
@@ -234,7 +234,7 @@ window.addEventListener("DOMContentLoaded", () => {
     qrEl.innerHTML = [
       "<span class=\"qr-stack\">",
       "<img class=\"qr-image\" src=\"/method/assets/qr/" + slug + ".svg\" alt=\"QR code preview\">",
-      "<img class=\"qr-logo\" src=\"/its.png\" alt=\"\">",
+      "<img class=\"qr-logo\" src=\"/icons/icon-96.png\" alt=\"\">",
       "</span>",
       "<span>QR Preview</span>"
     ].join("");
@@ -599,6 +599,10 @@ window.addEventListener("DOMContentLoaded", () => {
   searchInput?.addEventListener("input", () => {
     window.clearTimeout(searchTimer);
     searchTimer = window.setTimeout(runSearch, 180);
+  });
+  searchPanel?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    runSearch();
   });
   document.querySelector("[data-pdf-search-prev]")?.addEventListener("click", () => goSearch(-1));
   document.querySelector("[data-pdf-search-next]")?.addEventListener("click", () => goSearch(1));

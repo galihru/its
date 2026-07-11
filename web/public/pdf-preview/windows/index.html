@@ -18,8 +18,9 @@
     <meta name="twitter:image" content="https://itstelkom.web.app/pdf-preview/og/windows.svg" />
     <meta name="theme-color" content="#2a2a35" />
     <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="alternate" type="text/markdown" href="/llms.txt" title="ITS Maps llms.txt" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
-    <link rel="icon" type="image/png" href="/its.png" />
+    <link rel="icon" type="image/png" href="/icons/icon-96.png" />
     <link rel="stylesheet" href="/method/method.css" />
     <script src="/method/method.js" defer></script>
   </head>
@@ -52,7 +53,7 @@
         <section class="pdf-panel is-active" data-pdf-panel="details">
           <div class="pdf-cover-wrap">
             <div class="pdf-cover-page" data-pdf-cover-page aria-label="Cover halaman pertama"></div>
-            <img data-pdf-cover src="/method/assets/its.png" alt="">
+            <img data-pdf-cover src="/pdf-preview/og/windows.svg" alt="">
           </div>
           <p class="pdf-kicker" data-pdf-kind>Documentation</p>
           <h1 data-pdf-title>ITS Maps Documentation</h1>
@@ -66,7 +67,7 @@
     <div class="qr-card pdf-qr" data-qr-static="pdf-documentation" data-pdf-qr>
       <span class="qr-stack">
         <img class="qr-image" src="/method/assets/qr/pdf-documentation.svg" alt="QR code QR Preview" loading="lazy">
-        <img class="qr-logo" src="/its.png" alt="">
+        <img class="qr-logo" src="/icons/icon-96.png" alt="">
       </span>
       <span>QR Preview</span>
     </div>
@@ -85,10 +86,10 @@
         </section>
       </aside>
       <div class="pdf-sidebar-scrim" data-pdf-sidebar-scrim></div>
-      <section class="pdf-search-panel" data-pdf-search-panel hidden aria-label="Pencarian dokumen">
+      <form class="pdf-search-panel" data-pdf-search-panel hidden aria-label="Pencarian dokumen" toolname="search_its_maps_pdf_preview" tooldescription="Search the active ITS Maps PDF preview document and navigate to matching pages.">
         <label>
           <span>Search document</span>
-          <input type="search" data-pdf-search-input placeholder="Ketik kata kunci..." autocomplete="off" />
+          <input type="search" name="query" data-pdf-search-input placeholder="Ketik kata kunci..." autocomplete="off" toolparamdescription="Keyword or phrase to find inside the active ITS Maps documentation PDF preview." />
         </label>
         <output data-pdf-search-count>0 hasil</output>
         <div>
@@ -96,7 +97,7 @@
           <button type="button" data-pdf-search-next>Next</button>
           <button type="button" data-pdf-search-close>Close</button>
         </div>
-      </section>
+      </form>
       <main class="pdf-stage" aria-label="PDF document preview">
         <nav class="pdf-rail" aria-label="Viewer shortcut">
           <button type="button" data-pdf-rail="info" aria-label="Info">i</button>

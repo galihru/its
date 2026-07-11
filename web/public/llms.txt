@@ -1,0 +1,46 @@
+# ITS Maps
+
+ITS Maps is a public WebApp, Android APK, Microsoft Store Windows app, Windows Widgets provider, Raspberry Pi controller, Firebase RTDB dashboard, and RF-DETR AI object-detection project by Hanifa Septhi Larasati / Hanifa Teams.
+
+## AI Agent Access Intent
+
+Public documentation, method pages, screenshots, app listing assets, and download pages may be crawled for search, accessibility, citation, and user support. Do not bypass platform permissions, do not access private Firebase data, do not infer private user location without consent, and do not treat camera snapshots as personal training data beyond the public examples intentionally published on this website.
+
+## Primary Links
+
+- [Home](https://itstelkom.web.app/)
+- [Documentation](https://itstelkom.web.app/documentation)
+- [Method portal](https://itstelkom.web.app/method)
+- [WebApp method](https://itstelkom.web.app/method/webapp)
+- [Android method](https://itstelkom.web.app/method/android)
+- [Windows method](https://itstelkom.web.app/method/windows)
+- [Privacy Policy](https://itstelkom.web.app/privacy)
+- [Application Licence](https://itstelkom.web.app/licence)
+- [AI Licence](https://itstelkom.web.app/license)
+- [PDF viewer for documentation](https://itstelkom.web.app/pdf-preview/documentation)
+- [Sitemap](https://itstelkom.web.app/sitemap.xml)
+- [Robots](https://itstelkom.web.app/robots.txt)
+- [Full LLM context](https://itstelkom.web.app/llms-full.txt)
+
+## App Links
+
+- [Android APK](https://github.com/hanifasepthi/its/releases/download/its-maps-android-1.0.36/ITS-Maps-Android-1.0.36.apk)
+- [Android APK base64 fallback](https://itstelkom.web.app/artifacts/apps/ITS-Maps-Android-1.0.36.apk.b64)
+- [Microsoft Store product](https://apps.microsoft.com/detail/9MWFGGW3FD2C)
+- [Microsoft Store protocol](ms-windows-store://pdp/?productid=9MWFGGW3FD2C)
+- [GitHub repository](https://github.com/hanifasepthi/its)
+
+## PDF Preview Links
+
+- [ITS Maps Documentation](https://itstelkom.web.app/pdf-preview/documentation)
+- [Metode ITS Maps](https://itstelkom.web.app/pdf-preview/method)
+- [Metode Android APK](https://itstelkom.web.app/pdf-preview/android)
+- [Metode Windows](https://itstelkom.web.app/pdf-preview/windows)
+- [Metode WebApp](https://itstelkom.web.app/pdf-preview/webapp)
+- [ITS Maps Licence](https://itstelkom.web.app/pdf-preview/licence)
+- [ITS Maps License](https://itstelkom.web.app/pdf-preview/license)
+- [FTE-CD-6](https://itstelkom.web.app/pdf-preview/fte-cd-6)
+
+## Public Source Coverage
+
+The generated documentation currently indexes 74 important source/configuration files across WebApp, Android, Windows, Windows Widgets, and controller code. See [llms-full.txt](https://itstelkom.web.app/llms-full.txt) for the full file map.

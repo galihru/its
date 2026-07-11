@@ -12,7 +12,7 @@
   <rect width="1200" height="630" fill="url(#bg)"/>
   <rect x="78" y="72" width="1044" height="486" rx="34" fill="#fff" stroke="#cddceb" filter="url(#shadow)"/>
   <rect x="126" y="116" width="272" height="356" rx="8" fill="#ffffff" stroke="#d8e2ee"/>
-  <image href="https://itstelkom.web.app/its.png" x="214" y="190" width="96" height="96" preserveAspectRatio="xMidYMid meet"/>
+  <image href="https://itstelkom.web.app/icons/icon-192.png" x="214" y="190" width="96" height="96" preserveAspectRatio="xMidYMid meet"/>
   <text x="262" y="338" text-anchor="middle" font-family="Arial, sans-serif" font-size="24" font-weight="700" fill="#142033">ITS Maps</text>
   <text x="262" y="374" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" fill="#5f6e7c">HTML documentation</text>
   <text x="452" y="172" font-family="Arial, sans-serif" font-size="22" font-weight="800" fill="#087568" letter-spacing="2">PDF VIEWER</text>
@@ -22,5 +22,5 @@
   <text x="452" y="430" font-family="Arial, sans-serif" font-size="26" fill="#334155">Dibuat oleh Hanifa Septhi Larasati</text>
   <text x="452" y="468" font-family="Arial, sans-serif" font-size="24" fill="#64748b">Tahun 2026 • Hanifa Teams • itstelkom.web.app</text>
   <rect x="1006" y="482" width="74" height="74" rx="18" fill="#fff" stroke="#d8e2ee"/>
-  <image href="https://itstelkom.web.app/its.png" x="1019" y="495" width="48" height="48" preserveAspectRatio="xMidYMid meet"/>
+  <image href="https://itstelkom.web.app/icons/icon-96.png" x="1019" y="495" width="48" height="48" preserveAspectRatio="xMidYMid meet"/>
 </svg>

@@ -1998,6 +1998,14 @@ body {
   font: inherit;
   font-weight: 800;
   cursor: pointer;
+  text-decoration: none;
+}
+
+.map-license-link:hover,
+.map-license-link:focus-visible {
+  color: #075985;
+  text-decoration: underline;
+  outline: none;
 }
 
 .map-license-separator {
