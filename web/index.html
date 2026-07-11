@@ -20,7 +20,10 @@
   <link rel="canonical" href="https://itstelkom.web.app/" />
   <meta name="robots" content="index, follow" />
   <meta name="keywords" content="ITS Maps, Raspberry Pi, live traffic, peta, lalu lintas, kamera, RF-DETR" />
-  <meta name="author" content="ITS Maps" />
+  <meta name="author" content="Hanifa Septhi Larasati, Hanifa Teams" />
+  <meta name="subject" content="Realtime traffic map, Raspberry Pi controller, Firebase RTDB, Windows Widgets, Android APK, Microsoft Store app, and RF-DETR AI object detection." />
+  <meta name="creator" content="Hanifa Septhi Larasati" />
+  <meta name="publisher" content="Hanifa Teams" />
   <meta property="og:site_name" content="ITS Maps" />
   <meta property="og:type" content="website" />
   <meta property="og:title" content="ITS Maps | Raspberry Pi Live Traffic" />
@@ -32,6 +35,9 @@
   <meta name="twitter:title" content="ITS Maps | Raspberry Pi Live Traffic" />
   <meta name="twitter:description" content="Dashboard peta ITS realtime dengan kamera Raspberry dan AI RF-DETR." />
   <meta name="twitter:image" content="/screenshots/desktop-home.png" />
+  <link rel="author" href="https://github.com/hanifasepthi/its" />
+  <link rel="help" href="https://itstelkom.web.app/documentation" />
+  <link rel="license" href="https://itstelkom.web.app/licence" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="mobile-web-app-capable" content="yes" />
@@ -40,19 +46,159 @@
   <link rel="apple-touch-icon" href="/icons/icon-192.png" />
   <link rel="icon" type="image/png" sizes="96x96" href="/icons/icon-96.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+  <style>
+    .webmcp-tools {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    .webmcp-tools:focus-within {
+      position: fixed;
+      z-index: 2147483000;
+      inset: auto 16px 16px auto;
+      width: min(360px, calc(100vw - 32px));
+      height: auto;
+      margin: 0;
+      padding: 16px;
+      clip: auto;
+      white-space: normal;
+      overflow: visible;
+      color: #0f172a;
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      border-radius: 18px;
+      box-shadow: 0 22px 60px rgba(15, 23, 42, 0.18);
+      font: 14px/1.5 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    .webmcp-tools form {
+      display: grid;
+      gap: 8px;
+      margin-block-start: 10px;
+    }
+
+    .webmcp-tools select,
+    .webmcp-tools input,
+    .webmcp-tools button {
+      min-height: 38px;
+      border-radius: 10px;
+      border: 1px solid #cbd5e1;
+      padding: 8px 10px;
+      font: inherit;
+    }
+
+    .webmcp-tools button {
+      color: #ffffff;
+      background: #0f172a;
+      cursor: pointer;
+    }
+  </style>
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
-    "@type": "WebSite",
-    "name": "ITS Maps",
-    "url": "https://itstelkom.web.app/",
-    "description": "Dashboard peta ITS realtime untuk Raspberry Pi controller, lalu lintas, kamera, dan AI RF-DETR."
+    "@graph": [
+      {
+        "@type": "Organization",
+        "@id": "https://itstelkom.web.app/#organization",
+        "name": "Hanifa Teams",
+        "url": "https://itstelkom.web.app/",
+        "logo": "https://itstelkom.web.app/icons/icon-192.png",
+        "founder": {
+          "@type": "Person",
+          "name": "Hanifa Septhi Larasati"
+        },
+        "sameAs": [
+          "https://github.com/hanifasepthi/its"
+        ]
+      },
+      {
+        "@type": "WebSite",
+        "@id": "https://itstelkom.web.app/#website",
+        "name": "ITS Maps",
+        "url": "https://itstelkom.web.app/",
+        "publisher": {
+          "@id": "https://itstelkom.web.app/#organization"
+        },
+        "description": "Dashboard peta ITS realtime untuk Raspberry Pi controller, lalu lintas, kamera, Firebase RTDB, Windows Widgets, Android APK, Microsoft Store app, dan AI RF-DETR."
+      },
+      {
+        "@type": "SoftwareApplication",
+        "@id": "https://itstelkom.web.app/#software",
+        "name": "ITS Maps",
+        "applicationCategory": "NavigationApplication",
+        "operatingSystem": "Web, Android, Windows 10, Windows 11",
+        "url": "https://itstelkom.web.app/",
+        "downloadUrl": "https://itstelkom.web.app/documentation#download",
+        "softwareHelp": "https://itstelkom.web.app/documentation",
+        "creator": {
+          "@id": "https://itstelkom.web.app/#organization"
+        },
+        "description": "ITS Maps memantau peta, kamera lalu lintas, status Raspberry Pi, dan object detection RF-DETR secara realtime."
+      },
+      {
+        "@type": "AboutPage",
+        "@id": "https://itstelkom.web.app/#about",
+        "name": "About ITS Maps",
+        "url": "https://itstelkom.web.app/",
+        "isPartOf": {
+          "@id": "https://itstelkom.web.app/#website"
+        },
+        "mainEntity": {
+          "@id": "https://itstelkom.web.app/#software"
+        },
+        "description": "ITS Maps adalah dashboard realtime untuk peta ITS, Raspberry Pi controller, kamera lalu lintas, AI RF-DETR, Firebase RTDB, Android APK, Microsoft Store app, dan Windows Widgets."
+      }
+    ]
   }
   </script>
 </head>
 
 <body>
   <div id="app"></div>
+  <section class="webmcp-tools" aria-label="ITS Maps WebMCP tools">
+    <h2>ITS Maps WebMCP tools</h2>
+    <form method="get" action="/documentation" data-webmcp-open-resource toolname="open_its_maps_resource" tooldescription="Open a public ITS Maps resource such as documentation, privacy policy, licence, PDF preview, llms.txt, or the realtime map.">
+      <label>
+        Resource
+        <select name="resource" toolparamdescription="Public ITS Maps resource to open. Choose one of home, documentation, method, privacy, licence, ai-license, pdf, llms, or about.">
+          <option value="documentation">documentation</option>
+          <option value="home">home</option>
+          <option value="method">method</option>
+          <option value="privacy">privacy</option>
+          <option value="licence">licence</option>
+          <option value="ai-license">ai-license</option>
+          <option value="pdf">pdf</option>
+          <option value="llms">llms</option>
+          <option value="about">about</option>
+        </select>
+      </label>
+      <button type="submit">Open ITS Maps resource</button>
+    </form>
+    <form method="get" action="/documentation" data-webmcp-site-search toolname="search_its_maps_site" tooldescription="Search public ITS Maps documentation and route the user to the documentation page with the requested query.">
+      <label>
+        Query
+        <input type="search" name="query" autocomplete="off" toolparamdescription="Search query for public ITS Maps documentation, downloads, widgets, AI, privacy, or source-code explanation.">
+      </label>
+      <button type="submit">Search ITS Maps</button>
+    </form>
+    <form method="get" action="/llms.txt" data-webmcp-public-context toolname="get_its_maps_public_context" tooldescription="Return public ITS Maps AI-agent context from llms.txt or llms-full.txt.">
+      <label>
+        Format
+        <select name="format" toolparamdescription="Context size to return for AI agents. Use summary for llms.txt or full for llms-full.txt.">
+          <option value="summary">summary</option>
+          <option value="full">full</option>
+        </select>
+      </label>
+      <button type="submit">Read ITS Maps context</button>
+    </form>
+  </section>
   <script type="module" src="./src/main.ts"></script>
 </body>
 

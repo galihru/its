@@ -173,8 +173,8 @@ const green = Math.min(120, Math.max(10, 0.85 * total + 8));</code></pre>
 
         <div role="row">
           <span role="cell"><code title="web/src/main.ts">web/src/main.ts</code></span>
-          <span role="cell">11.664</span>
-          <span role="cell">10.737</span>
+          <span role="cell">11.801</span>
+          <span role="cell">10.860</span>
           <span role="cell">
     <span class="symbol-cell">
       <button class="symbol-trigger" type="button" aria-describedby="symbols-web-src-main-ts" aria-label="Lihat simbol utama web/src/main.ts">...</button>
@@ -291,8 +291,8 @@ const green = Math.min(120, Math.max(10, 0.85 * total + 8));</code></pre>
 
         <div role="row">
           <span role="cell"><code title="web/index.html">web/index.html</code></span>
-          <span role="cell">60</span>
-          <span role="cell">56</span>
+          <span role="cell">206</span>
+          <span role="cell">198</span>
           <span role="cell">template / konfigurasi</span>
         </div>
 
@@ -302,7 +302,7 @@ const green = Math.min(120, Math.max(10, 0.85 * total + 8));</code></pre>
     <details class="source-file" open>
       <summary>
         <span>web/src/main.ts</span>
-        <small>11.664 baris</small>
+        <small>11.801 baris</small>
       </summary>
 
         <div class="symbol-list" aria-label="Daftar simbol web/src/main.ts">
@@ -70272,30 +70272,852 @@ const green = Math.min(120, Math.max(10, 0.85 * total + 8));</code></pre>
 
             <div role="row" id="web-src-main-ts-11660">
               <span role="cell" class="line-no">11660</span>
-              <code role="cell">if (!staticRoute) {</code>
-              <span role="cell">Percabangan logika; kode memilih jalur berdasarkan status perangkat, izin, data RTDB, atau kondisi UI.</span>
+              <code role="cell">type ItsWebMcpResource = &quot;home&quot; | &quot;documentation&quot; | &quot;method&quot; | &quot;privacy&quot; | &quot;licence&quot; | &quot;ai-license&quot; | &quot;pdf&quot; | &quot;llms&quot; | &quot;about&quot;;</code>
+              <span role="cell">Mendefinisikan kontrak data agar state, payload, dan return value mempunyai bentuk yang konsisten.</span>
             </div>
 
             <div role="row" id="web-src-main-ts-11661">
               <span role="cell" class="line-no">11661</span>
-              <code role="cell">  itsCreateSplash();</code>
-              <span role="cell">Instruksi implementasi pada web/src/main.ts:11661; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+              <code role="cell"> </code>
+              <span role="cell">Baris kosong yang memisahkan blok agar struktur kode lebih mudah dibaca.</span>
             </div>
 
             <div role="row" id="web-src-main-ts-11662">
               <span role="cell" class="line-no">11662</span>
-              <code role="cell">  itsCreateWindowsDownloadButton();</code>
-              <span role="cell">Instruksi implementasi pada web/src/main.ts:11662; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+              <code role="cell">const ITS_WEBMCP_RESOURCE_URLS: Record&lt;ItsWebMcpResource, string&gt; = {</code>
+              <span role="cell">Membuat variabel/konstanta. Nilai ini dipakai ulang oleh renderer, service, widget, atau proses sinkronisasi.</span>
             </div>
 
             <div role="row" id="web-src-main-ts-11663">
               <span role="cell" class="line-no">11663</span>
-              <code role="cell">}</code>
-              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
+              <code role="cell">  home: &quot;/&quot;,</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11663; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-src-main-ts-11664">
               <span role="cell" class="line-no">11664</span>
+              <code role="cell">  documentation: &quot;/documentation&quot;,</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11664; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11665">
+              <span role="cell" class="line-no">11665</span>
+              <code role="cell">  method: &quot;/method&quot;,</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11665; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11666">
+              <span role="cell" class="line-no">11666</span>
+              <code role="cell">  privacy: &quot;/privacy&quot;,</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11666; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11667">
+              <span role="cell" class="line-no">11667</span>
+              <code role="cell">  licence: &quot;/licence&quot;,</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11667; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11668">
+              <span role="cell" class="line-no">11668</span>
+              <code role="cell">  &quot;ai-license&quot;: &quot;/license&quot;,</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11668; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11669">
+              <span role="cell" class="line-no">11669</span>
+              <code role="cell">  pdf: &quot;/pdf-preview/documentation&quot;,</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11669; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11670">
+              <span role="cell" class="line-no">11670</span>
+              <code role="cell">  llms: &quot;/llms.txt&quot;,</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11670; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11671">
+              <span role="cell" class="line-no">11671</span>
+              <code role="cell">  about: &quot;/#about&quot;,</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11671; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11672">
+              <span role="cell" class="line-no">11672</span>
+              <code role="cell">};</code>
+              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11673">
+              <span role="cell" class="line-no">11673</span>
+              <code role="cell"> </code>
+              <span role="cell">Baris kosong yang memisahkan blok agar struktur kode lebih mudah dibaca.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11674">
+              <span role="cell" class="line-no">11674</span>
+              <code role="cell">function itsAbsoluteUrl(pathname: string): string {</code>
+              <span role="cell">Membuka fungsi/prosedur; parameter di baris ini menjadi input, lalu blok berikutnya menjalankan logika.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11675">
+              <span role="cell" class="line-no">11675</span>
+              <code role="cell">  return new URL(pathname, &quot;https://itstelkom.web.app&quot;).href;</code>
+              <span role="cell">Operasi asinkron/network. Data dikirim atau diambil dari Firebase, kamera, service lokal, atau endpoint aplikasi.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11676">
+              <span role="cell" class="line-no">11676</span>
+              <code role="cell">}</code>
+              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11677">
+              <span role="cell" class="line-no">11677</span>
+              <code role="cell"> </code>
+              <span role="cell">Baris kosong yang memisahkan blok agar struktur kode lebih mudah dibaca.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11678">
+              <span role="cell" class="line-no">11678</span>
+              <code role="cell">function itsOpenWebMcpResource(resourceValue: FormDataEntryValue | null): { resource: ItsWebMcpResource; url: string; message: string } {</code>
+              <span role="cell">Membuka fungsi/prosedur; parameter di baris ini menjadi input, lalu blok berikutnya menjalankan logika.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11679">
+              <span role="cell" class="line-no">11679</span>
+              <code role="cell">  const resource = String(resourceValue || &quot;documentation&quot;) as ItsWebMcpResource;</code>
+              <span role="cell">Membuat variabel/konstanta. Nilai ini dipakai ulang oleh renderer, service, widget, atau proses sinkronisasi.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11680">
+              <span role="cell" class="line-no">11680</span>
+              <code role="cell">  const safeResource = resource in ITS_WEBMCP_RESOURCE_URLS ? resource : &quot;documentation&quot;;</code>
+              <span role="cell">Membuat variabel/konstanta. Nilai ini dipakai ulang oleh renderer, service, widget, atau proses sinkronisasi.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11681">
+              <span role="cell" class="line-no">11681</span>
+              <code role="cell">  if (safeResource === &quot;about&quot;) {</code>
+              <span role="cell">Percabangan logika; kode memilih jalur berdasarkan status perangkat, izin, data RTDB, atau kondisi UI.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11682">
+              <span role="cell" class="line-no">11682</span>
+              <code role="cell">    itsShowSiteInfoModal(&quot;about-site&quot;);</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11682; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11683">
+              <span role="cell" class="line-no">11683</span>
+              <code role="cell">  } else {</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11683; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11684">
+              <span role="cell" class="line-no">11684</span>
+              <code role="cell">    window.location.assign(ITS_WEBMCP_RESOURCE_URLS[safeResource]);</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11684; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11685">
+              <span role="cell" class="line-no">11685</span>
+              <code role="cell">  }</code>
+              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11686">
+              <span role="cell" class="line-no">11686</span>
+              <code role="cell">  return {</code>
+              <span role="cell">Menghasilkan nilai akhir dari fungsi atau menghentikan jalur eksekusi setelah kondisi terpenuhi.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11687">
+              <span role="cell" class="line-no">11687</span>
+              <code role="cell">    resource: safeResource,</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11687; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11688">
+              <span role="cell" class="line-no">11688</span>
+              <code role="cell">    url: itsAbsoluteUrl(ITS_WEBMCP_RESOURCE_URLS[safeResource]),</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11688; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11689">
+              <span role="cell" class="line-no">11689</span>
+              <code role="cell">    message: `Opened ITS Maps ${safeResource}.`,</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11690">
+              <span role="cell" class="line-no">11690</span>
+              <code role="cell">  };</code>
+              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11691">
+              <span role="cell" class="line-no">11691</span>
+              <code role="cell">}</code>
+              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11692">
+              <span role="cell" class="line-no">11692</span>
+              <code role="cell"> </code>
+              <span role="cell">Baris kosong yang memisahkan blok agar struktur kode lebih mudah dibaca.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11693">
+              <span role="cell" class="line-no">11693</span>
+              <code role="cell">async function itsReadWebMcpContext(formatValue: FormDataEntryValue | null): Promise&lt;{ url: string; text: string }&gt; {</code>
+              <span role="cell">Membuka fungsi/prosedur; parameter di baris ini menjadi input, lalu blok berikutnya menjalankan logika.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11694">
+              <span role="cell" class="line-no">11694</span>
+              <code role="cell">  const format = String(formatValue || &quot;summary&quot;).toLowerCase() === &quot;full&quot; ? &quot;full&quot; : &quot;summary&quot;;</code>
+              <span role="cell">Membuat variabel/konstanta. Nilai ini dipakai ulang oleh renderer, service, widget, atau proses sinkronisasi.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11695">
+              <span role="cell" class="line-no">11695</span>
+              <code role="cell">  const url = format === &quot;full&quot; ? &quot;/llms-full.txt&quot; : &quot;/llms.txt&quot;;</code>
+              <span role="cell">Membuat variabel/konstanta. Nilai ini dipakai ulang oleh renderer, service, widget, atau proses sinkronisasi.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11696">
+              <span role="cell" class="line-no">11696</span>
+              <code role="cell">  const response = await fetch(url, { cache: &quot;no-store&quot; });</code>
+              <span role="cell">Membuat variabel/konstanta. Nilai ini dipakai ulang oleh renderer, service, widget, atau proses sinkronisasi.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11697">
+              <span role="cell" class="line-no">11697</span>
+              <code role="cell">  const text = await response.text();</code>
+              <span role="cell">Membuat variabel/konstanta. Nilai ini dipakai ulang oleh renderer, service, widget, atau proses sinkronisasi.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11698">
+              <span role="cell" class="line-no">11698</span>
+              <code role="cell">  return { url: itsAbsoluteUrl(url), text };</code>
+              <span role="cell">Menghasilkan nilai akhir dari fungsi atau menghentikan jalur eksekusi setelah kondisi terpenuhi.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11699">
+              <span role="cell" class="line-no">11699</span>
+              <code role="cell">}</code>
+              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11700">
+              <span role="cell" class="line-no">11700</span>
+              <code role="cell"> </code>
+              <span role="cell">Baris kosong yang memisahkan blok agar struktur kode lebih mudah dibaca.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11701">
+              <span role="cell" class="line-no">11701</span>
+              <code role="cell">function itsWebMcpContentResponse(text: string, structuredContent?: unknown): unknown {</code>
+              <span role="cell">Membuka fungsi/prosedur; parameter di baris ini menjadi input, lalu blok berikutnya menjalankan logika.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11702">
+              <span role="cell" class="line-no">11702</span>
+              <code role="cell">  return {</code>
+              <span role="cell">Menghasilkan nilai akhir dari fungsi atau menghentikan jalur eksekusi setelah kondisi terpenuhi.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11703">
+              <span role="cell" class="line-no">11703</span>
+              <code role="cell">    content: [{ type: &quot;text&quot;, text }],</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11703; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11704">
+              <span role="cell" class="line-no">11704</span>
+              <code role="cell">    structuredContent,</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11704; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11705">
+              <span role="cell" class="line-no">11705</span>
+              <code role="cell">  };</code>
+              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11706">
+              <span role="cell" class="line-no">11706</span>
+              <code role="cell">}</code>
+              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11707">
+              <span role="cell" class="line-no">11707</span>
+              <code role="cell"> </code>
+              <span role="cell">Baris kosong yang memisahkan blok agar struktur kode lebih mudah dibaca.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11708">
+              <span role="cell" class="line-no">11708</span>
+              <code role="cell">function itsHandleWebMcpSubmit(event: SubmitEvent): void {</code>
+              <span role="cell">Membuka fungsi/prosedur; parameter di baris ini menjadi input, lalu blok berikutnya menjalankan logika.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11709">
+              <span role="cell" class="line-no">11709</span>
+              <code role="cell">  const form = event.currentTarget as HTMLFormElement | null;</code>
+              <span role="cell">Membuat variabel/konstanta. Nilai ini dipakai ulang oleh renderer, service, widget, atau proses sinkronisasi.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11710">
+              <span role="cell" class="line-no">11710</span>
+              <code role="cell">  if (!form) return;</code>
+              <span role="cell">Percabangan logika; kode memilih jalur berdasarkan status perangkat, izin, data RTDB, atau kondisi UI.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11711">
+              <span role="cell" class="line-no">11711</span>
+              <code role="cell">  event.preventDefault();</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11711; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11712">
+              <span role="cell" class="line-no">11712</span>
+              <code role="cell">  const data = new FormData(form);</code>
+              <span role="cell">Membuat variabel/konstanta. Nilai ini dipakai ulang oleh renderer, service, widget, atau proses sinkronisasi.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11713">
+              <span role="cell" class="line-no">11713</span>
+              <code role="cell">  const submitEvent = event as SubmitEvent &amp; { agentInvoked?: boolean; respondWith?: (response: Promise&lt;unknown&gt; | unknown) =&gt; void };</code>
+              <span role="cell">Membuat variabel/konstanta. Nilai ini dipakai ulang oleh renderer, service, widget, atau proses sinkronisasi.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11714">
+              <span role="cell" class="line-no">11714</span>
+              <code role="cell"> </code>
+              <span role="cell">Baris kosong yang memisahkan blok agar struktur kode lebih mudah dibaca.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11715">
+              <span role="cell" class="line-no">11715</span>
+              <code role="cell">  if (form.matches(&quot;[data-webmcp-open-resource]&quot;)) {</code>
+              <span role="cell">Percabangan logika; kode memilih jalur berdasarkan status perangkat, izin, data RTDB, atau kondisi UI.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11716">
+              <span role="cell" class="line-no">11716</span>
+              <code role="cell">    const result = itsOpenWebMcpResource(data.get(&quot;resource&quot;));</code>
+              <span role="cell">Membuat variabel/konstanta. Nilai ini dipakai ulang oleh renderer, service, widget, atau proses sinkronisasi.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11717">
+              <span role="cell" class="line-no">11717</span>
+              <code role="cell">    submitEvent.respondWith?.(itsWebMcpContentResponse(result.message, result));</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11717; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11718">
+              <span role="cell" class="line-no">11718</span>
+              <code role="cell">    return;</code>
+              <span role="cell">Menghasilkan nilai akhir dari fungsi atau menghentikan jalur eksekusi setelah kondisi terpenuhi.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11719">
+              <span role="cell" class="line-no">11719</span>
+              <code role="cell">  }</code>
+              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11720">
+              <span role="cell" class="line-no">11720</span>
+              <code role="cell"> </code>
+              <span role="cell">Baris kosong yang memisahkan blok agar struktur kode lebih mudah dibaca.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11721">
+              <span role="cell" class="line-no">11721</span>
+              <code role="cell">  if (form.matches(&quot;[data-webmcp-site-search]&quot;)) {</code>
+              <span role="cell">Percabangan logika; kode memilih jalur berdasarkan status perangkat, izin, data RTDB, atau kondisi UI.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11722">
+              <span role="cell" class="line-no">11722</span>
+              <code role="cell">    const query = String(data.get(&quot;query&quot;) || &quot;&quot;).trim();</code>
+              <span role="cell">Membuat variabel/konstanta. Nilai ini dipakai ulang oleh renderer, service, widget, atau proses sinkronisasi.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11723">
+              <span role="cell" class="line-no">11723</span>
+              <code role="cell">    const target = query ? `/documentation?search=${encodeURIComponent(query)}#kode-baris-per-baris` : &quot;/documentation&quot;;</code>
+              <span role="cell">Membuat variabel/konstanta. Nilai ini dipakai ulang oleh renderer, service, widget, atau proses sinkronisasi.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11724">
+              <span role="cell" class="line-no">11724</span>
+              <code role="cell">    window.location.assign(target);</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11724; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11725">
+              <span role="cell" class="line-no">11725</span>
+              <code role="cell">    const result = { query, url: itsAbsoluteUrl(target) };</code>
+              <span role="cell">Membuat variabel/konstanta. Nilai ini dipakai ulang oleh renderer, service, widget, atau proses sinkronisasi.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11726">
+              <span role="cell" class="line-no">11726</span>
+              <code role="cell">    submitEvent.respondWith?.(itsWebMcpContentResponse(`Opened ITS Maps documentation search for &quot;${query || &quot;overview&quot;}&quot;.`, result));</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11727">
+              <span role="cell" class="line-no">11727</span>
+              <code role="cell">    return;</code>
+              <span role="cell">Menghasilkan nilai akhir dari fungsi atau menghentikan jalur eksekusi setelah kondisi terpenuhi.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11728">
+              <span role="cell" class="line-no">11728</span>
+              <code role="cell">  }</code>
+              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11729">
+              <span role="cell" class="line-no">11729</span>
+              <code role="cell"> </code>
+              <span role="cell">Baris kosong yang memisahkan blok agar struktur kode lebih mudah dibaca.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11730">
+              <span role="cell" class="line-no">11730</span>
+              <code role="cell">  if (form.matches(&quot;[data-webmcp-public-context]&quot;)) {</code>
+              <span role="cell">Percabangan logika; kode memilih jalur berdasarkan status perangkat, izin, data RTDB, atau kondisi UI.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11731">
+              <span role="cell" class="line-no">11731</span>
+              <code role="cell">    const task = itsReadWebMcpContext(data.get(&quot;format&quot;)).then((result) =&gt; itsWebMcpContentResponse(result.text, result));</code>
+              <span role="cell">Membuat variabel/konstanta. Nilai ini dipakai ulang oleh renderer, service, widget, atau proses sinkronisasi.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11732">
+              <span role="cell" class="line-no">11732</span>
+              <code role="cell">    submitEvent.respondWith?.(task);</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11732; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11733">
+              <span role="cell" class="line-no">11733</span>
+              <code role="cell">    if (!submitEvent.agentInvoked) void task.then((result) =&gt; {</code>
+              <span role="cell">Membuka fungsi/prosedur; parameter di baris ini menjadi input, lalu blok berikutnya menjalankan logika.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11734">
+              <span role="cell" class="line-no">11734</span>
+              <code role="cell">      const context = (result as { structuredContent?: { url?: string } }).structuredContent;</code>
+              <span role="cell">Membuat variabel/konstanta. Nilai ini dipakai ulang oleh renderer, service, widget, atau proses sinkronisasi.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11735">
+              <span role="cell" class="line-no">11735</span>
+              <code role="cell">      if (context?.url) window.location.assign(context.url);</code>
+              <span role="cell">Percabangan logika; kode memilih jalur berdasarkan status perangkat, izin, data RTDB, atau kondisi UI.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11736">
+              <span role="cell" class="line-no">11736</span>
+              <code role="cell">    });</code>
+              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11737">
+              <span role="cell" class="line-no">11737</span>
+              <code role="cell">  }</code>
+              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11738">
+              <span role="cell" class="line-no">11738</span>
+              <code role="cell">}</code>
+              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11739">
+              <span role="cell" class="line-no">11739</span>
+              <code role="cell"> </code>
+              <span role="cell">Baris kosong yang memisahkan blok agar struktur kode lebih mudah dibaca.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11740">
+              <span role="cell" class="line-no">11740</span>
+              <code role="cell">function itsRegisterWebMcpTools(): void {</code>
+              <span role="cell">Membuka fungsi/prosedur; parameter di baris ini menjadi input, lalu blok berikutnya menjalankan logika.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11741">
+              <span role="cell" class="line-no">11741</span>
+              <code role="cell">  document.querySelectorAll&lt;HTMLFormElement&gt;(&quot;[data-webmcp-open-resource], [data-webmcp-site-search], [data-webmcp-public-context]&quot;)</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11742">
+              <span role="cell" class="line-no">11742</span>
+              <code role="cell">    .forEach((form) =&gt; form.addEventListener(&quot;submit&quot;, itsHandleWebMcpSubmit));</code>
+              <span role="cell">Iterasi/transformasi koleksi; baris ini mengolah banyak item seperti perangkat, deteksi, titik grafik, atau widget.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11743">
+              <span role="cell" class="line-no">11743</span>
+              <code role="cell"> </code>
+              <span role="cell">Baris kosong yang memisahkan blok agar struktur kode lebih mudah dibaca.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11744">
+              <span role="cell" class="line-no">11744</span>
+              <code role="cell">  const modelContext = (document as unknown as {</code>
+              <span role="cell">Membuat variabel/konstanta. Nilai ini dipakai ulang oleh renderer, service, widget, atau proses sinkronisasi.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11745">
+              <span role="cell" class="line-no">11745</span>
+              <code role="cell">    modelContext?: {</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11745; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11746">
+              <span role="cell" class="line-no">11746</span>
+              <code role="cell">      registerTool?: (tool: Record&lt;string, unknown&gt;) =&gt; Promise&lt;unknown&gt; | unknown;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11747">
+              <span role="cell" class="line-no">11747</span>
+              <code role="cell">    };</code>
+              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11748">
+              <span role="cell" class="line-no">11748</span>
+              <code role="cell">  }).modelContext;</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11748; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11749">
+              <span role="cell" class="line-no">11749</span>
+              <code role="cell"> </code>
+              <span role="cell">Baris kosong yang memisahkan blok agar struktur kode lebih mudah dibaca.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11750">
+              <span role="cell" class="line-no">11750</span>
+              <code role="cell">  if (!modelContext?.registerTool) return;</code>
+              <span role="cell">Percabangan logika; kode memilih jalur berdasarkan status perangkat, izin, data RTDB, atau kondisi UI.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11751">
+              <span role="cell" class="line-no">11751</span>
+              <code role="cell">  try {</code>
+              <span role="cell">Penanganan error agar kegagalan jaringan, media, izin, atau parsing tidak membuat aplikasi berhenti total.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11752">
+              <span role="cell" class="line-no">11752</span>
+              <code role="cell">    modelContext.registerTool({</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11752; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11753">
+              <span role="cell" class="line-no">11753</span>
+              <code role="cell">      name: &quot;get_its_maps_public_context&quot;,</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11753; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11754">
+              <span role="cell" class="line-no">11754</span>
+              <code role="cell">      description: &quot;Return public ITS Maps AI-agent context from llms.txt or llms-full.txt.&quot;,</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11754; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11755">
+              <span role="cell" class="line-no">11755</span>
+              <code role="cell">      inputSchema: {</code>
+              <span role="cell">Operasi asinkron/network. Data dikirim atau diambil dari Firebase, kamera, service lokal, atau endpoint aplikasi.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11756">
+              <span role="cell" class="line-no">11756</span>
+              <code role="cell">        type: &quot;object&quot;,</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11756; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11757">
+              <span role="cell" class="line-no">11757</span>
+              <code role="cell">        properties: {</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11757; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11758">
+              <span role="cell" class="line-no">11758</span>
+              <code role="cell">          format: {</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11758; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11759">
+              <span role="cell" class="line-no">11759</span>
+              <code role="cell">            type: &quot;string&quot;,</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11759; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11760">
+              <span role="cell" class="line-no">11760</span>
+              <code role="cell">            enum: [&quot;summary&quot;, &quot;full&quot;],</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11760; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11761">
+              <span role="cell" class="line-no">11761</span>
+              <code role="cell">            description: &quot;Use summary for llms.txt or full for llms-full.txt.&quot;,</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11761; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11762">
+              <span role="cell" class="line-no">11762</span>
+              <code role="cell">          },</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11762; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11763">
+              <span role="cell" class="line-no">11763</span>
+              <code role="cell">        },</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11763; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11764">
+              <span role="cell" class="line-no">11764</span>
+              <code role="cell">      },</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11764; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11765">
+              <span role="cell" class="line-no">11765</span>
+              <code role="cell">      annotations: { readOnlyHint: true },</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11765; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11766">
+              <span role="cell" class="line-no">11766</span>
+              <code role="cell">      execute: async (input: Record&lt;string, unknown&gt;) =&gt; {</code>
+              <span role="cell">Membuka fungsi/prosedur; parameter di baris ini menjadi input, lalu blok berikutnya menjalankan logika.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11767">
+              <span role="cell" class="line-no">11767</span>
+              <code role="cell">        const result = await itsReadWebMcpContext(String(input.format || &quot;summary&quot;));</code>
+              <span role="cell">Membuat variabel/konstanta. Nilai ini dipakai ulang oleh renderer, service, widget, atau proses sinkronisasi.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11768">
+              <span role="cell" class="line-no">11768</span>
+              <code role="cell">        return itsWebMcpContentResponse(result.text, result);</code>
+              <span role="cell">Menghasilkan nilai akhir dari fungsi atau menghentikan jalur eksekusi setelah kondisi terpenuhi.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11769">
+              <span role="cell" class="line-no">11769</span>
+              <code role="cell">      },</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11769; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11770">
+              <span role="cell" class="line-no">11770</span>
+              <code role="cell">    });</code>
+              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11771">
+              <span role="cell" class="line-no">11771</span>
+              <code role="cell"> </code>
+              <span role="cell">Baris kosong yang memisahkan blok agar struktur kode lebih mudah dibaca.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11772">
+              <span role="cell" class="line-no">11772</span>
+              <code role="cell">    modelContext.registerTool({</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11772; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11773">
+              <span role="cell" class="line-no">11773</span>
+              <code role="cell">      name: &quot;open_its_maps_resource&quot;,</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11773; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11774">
+              <span role="cell" class="line-no">11774</span>
+              <code role="cell">      description: &quot;Open a public ITS Maps resource such as documentation, privacy policy, licence, PDF preview, llms.txt, or the realtime map.&quot;,</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11774; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11775">
+              <span role="cell" class="line-no">11775</span>
+              <code role="cell">      inputSchema: {</code>
+              <span role="cell">Operasi asinkron/network. Data dikirim atau diambil dari Firebase, kamera, service lokal, atau endpoint aplikasi.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11776">
+              <span role="cell" class="line-no">11776</span>
+              <code role="cell">        type: &quot;object&quot;,</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11776; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11777">
+              <span role="cell" class="line-no">11777</span>
+              <code role="cell">        properties: {</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11777; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11778">
+              <span role="cell" class="line-no">11778</span>
+              <code role="cell">          resource: {</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11778; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11779">
+              <span role="cell" class="line-no">11779</span>
+              <code role="cell">            type: &quot;string&quot;,</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11779; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11780">
+              <span role="cell" class="line-no">11780</span>
+              <code role="cell">            enum: Object.keys(ITS_WEBMCP_RESOURCE_URLS),</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11780; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11781">
+              <span role="cell" class="line-no">11781</span>
+              <code role="cell">            description: &quot;Public ITS Maps resource to open.&quot;,</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11781; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11782">
+              <span role="cell" class="line-no">11782</span>
+              <code role="cell">          },</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11782; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11783">
+              <span role="cell" class="line-no">11783</span>
+              <code role="cell">        },</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11783; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11784">
+              <span role="cell" class="line-no">11784</span>
+              <code role="cell">        required: [&quot;resource&quot;],</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11784; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11785">
+              <span role="cell" class="line-no">11785</span>
+              <code role="cell">      },</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11785; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11786">
+              <span role="cell" class="line-no">11786</span>
+              <code role="cell">      execute: (input: Record&lt;string, unknown&gt;) =&gt; {</code>
+              <span role="cell">Membuka fungsi/prosedur; parameter di baris ini menjadi input, lalu blok berikutnya menjalankan logika.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11787">
+              <span role="cell" class="line-no">11787</span>
+              <code role="cell">        const result = itsOpenWebMcpResource(String(input.resource || &quot;documentation&quot;));</code>
+              <span role="cell">Membuat variabel/konstanta. Nilai ini dipakai ulang oleh renderer, service, widget, atau proses sinkronisasi.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11788">
+              <span role="cell" class="line-no">11788</span>
+              <code role="cell">        return itsWebMcpContentResponse(result.message, result);</code>
+              <span role="cell">Menghasilkan nilai akhir dari fungsi atau menghentikan jalur eksekusi setelah kondisi terpenuhi.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11789">
+              <span role="cell" class="line-no">11789</span>
+              <code role="cell">      },</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11789; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11790">
+              <span role="cell" class="line-no">11790</span>
+              <code role="cell">    });</code>
+              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11791">
+              <span role="cell" class="line-no">11791</span>
+              <code role="cell">  } catch (error) {</code>
+              <span role="cell">Penanganan error agar kegagalan jaringan, media, izin, atau parsing tidak membuat aplikasi berhenti total.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11792">
+              <span role="cell" class="line-no">11792</span>
+              <code role="cell">    console.warn(&quot;[ITS] WebMCP imperative registration skipped&quot;, error);</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11792; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11793">
+              <span role="cell" class="line-no">11793</span>
+              <code role="cell">  }</code>
+              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11794">
+              <span role="cell" class="line-no">11794</span>
+              <code role="cell">}</code>
+              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11795">
+              <span role="cell" class="line-no">11795</span>
+              <code role="cell"> </code>
+              <span role="cell">Baris kosong yang memisahkan blok agar struktur kode lebih mudah dibaca.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11796">
+              <span role="cell" class="line-no">11796</span>
+              <code role="cell">if (!staticRoute) {</code>
+              <span role="cell">Percabangan logika; kode memilih jalur berdasarkan status perangkat, izin, data RTDB, atau kondisi UI.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11797">
+              <span role="cell" class="line-no">11797</span>
+              <code role="cell">  itsRegisterWebMcpTools();</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11797; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11798">
+              <span role="cell" class="line-no">11798</span>
+              <code role="cell">  itsCreateSplash();</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11798; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11799">
+              <span role="cell" class="line-no">11799</span>
+              <code role="cell">  itsCreateWindowsDownloadButton();</code>
+              <span role="cell">Instruksi implementasi pada web/src/main.ts:11799; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11800">
+              <span role="cell" class="line-no">11800</span>
+              <code role="cell">}</code>
+              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
+            </div>
+
+            <div role="row" id="web-src-main-ts-11801">
+              <span role="cell" class="line-no">11801</span>
               <code role="cell"> </code>
               <span role="cell">Baris kosong yang memisahkan blok agar struktur kode lebih mudah dibaca.</span>
             </div>
@@ -140592,7 +141414,7 @@ const green = Math.min(120, Math.max(10, 0.85 * total + 8));</code></pre>
     <details class="source-file" >
       <summary>
         <span>web/index.html</span>
-        <small>60 baris</small>
+        <small>206 baris</small>
       </summary>
 
       <div class="code-table" role="table" aria-label="Penjelasan baris per baris web/index.html">
@@ -140736,228 +141558,1104 @@ const green = Math.min(120, Math.max(10, 0.85 * total + 8));</code></pre>
 
             <div role="row" id="web-index-html-23">
               <span role="cell" class="line-no">23</span>
-              <code role="cell">  &lt;meta name=&quot;author&quot; content=&quot;ITS Maps&quot; /&gt;</code>
+              <code role="cell">  &lt;meta name=&quot;author&quot; content=&quot;Hanifa Septhi Larasati, Hanifa Teams&quot; /&gt;</code>
               <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
             </div>
 
             <div role="row" id="web-index-html-24">
               <span role="cell" class="line-no">24</span>
-              <code role="cell">  &lt;meta property=&quot;og:site_name&quot; content=&quot;ITS Maps&quot; /&gt;</code>
-              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+              <code role="cell">  &lt;meta name=&quot;subject&quot; content=&quot;Realtime traffic map, Raspberry Pi controller, Firebase RTDB, Windows Widgets, Android APK, Microsoft Store app, and RF-DETR AI object detection.&quot; /&gt;</code>
+              <span role="cell">Operasi asinkron/network. Data dikirim atau diambil dari Firebase, kamera, service lokal, atau endpoint aplikasi.</span>
             </div>
 
             <div role="row" id="web-index-html-25">
               <span role="cell" class="line-no">25</span>
-              <code role="cell">  &lt;meta property=&quot;og:type&quot; content=&quot;website&quot; /&gt;</code>
+              <code role="cell">  &lt;meta name=&quot;creator&quot; content=&quot;Hanifa Septhi Larasati&quot; /&gt;</code>
               <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
             </div>
 
             <div role="row" id="web-index-html-26">
               <span role="cell" class="line-no">26</span>
-              <code role="cell">  &lt;meta property=&quot;og:title&quot; content=&quot;ITS Maps | Raspberry Pi Live Traffic&quot; /&gt;</code>
+              <code role="cell">  &lt;meta name=&quot;publisher&quot; content=&quot;Hanifa Teams&quot; /&gt;</code>
               <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
             </div>
 
             <div role="row" id="web-index-html-27">
               <span role="cell" class="line-no">27</span>
-              <code role="cell">  &lt;meta property=&quot;og:description&quot; content=&quot;Dashboard peta ITS realtime untuk Raspberry Pi controller, lalu lintas, kamera, dan AI RF-DETR.&quot; /&gt;</code>
+              <code role="cell">  &lt;meta property=&quot;og:site_name&quot; content=&quot;ITS Maps&quot; /&gt;</code>
               <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
             </div>
 
             <div role="row" id="web-index-html-28">
               <span role="cell" class="line-no">28</span>
-              <code role="cell">  &lt;meta property=&quot;og:url&quot; content=&quot;https://itstelkom.web.app/&quot; /&gt;</code>
-              <span role="cell">Operasi asinkron/network. Data dikirim atau diambil dari Firebase, kamera, service lokal, atau endpoint aplikasi.</span>
+              <code role="cell">  &lt;meta property=&quot;og:type&quot; content=&quot;website&quot; /&gt;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
             </div>
 
             <div role="row" id="web-index-html-29">
               <span role="cell" class="line-no">29</span>
-              <code role="cell">  &lt;meta property=&quot;og:image&quot; content=&quot;/screenshots/desktop-home.png&quot; /&gt;</code>
+              <code role="cell">  &lt;meta property=&quot;og:title&quot; content=&quot;ITS Maps | Raspberry Pi Live Traffic&quot; /&gt;</code>
               <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
             </div>
 
             <div role="row" id="web-index-html-30">
               <span role="cell" class="line-no">30</span>
-              <code role="cell">  &lt;meta property=&quot;og:image:alt&quot; content=&quot;Pratinjau ITS Maps&quot; /&gt;</code>
+              <code role="cell">  &lt;meta property=&quot;og:description&quot; content=&quot;Dashboard peta ITS realtime untuk Raspberry Pi controller, lalu lintas, kamera, dan AI RF-DETR.&quot; /&gt;</code>
               <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
             </div>
 
             <div role="row" id="web-index-html-31">
               <span role="cell" class="line-no">31</span>
-              <code role="cell">  &lt;meta name=&quot;twitter:card&quot; content=&quot;summary_large_image&quot; /&gt;</code>
-              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+              <code role="cell">  &lt;meta property=&quot;og:url&quot; content=&quot;https://itstelkom.web.app/&quot; /&gt;</code>
+              <span role="cell">Operasi asinkron/network. Data dikirim atau diambil dari Firebase, kamera, service lokal, atau endpoint aplikasi.</span>
             </div>
 
             <div role="row" id="web-index-html-32">
               <span role="cell" class="line-no">32</span>
-              <code role="cell">  &lt;meta name=&quot;twitter:title&quot; content=&quot;ITS Maps | Raspberry Pi Live Traffic&quot; /&gt;</code>
+              <code role="cell">  &lt;meta property=&quot;og:image&quot; content=&quot;/screenshots/desktop-home.png&quot; /&gt;</code>
               <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
             </div>
 
             <div role="row" id="web-index-html-33">
               <span role="cell" class="line-no">33</span>
-              <code role="cell">  &lt;meta name=&quot;twitter:description&quot; content=&quot;Dashboard peta ITS realtime dengan kamera Raspberry dan AI RF-DETR.&quot; /&gt;</code>
+              <code role="cell">  &lt;meta property=&quot;og:image:alt&quot; content=&quot;Pratinjau ITS Maps&quot; /&gt;</code>
               <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
             </div>
 
             <div role="row" id="web-index-html-34">
               <span role="cell" class="line-no">34</span>
-              <code role="cell">  &lt;meta name=&quot;twitter:image&quot; content=&quot;/screenshots/desktop-home.png&quot; /&gt;</code>
+              <code role="cell">  &lt;meta name=&quot;twitter:card&quot; content=&quot;summary_large_image&quot; /&gt;</code>
               <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
             </div>
 
             <div role="row" id="web-index-html-35">
               <span role="cell" class="line-no">35</span>
-              <code role="cell">  &lt;meta name=&quot;apple-mobile-web-app-capable&quot; content=&quot;yes&quot; /&gt;</code>
+              <code role="cell">  &lt;meta name=&quot;twitter:title&quot; content=&quot;ITS Maps | Raspberry Pi Live Traffic&quot; /&gt;</code>
               <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
             </div>
 
             <div role="row" id="web-index-html-36">
               <span role="cell" class="line-no">36</span>
-              <code role="cell">  &lt;meta name=&quot;apple-mobile-web-app-status-bar-style&quot; content=&quot;default&quot; /&gt;</code>
+              <code role="cell">  &lt;meta name=&quot;twitter:description&quot; content=&quot;Dashboard peta ITS realtime dengan kamera Raspberry dan AI RF-DETR.&quot; /&gt;</code>
               <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
             </div>
 
             <div role="row" id="web-index-html-37">
               <span role="cell" class="line-no">37</span>
-              <code role="cell">  &lt;meta name=&quot;mobile-web-app-capable&quot; content=&quot;yes&quot; /&gt;</code>
+              <code role="cell">  &lt;meta name=&quot;twitter:image&quot; content=&quot;/screenshots/desktop-home.png&quot; /&gt;</code>
               <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
             </div>
 
             <div role="row" id="web-index-html-38">
               <span role="cell" class="line-no">38</span>
-              <code role="cell">  &lt;meta name=&quot;application-name&quot; content=&quot;ITS Maps&quot; /&gt;</code>
-              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+              <code role="cell">  &lt;link rel=&quot;author&quot; href=&quot;https://github.com/hanifasepthi/its&quot; /&gt;</code>
+              <span role="cell">Operasi asinkron/network. Data dikirim atau diambil dari Firebase, kamera, service lokal, atau endpoint aplikasi.</span>
             </div>
 
             <div role="row" id="web-index-html-39">
               <span role="cell" class="line-no">39</span>
-              <code role="cell">  &lt;meta name=&quot;msapplication-TileColor&quot; content=&quot;#ffffff&quot; /&gt;</code>
-              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+              <code role="cell">  &lt;link rel=&quot;help&quot; href=&quot;https://itstelkom.web.app/documentation&quot; /&gt;</code>
+              <span role="cell">Operasi asinkron/network. Data dikirim atau diambil dari Firebase, kamera, service lokal, atau endpoint aplikasi.</span>
             </div>
 
             <div role="row" id="web-index-html-40">
               <span role="cell" class="line-no">40</span>
-              <code role="cell">  &lt;link rel=&quot;apple-touch-icon&quot; href=&quot;/icons/icon-192.png&quot; /&gt;</code>
-              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+              <code role="cell">  &lt;link rel=&quot;license&quot; href=&quot;https://itstelkom.web.app/licence&quot; /&gt;</code>
+              <span role="cell">Operasi asinkron/network. Data dikirim atau diambil dari Firebase, kamera, service lokal, atau endpoint aplikasi.</span>
             </div>
 
             <div role="row" id="web-index-html-41">
               <span role="cell" class="line-no">41</span>
-              <code role="cell">  &lt;link rel=&quot;icon&quot; type=&quot;image/png&quot; sizes=&quot;96x96&quot; href=&quot;/icons/icon-96.png&quot; /&gt;</code>
+              <code role="cell">  &lt;meta name=&quot;apple-mobile-web-app-capable&quot; content=&quot;yes&quot; /&gt;</code>
               <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
             </div>
 
             <div role="row" id="web-index-html-42">
               <span role="cell" class="line-no">42</span>
-              <code role="cell">  &lt;link rel=&quot;icon&quot; type=&quot;image/png&quot; sizes=&quot;192x192&quot; href=&quot;/icons/icon-192.png&quot; /&gt;</code>
+              <code role="cell">  &lt;meta name=&quot;apple-mobile-web-app-status-bar-style&quot; content=&quot;default&quot; /&gt;</code>
               <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
             </div>
 
             <div role="row" id="web-index-html-43">
               <span role="cell" class="line-no">43</span>
-              <code role="cell">  &lt;script type=&quot;application/ld+json&quot;&gt;</code>
+              <code role="cell">  &lt;meta name=&quot;mobile-web-app-capable&quot; content=&quot;yes&quot; /&gt;</code>
               <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
             </div>
 
             <div role="row" id="web-index-html-44">
               <span role="cell" class="line-no">44</span>
-              <code role="cell">  {</code>
+              <code role="cell">  &lt;meta name=&quot;application-name&quot; content=&quot;ITS Maps&quot; /&gt;</code>
               <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
             </div>
 
             <div role="row" id="web-index-html-45">
               <span role="cell" class="line-no">45</span>
-              <code role="cell">    &quot;@context&quot;: &quot;https://schema.org&quot;,</code>
-              <span role="cell">Operasi asinkron/network. Data dikirim atau diambil dari Firebase, kamera, service lokal, atau endpoint aplikasi.</span>
+              <code role="cell">  &lt;meta name=&quot;msapplication-TileColor&quot; content=&quot;#ffffff&quot; /&gt;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
             </div>
 
             <div role="row" id="web-index-html-46">
               <span role="cell" class="line-no">46</span>
-              <code role="cell">    &quot;@type&quot;: &quot;WebSite&quot;,</code>
+              <code role="cell">  &lt;link rel=&quot;apple-touch-icon&quot; href=&quot;/icons/icon-192.png&quot; /&gt;</code>
               <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
             </div>
 
             <div role="row" id="web-index-html-47">
               <span role="cell" class="line-no">47</span>
-              <code role="cell">    &quot;name&quot;: &quot;ITS Maps&quot;,</code>
+              <code role="cell">  &lt;link rel=&quot;icon&quot; type=&quot;image/png&quot; sizes=&quot;96x96&quot; href=&quot;/icons/icon-96.png&quot; /&gt;</code>
               <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
             </div>
 
             <div role="row" id="web-index-html-48">
               <span role="cell" class="line-no">48</span>
-              <code role="cell">    &quot;url&quot;: &quot;https://itstelkom.web.app/&quot;,</code>
-              <span role="cell">Operasi asinkron/network. Data dikirim atau diambil dari Firebase, kamera, service lokal, atau endpoint aplikasi.</span>
+              <code role="cell">  &lt;link rel=&quot;icon&quot; type=&quot;image/png&quot; sizes=&quot;192x192&quot; href=&quot;/icons/icon-192.png&quot; /&gt;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
             </div>
 
             <div role="row" id="web-index-html-49">
               <span role="cell" class="line-no">49</span>
-              <code role="cell">    &quot;description&quot;: &quot;Dashboard peta ITS realtime untuk Raspberry Pi controller, lalu lintas, kamera, dan AI RF-DETR.&quot;</code>
+              <code role="cell">  &lt;style&gt;</code>
               <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
             </div>
 
             <div role="row" id="web-index-html-50">
               <span role="cell" class="line-no">50</span>
-              <code role="cell">  }</code>
+              <code role="cell">    .webmcp-tools {</code>
               <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
             </div>
 
             <div role="row" id="web-index-html-51">
               <span role="cell" class="line-no">51</span>
-              <code role="cell">  &lt;/script&gt;</code>
+              <code role="cell">      position: absolute;</code>
               <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
             </div>
 
             <div role="row" id="web-index-html-52">
               <span role="cell" class="line-no">52</span>
-              <code role="cell">&lt;/head&gt;</code>
+              <code role="cell">      width: 1px;</code>
               <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
             </div>
 
             <div role="row" id="web-index-html-53">
               <span role="cell" class="line-no">53</span>
-              <code role="cell"> </code>
-              <span role="cell">Baris kosong yang memisahkan blok agar struktur kode lebih mudah dibaca.</span>
+              <code role="cell">      height: 1px;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
             </div>
 
             <div role="row" id="web-index-html-54">
               <span role="cell" class="line-no">54</span>
-              <code role="cell">&lt;body&gt;</code>
+              <code role="cell">      padding: 0;</code>
               <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
             </div>
 
             <div role="row" id="web-index-html-55">
               <span role="cell" class="line-no">55</span>
-              <code role="cell">  &lt;div id=&quot;app&quot;&gt;&lt;/div&gt;</code>
+              <code role="cell">      margin: -1px;</code>
               <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
             </div>
 
             <div role="row" id="web-index-html-56">
               <span role="cell" class="line-no">56</span>
-              <code role="cell">  &lt;script type=&quot;module&quot; src=&quot;./src/main.ts&quot;&gt;&lt;/script&gt;</code>
+              <code role="cell">      overflow: hidden;</code>
               <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
             </div>
 
             <div role="row" id="web-index-html-57">
               <span role="cell" class="line-no">57</span>
-              <code role="cell">&lt;/body&gt;</code>
+              <code role="cell">      clip: rect(0, 0, 0, 0);</code>
               <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
             </div>
 
             <div role="row" id="web-index-html-58">
               <span role="cell" class="line-no">58</span>
-              <code role="cell"> </code>
-              <span role="cell">Baris kosong yang memisahkan blok agar struktur kode lebih mudah dibaca.</span>
+              <code role="cell">      white-space: nowrap;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
             </div>
 
             <div role="row" id="web-index-html-59">
               <span role="cell" class="line-no">59</span>
-              <code role="cell">&lt;/html&gt;</code>
+              <code role="cell">      border: 0;</code>
               <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
             </div>
 
             <div role="row" id="web-index-html-60">
               <span role="cell" class="line-no">60</span>
+              <code role="cell">    }</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-61">
+              <span role="cell" class="line-no">61</span>
+              <code role="cell"> </code>
+              <span role="cell">Baris kosong yang memisahkan blok agar struktur kode lebih mudah dibaca.</span>
+            </div>
+
+            <div role="row" id="web-index-html-62">
+              <span role="cell" class="line-no">62</span>
+              <code role="cell">    .webmcp-tools:focus-within {</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-63">
+              <span role="cell" class="line-no">63</span>
+              <code role="cell">      position: fixed;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-64">
+              <span role="cell" class="line-no">64</span>
+              <code role="cell">      z-index: 2147483000;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-65">
+              <span role="cell" class="line-no">65</span>
+              <code role="cell">      inset: auto 16px 16px auto;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-66">
+              <span role="cell" class="line-no">66</span>
+              <code role="cell">      width: min(360px, calc(100vw - 32px));</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-67">
+              <span role="cell" class="line-no">67</span>
+              <code role="cell">      height: auto;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-68">
+              <span role="cell" class="line-no">68</span>
+              <code role="cell">      margin: 0;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-69">
+              <span role="cell" class="line-no">69</span>
+              <code role="cell">      padding: 16px;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-70">
+              <span role="cell" class="line-no">70</span>
+              <code role="cell">      clip: auto;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-71">
+              <span role="cell" class="line-no">71</span>
+              <code role="cell">      white-space: normal;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-72">
+              <span role="cell" class="line-no">72</span>
+              <code role="cell">      overflow: visible;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-73">
+              <span role="cell" class="line-no">73</span>
+              <code role="cell">      color: #0f172a;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-74">
+              <span role="cell" class="line-no">74</span>
+              <code role="cell">      background: #ffffff;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-75">
+              <span role="cell" class="line-no">75</span>
+              <code role="cell">      border: 1px solid #cbd5e1;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-76">
+              <span role="cell" class="line-no">76</span>
+              <code role="cell">      border-radius: 18px;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-77">
+              <span role="cell" class="line-no">77</span>
+              <code role="cell">      box-shadow: 0 22px 60px rgba(15, 23, 42, 0.18);</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-78">
+              <span role="cell" class="line-no">78</span>
+              <code role="cell">      font: 14px/1.5 system-ui, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-79">
+              <span role="cell" class="line-no">79</span>
+              <code role="cell">    }</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-80">
+              <span role="cell" class="line-no">80</span>
+              <code role="cell"> </code>
+              <span role="cell">Baris kosong yang memisahkan blok agar struktur kode lebih mudah dibaca.</span>
+            </div>
+
+            <div role="row" id="web-index-html-81">
+              <span role="cell" class="line-no">81</span>
+              <code role="cell">    .webmcp-tools form {</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-82">
+              <span role="cell" class="line-no">82</span>
+              <code role="cell">      display: grid;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-83">
+              <span role="cell" class="line-no">83</span>
+              <code role="cell">      gap: 8px;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-84">
+              <span role="cell" class="line-no">84</span>
+              <code role="cell">      margin-block-start: 10px;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-85">
+              <span role="cell" class="line-no">85</span>
+              <code role="cell">    }</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-86">
+              <span role="cell" class="line-no">86</span>
+              <code role="cell"> </code>
+              <span role="cell">Baris kosong yang memisahkan blok agar struktur kode lebih mudah dibaca.</span>
+            </div>
+
+            <div role="row" id="web-index-html-87">
+              <span role="cell" class="line-no">87</span>
+              <code role="cell">    .webmcp-tools select,</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-88">
+              <span role="cell" class="line-no">88</span>
+              <code role="cell">    .webmcp-tools input,</code>
+              <span role="cell">Operasi asinkron/network. Data dikirim atau diambil dari Firebase, kamera, service lokal, atau endpoint aplikasi.</span>
+            </div>
+
+            <div role="row" id="web-index-html-89">
+              <span role="cell" class="line-no">89</span>
+              <code role="cell">    .webmcp-tools button {</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-90">
+              <span role="cell" class="line-no">90</span>
+              <code role="cell">      min-height: 38px;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-91">
+              <span role="cell" class="line-no">91</span>
+              <code role="cell">      border-radius: 10px;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-92">
+              <span role="cell" class="line-no">92</span>
+              <code role="cell">      border: 1px solid #cbd5e1;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-93">
+              <span role="cell" class="line-no">93</span>
+              <code role="cell">      padding: 8px 10px;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-94">
+              <span role="cell" class="line-no">94</span>
+              <code role="cell">      font: inherit;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-95">
+              <span role="cell" class="line-no">95</span>
+              <code role="cell">    }</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-96">
+              <span role="cell" class="line-no">96</span>
+              <code role="cell"> </code>
+              <span role="cell">Baris kosong yang memisahkan blok agar struktur kode lebih mudah dibaca.</span>
+            </div>
+
+            <div role="row" id="web-index-html-97">
+              <span role="cell" class="line-no">97</span>
+              <code role="cell">    .webmcp-tools button {</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-98">
+              <span role="cell" class="line-no">98</span>
+              <code role="cell">      color: #ffffff;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-99">
+              <span role="cell" class="line-no">99</span>
+              <code role="cell">      background: #0f172a;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-100">
+              <span role="cell" class="line-no">100</span>
+              <code role="cell">      cursor: pointer;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-101">
+              <span role="cell" class="line-no">101</span>
+              <code role="cell">    }</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-102">
+              <span role="cell" class="line-no">102</span>
+              <code role="cell">  &lt;/style&gt;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-103">
+              <span role="cell" class="line-no">103</span>
+              <code role="cell">  &lt;script type=&quot;application/ld+json&quot;&gt;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-104">
+              <span role="cell" class="line-no">104</span>
+              <code role="cell">  {</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-105">
+              <span role="cell" class="line-no">105</span>
+              <code role="cell">    &quot;@context&quot;: &quot;https://schema.org&quot;,</code>
+              <span role="cell">Operasi asinkron/network. Data dikirim atau diambil dari Firebase, kamera, service lokal, atau endpoint aplikasi.</span>
+            </div>
+
+            <div role="row" id="web-index-html-106">
+              <span role="cell" class="line-no">106</span>
+              <code role="cell">    &quot;@graph&quot;: [</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-107">
+              <span role="cell" class="line-no">107</span>
+              <code role="cell">      {</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-108">
+              <span role="cell" class="line-no">108</span>
+              <code role="cell">        &quot;@type&quot;: &quot;Organization&quot;,</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-109">
+              <span role="cell" class="line-no">109</span>
+              <code role="cell">        &quot;@id&quot;: &quot;https://itstelkom.web.app/#organization&quot;,</code>
+              <span role="cell">Operasi asinkron/network. Data dikirim atau diambil dari Firebase, kamera, service lokal, atau endpoint aplikasi.</span>
+            </div>
+
+            <div role="row" id="web-index-html-110">
+              <span role="cell" class="line-no">110</span>
+              <code role="cell">        &quot;name&quot;: &quot;Hanifa Teams&quot;,</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-111">
+              <span role="cell" class="line-no">111</span>
+              <code role="cell">        &quot;url&quot;: &quot;https://itstelkom.web.app/&quot;,</code>
+              <span role="cell">Operasi asinkron/network. Data dikirim atau diambil dari Firebase, kamera, service lokal, atau endpoint aplikasi.</span>
+            </div>
+
+            <div role="row" id="web-index-html-112">
+              <span role="cell" class="line-no">112</span>
+              <code role="cell">        &quot;logo&quot;: &quot;https://itstelkom.web.app/icons/icon-192.png&quot;,</code>
+              <span role="cell">Operasi asinkron/network. Data dikirim atau diambil dari Firebase, kamera, service lokal, atau endpoint aplikasi.</span>
+            </div>
+
+            <div role="row" id="web-index-html-113">
+              <span role="cell" class="line-no">113</span>
+              <code role="cell">        &quot;founder&quot;: {</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-114">
+              <span role="cell" class="line-no">114</span>
+              <code role="cell">          &quot;@type&quot;: &quot;Person&quot;,</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-115">
+              <span role="cell" class="line-no">115</span>
+              <code role="cell">          &quot;name&quot;: &quot;Hanifa Septhi Larasati&quot;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-116">
+              <span role="cell" class="line-no">116</span>
+              <code role="cell">        },</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-117">
+              <span role="cell" class="line-no">117</span>
+              <code role="cell">        &quot;sameAs&quot;: [</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-118">
+              <span role="cell" class="line-no">118</span>
+              <code role="cell">          &quot;https://github.com/hanifasepthi/its&quot;</code>
+              <span role="cell">Operasi asinkron/network. Data dikirim atau diambil dari Firebase, kamera, service lokal, atau endpoint aplikasi.</span>
+            </div>
+
+            <div role="row" id="web-index-html-119">
+              <span role="cell" class="line-no">119</span>
+              <code role="cell">        ]</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-120">
+              <span role="cell" class="line-no">120</span>
+              <code role="cell">      },</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-121">
+              <span role="cell" class="line-no">121</span>
+              <code role="cell">      {</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-122">
+              <span role="cell" class="line-no">122</span>
+              <code role="cell">        &quot;@type&quot;: &quot;WebSite&quot;,</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-123">
+              <span role="cell" class="line-no">123</span>
+              <code role="cell">        &quot;@id&quot;: &quot;https://itstelkom.web.app/#website&quot;,</code>
+              <span role="cell">Operasi asinkron/network. Data dikirim atau diambil dari Firebase, kamera, service lokal, atau endpoint aplikasi.</span>
+            </div>
+
+            <div role="row" id="web-index-html-124">
+              <span role="cell" class="line-no">124</span>
+              <code role="cell">        &quot;name&quot;: &quot;ITS Maps&quot;,</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-125">
+              <span role="cell" class="line-no">125</span>
+              <code role="cell">        &quot;url&quot;: &quot;https://itstelkom.web.app/&quot;,</code>
+              <span role="cell">Operasi asinkron/network. Data dikirim atau diambil dari Firebase, kamera, service lokal, atau endpoint aplikasi.</span>
+            </div>
+
+            <div role="row" id="web-index-html-126">
+              <span role="cell" class="line-no">126</span>
+              <code role="cell">        &quot;publisher&quot;: {</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-127">
+              <span role="cell" class="line-no">127</span>
+              <code role="cell">          &quot;@id&quot;: &quot;https://itstelkom.web.app/#organization&quot;</code>
+              <span role="cell">Operasi asinkron/network. Data dikirim atau diambil dari Firebase, kamera, service lokal, atau endpoint aplikasi.</span>
+            </div>
+
+            <div role="row" id="web-index-html-128">
+              <span role="cell" class="line-no">128</span>
+              <code role="cell">        },</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-129">
+              <span role="cell" class="line-no">129</span>
+              <code role="cell">        &quot;description&quot;: &quot;Dashboard peta ITS realtime untuk Raspberry Pi controller, lalu lintas, kamera, Firebase RTDB, Windows Widgets, Android APK, Microsoft Store app, dan AI RF-DETR.&quot;</code>
+              <span role="cell">Operasi asinkron/network. Data dikirim atau diambil dari Firebase, kamera, service lokal, atau endpoint aplikasi.</span>
+            </div>
+
+            <div role="row" id="web-index-html-130">
+              <span role="cell" class="line-no">130</span>
+              <code role="cell">      },</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-131">
+              <span role="cell" class="line-no">131</span>
+              <code role="cell">      {</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-132">
+              <span role="cell" class="line-no">132</span>
+              <code role="cell">        &quot;@type&quot;: &quot;SoftwareApplication&quot;,</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-133">
+              <span role="cell" class="line-no">133</span>
+              <code role="cell">        &quot;@id&quot;: &quot;https://itstelkom.web.app/#software&quot;,</code>
+              <span role="cell">Operasi asinkron/network. Data dikirim atau diambil dari Firebase, kamera, service lokal, atau endpoint aplikasi.</span>
+            </div>
+
+            <div role="row" id="web-index-html-134">
+              <span role="cell" class="line-no">134</span>
+              <code role="cell">        &quot;name&quot;: &quot;ITS Maps&quot;,</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-135">
+              <span role="cell" class="line-no">135</span>
+              <code role="cell">        &quot;applicationCategory&quot;: &quot;NavigationApplication&quot;,</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-136">
+              <span role="cell" class="line-no">136</span>
+              <code role="cell">        &quot;operatingSystem&quot;: &quot;Web, Android, Windows 10, Windows 11&quot;,</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-137">
+              <span role="cell" class="line-no">137</span>
+              <code role="cell">        &quot;url&quot;: &quot;https://itstelkom.web.app/&quot;,</code>
+              <span role="cell">Operasi asinkron/network. Data dikirim atau diambil dari Firebase, kamera, service lokal, atau endpoint aplikasi.</span>
+            </div>
+
+            <div role="row" id="web-index-html-138">
+              <span role="cell" class="line-no">138</span>
+              <code role="cell">        &quot;downloadUrl&quot;: &quot;https://itstelkom.web.app/documentation#download&quot;,</code>
+              <span role="cell">Operasi asinkron/network. Data dikirim atau diambil dari Firebase, kamera, service lokal, atau endpoint aplikasi.</span>
+            </div>
+
+            <div role="row" id="web-index-html-139">
+              <span role="cell" class="line-no">139</span>
+              <code role="cell">        &quot;softwareHelp&quot;: &quot;https://itstelkom.web.app/documentation&quot;,</code>
+              <span role="cell">Operasi asinkron/network. Data dikirim atau diambil dari Firebase, kamera, service lokal, atau endpoint aplikasi.</span>
+            </div>
+
+            <div role="row" id="web-index-html-140">
+              <span role="cell" class="line-no">140</span>
+              <code role="cell">        &quot;creator&quot;: {</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-141">
+              <span role="cell" class="line-no">141</span>
+              <code role="cell">          &quot;@id&quot;: &quot;https://itstelkom.web.app/#organization&quot;</code>
+              <span role="cell">Operasi asinkron/network. Data dikirim atau diambil dari Firebase, kamera, service lokal, atau endpoint aplikasi.</span>
+            </div>
+
+            <div role="row" id="web-index-html-142">
+              <span role="cell" class="line-no">142</span>
+              <code role="cell">        },</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-143">
+              <span role="cell" class="line-no">143</span>
+              <code role="cell">        &quot;description&quot;: &quot;ITS Maps memantau peta, kamera lalu lintas, status Raspberry Pi, dan object detection RF-DETR secara realtime.&quot;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-144">
+              <span role="cell" class="line-no">144</span>
+              <code role="cell">      },</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-145">
+              <span role="cell" class="line-no">145</span>
+              <code role="cell">      {</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-146">
+              <span role="cell" class="line-no">146</span>
+              <code role="cell">        &quot;@type&quot;: &quot;AboutPage&quot;,</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-147">
+              <span role="cell" class="line-no">147</span>
+              <code role="cell">        &quot;@id&quot;: &quot;https://itstelkom.web.app/#about&quot;,</code>
+              <span role="cell">Operasi asinkron/network. Data dikirim atau diambil dari Firebase, kamera, service lokal, atau endpoint aplikasi.</span>
+            </div>
+
+            <div role="row" id="web-index-html-148">
+              <span role="cell" class="line-no">148</span>
+              <code role="cell">        &quot;name&quot;: &quot;About ITS Maps&quot;,</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-149">
+              <span role="cell" class="line-no">149</span>
+              <code role="cell">        &quot;url&quot;: &quot;https://itstelkom.web.app/&quot;,</code>
+              <span role="cell">Operasi asinkron/network. Data dikirim atau diambil dari Firebase, kamera, service lokal, atau endpoint aplikasi.</span>
+            </div>
+
+            <div role="row" id="web-index-html-150">
+              <span role="cell" class="line-no">150</span>
+              <code role="cell">        &quot;isPartOf&quot;: {</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-151">
+              <span role="cell" class="line-no">151</span>
+              <code role="cell">          &quot;@id&quot;: &quot;https://itstelkom.web.app/#website&quot;</code>
+              <span role="cell">Operasi asinkron/network. Data dikirim atau diambil dari Firebase, kamera, service lokal, atau endpoint aplikasi.</span>
+            </div>
+
+            <div role="row" id="web-index-html-152">
+              <span role="cell" class="line-no">152</span>
+              <code role="cell">        },</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-153">
+              <span role="cell" class="line-no">153</span>
+              <code role="cell">        &quot;mainEntity&quot;: {</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-154">
+              <span role="cell" class="line-no">154</span>
+              <code role="cell">          &quot;@id&quot;: &quot;https://itstelkom.web.app/#software&quot;</code>
+              <span role="cell">Operasi asinkron/network. Data dikirim atau diambil dari Firebase, kamera, service lokal, atau endpoint aplikasi.</span>
+            </div>
+
+            <div role="row" id="web-index-html-155">
+              <span role="cell" class="line-no">155</span>
+              <code role="cell">        },</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-156">
+              <span role="cell" class="line-no">156</span>
+              <code role="cell">        &quot;description&quot;: &quot;ITS Maps adalah dashboard realtime untuk peta ITS, Raspberry Pi controller, kamera lalu lintas, AI RF-DETR, Firebase RTDB, Android APK, Microsoft Store app, dan Windows Widgets.&quot;</code>
+              <span role="cell">Operasi asinkron/network. Data dikirim atau diambil dari Firebase, kamera, service lokal, atau endpoint aplikasi.</span>
+            </div>
+
+            <div role="row" id="web-index-html-157">
+              <span role="cell" class="line-no">157</span>
+              <code role="cell">      }</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-158">
+              <span role="cell" class="line-no">158</span>
+              <code role="cell">    ]</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-159">
+              <span role="cell" class="line-no">159</span>
+              <code role="cell">  }</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-160">
+              <span role="cell" class="line-no">160</span>
+              <code role="cell">  &lt;/script&gt;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-161">
+              <span role="cell" class="line-no">161</span>
+              <code role="cell">&lt;/head&gt;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-162">
+              <span role="cell" class="line-no">162</span>
+              <code role="cell"> </code>
+              <span role="cell">Baris kosong yang memisahkan blok agar struktur kode lebih mudah dibaca.</span>
+            </div>
+
+            <div role="row" id="web-index-html-163">
+              <span role="cell" class="line-no">163</span>
+              <code role="cell">&lt;body&gt;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-164">
+              <span role="cell" class="line-no">164</span>
+              <code role="cell">  &lt;div id=&quot;app&quot;&gt;&lt;/div&gt;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-165">
+              <span role="cell" class="line-no">165</span>
+              <code role="cell">  &lt;section class=&quot;webmcp-tools&quot; aria-label=&quot;ITS Maps WebMCP tools&quot;&gt;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-166">
+              <span role="cell" class="line-no">166</span>
+              <code role="cell">    &lt;h2&gt;ITS Maps WebMCP tools&lt;/h2&gt;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-167">
+              <span role="cell" class="line-no">167</span>
+              <code role="cell">    &lt;form method=&quot;get&quot; action=&quot;/documentation&quot; data-webmcp-open-resource toolname=&quot;open_its_maps_resource&quot; tooldescription=&quot;Open a public ITS Maps resource such as documentation, privacy policy, licence, PDF preview, llms.txt, or the realtime map.&quot;&gt;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-168">
+              <span role="cell" class="line-no">168</span>
+              <code role="cell">      &lt;label&gt;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-169">
+              <span role="cell" class="line-no">169</span>
+              <code role="cell">        Resource</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-170">
+              <span role="cell" class="line-no">170</span>
+              <code role="cell">        &lt;select name=&quot;resource&quot; toolparamdescription=&quot;Public ITS Maps resource to open. Choose one of home, documentation, method, privacy, licence, ai-license, pdf, llms, or about.&quot;&gt;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-171">
+              <span role="cell" class="line-no">171</span>
+              <code role="cell">          &lt;option value=&quot;documentation&quot;&gt;documentation&lt;/option&gt;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-172">
+              <span role="cell" class="line-no">172</span>
+              <code role="cell">          &lt;option value=&quot;home&quot;&gt;home&lt;/option&gt;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-173">
+              <span role="cell" class="line-no">173</span>
+              <code role="cell">          &lt;option value=&quot;method&quot;&gt;method&lt;/option&gt;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-174">
+              <span role="cell" class="line-no">174</span>
+              <code role="cell">          &lt;option value=&quot;privacy&quot;&gt;privacy&lt;/option&gt;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-175">
+              <span role="cell" class="line-no">175</span>
+              <code role="cell">          &lt;option value=&quot;licence&quot;&gt;licence&lt;/option&gt;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-176">
+              <span role="cell" class="line-no">176</span>
+              <code role="cell">          &lt;option value=&quot;ai-license&quot;&gt;ai-license&lt;/option&gt;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-177">
+              <span role="cell" class="line-no">177</span>
+              <code role="cell">          &lt;option value=&quot;pdf&quot;&gt;pdf&lt;/option&gt;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-178">
+              <span role="cell" class="line-no">178</span>
+              <code role="cell">          &lt;option value=&quot;llms&quot;&gt;llms&lt;/option&gt;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-179">
+              <span role="cell" class="line-no">179</span>
+              <code role="cell">          &lt;option value=&quot;about&quot;&gt;about&lt;/option&gt;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-180">
+              <span role="cell" class="line-no">180</span>
+              <code role="cell">        &lt;/select&gt;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-181">
+              <span role="cell" class="line-no">181</span>
+              <code role="cell">      &lt;/label&gt;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-182">
+              <span role="cell" class="line-no">182</span>
+              <code role="cell">      &lt;button type=&quot;submit&quot;&gt;Open ITS Maps resource&lt;/button&gt;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-183">
+              <span role="cell" class="line-no">183</span>
+              <code role="cell">    &lt;/form&gt;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-184">
+              <span role="cell" class="line-no">184</span>
+              <code role="cell">    &lt;form method=&quot;get&quot; action=&quot;/documentation&quot; data-webmcp-site-search toolname=&quot;search_its_maps_site&quot; tooldescription=&quot;Search public ITS Maps documentation and route the user to the documentation page with the requested query.&quot;&gt;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-185">
+              <span role="cell" class="line-no">185</span>
+              <code role="cell">      &lt;label&gt;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-186">
+              <span role="cell" class="line-no">186</span>
+              <code role="cell">        Query</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-187">
+              <span role="cell" class="line-no">187</span>
+              <code role="cell">        &lt;input type=&quot;search&quot; name=&quot;query&quot; autocomplete=&quot;off&quot; toolparamdescription=&quot;Search query for public ITS Maps documentation, downloads, widgets, AI, privacy, or source-code explanation.&quot;&gt;</code>
+              <span role="cell">Operasi asinkron/network. Data dikirim atau diambil dari Firebase, kamera, service lokal, atau endpoint aplikasi.</span>
+            </div>
+
+            <div role="row" id="web-index-html-188">
+              <span role="cell" class="line-no">188</span>
+              <code role="cell">      &lt;/label&gt;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-189">
+              <span role="cell" class="line-no">189</span>
+              <code role="cell">      &lt;button type=&quot;submit&quot;&gt;Search ITS Maps&lt;/button&gt;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-190">
+              <span role="cell" class="line-no">190</span>
+              <code role="cell">    &lt;/form&gt;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-191">
+              <span role="cell" class="line-no">191</span>
+              <code role="cell">    &lt;form method=&quot;get&quot; action=&quot;/llms.txt&quot; data-webmcp-public-context toolname=&quot;get_its_maps_public_context&quot; tooldescription=&quot;Return public ITS Maps AI-agent context from llms.txt or llms-full.txt.&quot;&gt;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-192">
+              <span role="cell" class="line-no">192</span>
+              <code role="cell">      &lt;label&gt;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-193">
+              <span role="cell" class="line-no">193</span>
+              <code role="cell">        Format</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-194">
+              <span role="cell" class="line-no">194</span>
+              <code role="cell">        &lt;select name=&quot;format&quot; toolparamdescription=&quot;Context size to return for AI agents. Use summary for llms.txt or full for llms-full.txt.&quot;&gt;</code>
+              <span role="cell">Menghasilkan nilai akhir dari fungsi atau menghentikan jalur eksekusi setelah kondisi terpenuhi.</span>
+            </div>
+
+            <div role="row" id="web-index-html-195">
+              <span role="cell" class="line-no">195</span>
+              <code role="cell">          &lt;option value=&quot;summary&quot;&gt;summary&lt;/option&gt;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-196">
+              <span role="cell" class="line-no">196</span>
+              <code role="cell">          &lt;option value=&quot;full&quot;&gt;full&lt;/option&gt;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-197">
+              <span role="cell" class="line-no">197</span>
+              <code role="cell">        &lt;/select&gt;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-198">
+              <span role="cell" class="line-no">198</span>
+              <code role="cell">      &lt;/label&gt;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-199">
+              <span role="cell" class="line-no">199</span>
+              <code role="cell">      &lt;button type=&quot;submit&quot;&gt;Read ITS Maps context&lt;/button&gt;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-200">
+              <span role="cell" class="line-no">200</span>
+              <code role="cell">    &lt;/form&gt;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-201">
+              <span role="cell" class="line-no">201</span>
+              <code role="cell">  &lt;/section&gt;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-202">
+              <span role="cell" class="line-no">202</span>
+              <code role="cell">  &lt;script type=&quot;module&quot; src=&quot;./src/main.ts&quot;&gt;&lt;/script&gt;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-203">
+              <span role="cell" class="line-no">203</span>
+              <code role="cell">&lt;/body&gt;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-204">
+              <span role="cell" class="line-no">204</span>
+              <code role="cell"> </code>
+              <span role="cell">Baris kosong yang memisahkan blok agar struktur kode lebih mudah dibaca.</span>
+            </div>
+
+            <div role="row" id="web-index-html-205">
+              <span role="cell" class="line-no">205</span>
+              <code role="cell">&lt;/html&gt;</code>
+              <span role="cell">Membentuk markup/template UI, manifest, atau layout. Struktur ini menentukan tampilan yang dilihat user.</span>
+            </div>
+
+            <div role="row" id="web-index-html-206">
+              <span role="cell" class="line-no">206</span>
               <code role="cell"> </code>
               <span role="cell">Baris kosong yang memisahkan blok agar struktur kode lebih mudah dibaca.</span>
             </div>

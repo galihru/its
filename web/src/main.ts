@@ -11657,7 +11657,144 @@ function setupPromptSheetSwipe(sheetEl: HTMLElement, onClose: () => void): void 
   installPromptWheelDismiss(sheetEl, onClose);
 }
 
+type ItsWebMcpResource = "home" | "documentation" | "method" | "privacy" | "licence" | "ai-license" | "pdf" | "llms" | "about";
+
+const ITS_WEBMCP_RESOURCE_URLS: Record<ItsWebMcpResource, string> = {
+  home: "/",
+  documentation: "/documentation",
+  method: "/method",
+  privacy: "/privacy",
+  licence: "/licence",
+  "ai-license": "/license",
+  pdf: "/pdf-preview/documentation",
+  llms: "/llms.txt",
+  about: "/#about",
+};
+
+function itsAbsoluteUrl(pathname: string): string {
+  return new URL(pathname, "https://itstelkom.web.app").href;
+}
+
+function itsOpenWebMcpResource(resourceValue: FormDataEntryValue | null): { resource: ItsWebMcpResource; url: string; message: string } {
+  const resource = String(resourceValue || "documentation") as ItsWebMcpResource;
+  const safeResource = resource in ITS_WEBMCP_RESOURCE_URLS ? resource : "documentation";
+  if (safeResource === "about") {
+    itsShowSiteInfoModal("about-site");
+  } else {
+    window.location.assign(ITS_WEBMCP_RESOURCE_URLS[safeResource]);
+  }
+  return {
+    resource: safeResource,
+    url: itsAbsoluteUrl(ITS_WEBMCP_RESOURCE_URLS[safeResource]),
+    message: `Opened ITS Maps ${safeResource}.`,
+  };
+}
+
+async function itsReadWebMcpContext(formatValue: FormDataEntryValue | null): Promise<{ url: string; text: string }> {
+  const format = String(formatValue || "summary").toLowerCase() === "full" ? "full" : "summary";
+  const url = format === "full" ? "/llms-full.txt" : "/llms.txt";
+  const response = await fetch(url, { cache: "no-store" });
+  const text = await response.text();
+  return { url: itsAbsoluteUrl(url), text };
+}
+
+function itsWebMcpContentResponse(text: string, structuredContent?: unknown): unknown {
+  return {
+    content: [{ type: "text", text }],
+    structuredContent,
+  };
+}
+
+function itsHandleWebMcpSubmit(event: SubmitEvent): void {
+  const form = event.currentTarget as HTMLFormElement | null;
+  if (!form) return;
+  event.preventDefault();
+  const data = new FormData(form);
+  const submitEvent = event as SubmitEvent & { agentInvoked?: boolean; respondWith?: (response: Promise<unknown> | unknown) => void };
+
+  if (form.matches("[data-webmcp-open-resource]")) {
+    const result = itsOpenWebMcpResource(data.get("resource"));
+    submitEvent.respondWith?.(itsWebMcpContentResponse(result.message, result));
+    return;
+  }
+
+  if (form.matches("[data-webmcp-site-search]")) {
+    const query = String(data.get("query") || "").trim();
+    const target = query ? `/documentation?search=${encodeURIComponent(query)}#kode-baris-per-baris` : "/documentation";
+    window.location.assign(target);
+    const result = { query, url: itsAbsoluteUrl(target) };
+    submitEvent.respondWith?.(itsWebMcpContentResponse(`Opened ITS Maps documentation search for "${query || "overview"}".`, result));
+    return;
+  }
+
+  if (form.matches("[data-webmcp-public-context]")) {
+    const task = itsReadWebMcpContext(data.get("format")).then((result) => itsWebMcpContentResponse(result.text, result));
+    submitEvent.respondWith?.(task);
+    if (!submitEvent.agentInvoked) void task.then((result) => {
+      const context = (result as { structuredContent?: { url?: string } }).structuredContent;
+      if (context?.url) window.location.assign(context.url);
+    });
+  }
+}
+
+function itsRegisterWebMcpTools(): void {
+  document.querySelectorAll<HTMLFormElement>("[data-webmcp-open-resource], [data-webmcp-site-search], [data-webmcp-public-context]")
+    .forEach((form) => form.addEventListener("submit", itsHandleWebMcpSubmit));
+
+  const modelContext = (document as unknown as {
+    modelContext?: {
+      registerTool?: (tool: Record<string, unknown>) => Promise<unknown> | unknown;
+    };
+  }).modelContext;
+
+  if (!modelContext?.registerTool) return;
+  try {
+    modelContext.registerTool({
+      name: "get_its_maps_public_context",
+      description: "Return public ITS Maps AI-agent context from llms.txt or llms-full.txt.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          format: {
+            type: "string",
+            enum: ["summary", "full"],
+            description: "Use summary for llms.txt or full for llms-full.txt.",
+          },
+        },
+      },
+      annotations: { readOnlyHint: true },
+      execute: async (input: Record<string, unknown>) => {
+        const result = await itsReadWebMcpContext(String(input.format || "summary"));
+        return itsWebMcpContentResponse(result.text, result);
+      },
+    });
+
+    modelContext.registerTool({
+      name: "open_its_maps_resource",
+      description: "Open a public ITS Maps resource such as documentation, privacy policy, licence, PDF preview, llms.txt, or the realtime map.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          resource: {
+            type: "string",
+            enum: Object.keys(ITS_WEBMCP_RESOURCE_URLS),
+            description: "Public ITS Maps resource to open.",
+          },
+        },
+        required: ["resource"],
+      },
+      execute: (input: Record<string, unknown>) => {
+        const result = itsOpenWebMcpResource(String(input.resource || "documentation"));
+        return itsWebMcpContentResponse(result.message, result);
+      },
+    });
+  } catch (error) {
+    console.warn("[ITS] WebMCP imperative registration skipped", error);
+  }
+}
+
 if (!staticRoute) {
+  itsRegisterWebMcpTools();
   itsCreateSplash();
   itsCreateWindowsDownloadButton();
 }
