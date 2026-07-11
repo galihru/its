@@ -50,17 +50,30 @@
   <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
   <style>
     .webmcp-tools {
-      position: absolute;
+      position: fixed !important;
       inset: 0 auto auto 0;
+      z-index: -1;
+      width: 1px !important;
+      height: 1px !important;
+      max-width: 1px !important;
+      max-height: 1px !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      overflow: hidden !important;
+      clip: rect(0 0 0 0) !important;
+      clip-path: inset(50%) !important;
+      white-space: nowrap;
+      border: 0 !important;
+      opacity: 0.001;
+      pointer-events: none !important;
+      contain: strict;
+    }
+
+    .webmcp-tools summary {
+      display: block;
       width: 1px;
       height: 1px;
-      margin: 0;
-      padding: 0;
       overflow: hidden;
-      clip: rect(0 0 0 0);
-      clip-path: inset(50%);
-      white-space: nowrap;
-      border: 0;
     }
   </style>
   <script type="application/ld+json">

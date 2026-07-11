@@ -406,35 +406,16 @@ function roadmapStoryPage() {
     const subtitle = index === 0
       ? "Peta realtime, Windows Widgets, Android APK, AI RF-DETR, dan dokumentasi publik."
       : "Pengembangan ITS Maps berlanjut melalui WebApp, Microsoft Store, Android, dan widget realtime.";
-    const progressAnimation = index > 0 ? `
-        <amp-story-animation layout="nodisplay" trigger="visibility">
-          <script type="application/json">
-            {
-              "duration": "7s",
-              "fill": "both",
-              "animations": [
-                {
-                  "selector": "#${pageId}-progress",
-                  "keyframes": [
-                    { "transform": "scaleX(0)" },
-                    { "transform": "scaleX(1)" }
-                  ]
-                }
-              ]
-            }
-          </script>
-        </amp-story-animation>` : "";
-    const progressLayer = index > 0 ? `
+    const progressLayer = `
         <amp-story-grid-layer template="vertical">
           <div class="story-progress" aria-label="Progress story"><span id="${pageId}-progress"></span></div>
-        </amp-story-grid-layer>` : "";
+        </amp-story-grid-layer>`;
     const outlink = index === 0 ? `
         <amp-story-page-outlink layout="nodisplay">
           <a href="${site.url}/documentation">Buka dokumentasi ITS Maps</a>
         </amp-story-page-outlink>` : "";
     return `
       <amp-story-page id="${pageId}" auto-advance-after="7s">
-        ${progressAnimation}
         <amp-story-grid-layer template="fill">
           <amp-img src="${asset}" layout="fill" object-fit="cover" alt="${esc(title)}"></amp-img>
         </amp-story-grid-layer>
@@ -471,13 +452,14 @@ function roadmapStoryPage() {
   <style amp-custom>
     amp-story { font-family: Inter, Arial, sans-serif; color: #fff; }
     .story-copy { align-content: end; padding: 28px; background: linear-gradient(180deg, rgba(2, 6, 23, 0.08), rgba(2, 6, 23, 0.76)); }
-    .story-card { border-radius: 24px; padding: 22px; background: rgba(8, 13, 28, 0.72); backdrop-filter: blur(10px); box-shadow: 0 24px 60px rgba(0, 0, 0, 0.32); }
+    .story-card { border-radius: 24px; padding: 22px; background: rgba(8, 13, 28, 0.82); box-shadow: 0 24px 60px rgba(0, 0, 0, 0.32); }
     .story-card p { margin: 0 0 10px; font-size: 13px; letter-spacing: .16em; text-transform: uppercase; color: #5eead4; font-weight: 800; }
     .story-card h1 { margin: 0 0 10px; font-size: 34px; line-height: 1.02; }
     .story-card span { display: block; color: #dbeafe; font-size: 16px; line-height: 1.45; }
     .story-swipe { margin: 14px auto 0; padding: 10px 16px; border-radius: 999px; background: rgba(255,255,255,.92); color: #0f172a; font-size: 13px; font-weight: 800; box-shadow: 0 12px 36px rgba(0,0,0,.22); }
     .story-progress { position: absolute; inset: 18px 20px auto; height: 4px; border-radius: 999px; background: rgba(255,255,255,.28); overflow: hidden; }
-    .story-progress span { display: block; width: 100%; height: 100%; transform-origin: 0 50%; transform: scaleX(0); background: linear-gradient(90deg, #22d3ee, #a7f3d0); border-radius: inherit; }
+    .story-progress span { display: block; width: 100%; height: 100%; transform-origin: 0 50%; transform: scaleX(0); background: linear-gradient(90deg, #22d3ee, #a7f3d0); border-radius: inherit; animation: story-progress 7s linear both; }
+    @keyframes story-progress { from { transform: scaleX(0); } to { transform: scaleX(1); } }
   </style>
   <script type="application/ld+json">
     {

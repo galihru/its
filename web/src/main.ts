@@ -2380,7 +2380,7 @@ if (staticRoute) {
       }).filter((p: PoiRecord) => isValidCoordinate(p.lat, p.lng));
       return rankPoisForView(pois);
     } catch (err) {
-      console.warn("Overpass fetch failed:", err);
+      console.debug("Overpass fetch failed, using local POI fallback:", err);
       return [];
     }
   }
@@ -2776,7 +2776,7 @@ if (staticRoute) {
 
       return bundle;
     } catch (err) {
-      console.warn("Overpass road guide failed:", err);
+      console.debug("Overpass road guide failed, using local road fallback:", err);
       return { roads: [], rails: [], crossings: [], waterways: [], greens: [] };
     }
   }
@@ -8515,7 +8515,7 @@ if (staticRoute) {
 
     staleOffline.forEach((device) => {
       state.offlineReported.add(device.id);
-      console.warn("[ITS] Device heartbeat stale; dashboard keeps RTDB status read-only:", device.id);
+      console.info("[ITS] Device heartbeat stale; dashboard keeps RTDB status read-only:", device.id);
     });
   }
 
@@ -8545,7 +8545,7 @@ if (staticRoute) {
       try {
         snapshot = await fetchJson<Snapshot>(state.config.snapshotUrl);
       } catch (localErr) {
-        console.warn("[ITS] Local snapshot failed, trying Firebase:", localErr);
+        console.debug("[ITS] Local snapshot failed, trying Firebase:", localErr);
         snapshot = await fetchFirebaseDevices();
       }
 
@@ -8570,7 +8570,7 @@ if (staticRoute) {
       maybePromptNotificationPermission();
       reportOfflineDevices(devices);
     } catch (err) {
-      console.warn("[ITS] Snapshot error:", err);
+      console.debug("[ITS] Snapshot fallback unavailable:", err);
       for (const marker of state.markers.values()) map.removeLayer(marker);
       state.markers.clear();
       state.devices = [];
@@ -10692,7 +10692,7 @@ function setPromptSidePanelWidthFromSheet(sheetEl: HTMLElement | null): void {
 function clearPromptSidePanelWidth(delayMs = 260): void {
   setPromptSidePanelWidth(0);
   window.setTimeout(() => {
-    if (!document.querySelector("#windows-download-modal.open, #map-license-modal.open, #ai-license-modal.open, #roadmap-story-modal.open, #privacy-info-modal.open, #app-license-info-modal.open, #about-site-info-modal.open, #m-device-modal.open, #m-poi-modal.open")) {
+    if (!document.querySelector("#windows-download-modal.open, #map-license-modal.open, #ai-license-modal.open, #roadmap-story-modal.open, #privacy-info-modal.open, #app-license-info-modal.open, #about-site-info-modal.open, #its-ai-chat-modal.open, #m-device-modal.open, #m-poi-modal.open")) {
       document.body.classList.remove("side-panel-open", "app-download-panel-open", "map-license-panel-open", "map-modal-panel-open");
       document.documentElement.style.removeProperty("--side-panel-active-width");
     }
@@ -10746,7 +10746,7 @@ function installPromptWheelDismiss(sheetEl: HTMLElement, onClose: () => void): v
 }
 
 function closeFloatingMapPanels(): void {
-  document.querySelectorAll("#windows-download-modal, #map-license-modal, #ai-license-modal, #roadmap-story-modal, #privacy-info-modal, #app-license-info-modal, #about-site-info-modal, #m-device-modal, #m-poi-modal").forEach((modal) => modal.remove());
+  document.querySelectorAll("#windows-download-modal, #map-license-modal, #ai-license-modal, #roadmap-story-modal, #privacy-info-modal, #app-license-info-modal, #about-site-info-modal, #its-ai-chat-modal, #m-device-modal, #m-poi-modal").forEach((modal) => modal.remove());
   document.body.classList.remove("app-download-panel-open", "map-license-panel-open", "map-modal-panel-open");
   clearPromptSidePanelWidth(0);
 }
@@ -11718,6 +11718,8 @@ function setupPromptSheetSwipe(sheetEl: HTMLElement, onClose: () => void): void 
 type ItsWebMcpResource = "home" | "documentation" | "method" | "privacy" | "licence" | "ai-license" | "roadmap" | "pdf" | "llms" | "about";
 
 let itsChatGenerator: any = null;
+let itsWebMcpListenersInstalled = false;
+let itsWebMcpImperativeRegistered = false;
 
 const ITS_WEBMCP_RESOURCE_URLS: Record<ItsWebMcpResource, string> = {
   home: "/",
@@ -12309,6 +12311,7 @@ function setupAiChatSheetDrag(sheetEl: HTMLElement, modal: HTMLElement, onClose:
 
 function itsShowAiChatModal(): void {
   document.getElementById("its-ai-chat-modal")?.remove();
+  closeFloatingMapPanels();
   const modal = document.createElement("section");
   modal.id = "its-ai-chat-modal";
   modal.className = "its-ai-chat-modal";
@@ -12352,7 +12355,8 @@ function itsShowAiChatModal(): void {
   const input = modal.querySelector<HTMLInputElement>("input[name='question']");
   const close = () => {
     modal.classList.remove("open");
-    window.setTimeout(() => modal.remove(), 180);
+    clearPromptSidePanelWidth();
+    window.setTimeout(() => modal.remove(), 220);
   };
   const addMessage = (role: "user" | "assistant" | "status", text: string) => {
     if (!log) return null;
@@ -12395,16 +12399,24 @@ function itsShowAiChatModal(): void {
     void runPrompt(value);
   });
   if (sheet) setupAiChatSheetDrag(sheet, modal, close);
+  window.setTimeout(() => {
+    setPromptSidePanelWidthFromSheet(sheet);
+  }, 20);
   input?.focus();
 }
 
-function itsRegisterWebMcpTools(): void {
-  document.querySelectorAll<HTMLFormElement>("[data-webmcp-open-resource], [data-webmcp-site-search], [data-webmcp-public-context]")
-    .forEach((form) => form.addEventListener("submit", itsHandleWebMcpSubmit));
+function itsRegisterWebMcpTools(): boolean {
+  if (!itsWebMcpListenersInstalled) {
+    document.querySelectorAll<HTMLFormElement>("[data-webmcp-open-resource], [data-webmcp-site-search], [data-webmcp-public-context]")
+      .forEach((form) => form.addEventListener("submit", itsHandleWebMcpSubmit));
+    itsWebMcpListenersInstalled = true;
+  }
 
   const modelContext = document.modelContext || navigator.modelContext;
 
-  if (!modelContext?.registerTool) return;
+  if (!modelContext?.registerTool) return false;
+  if (itsWebMcpImperativeRegistered) return true;
+  itsWebMcpImperativeRegistered = true;
   const register = (tool: ItsWebMcpTool) => {
     const handleError = (error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
@@ -12528,10 +12540,27 @@ function itsRegisterWebMcpTools(): void {
       return itsWebMcpContentResponse(JSON.stringify(result, null, 2), result);
     },
   });
+  return true;
+}
+
+function itsScheduleWebMcpRegistration(): void {
+  let attempts = 0;
+  const run = () => {
+    const registered = itsRegisterWebMcpTools();
+    attempts += 1;
+    if (!registered && attempts < 10) {
+      window.setTimeout(run, attempts < 3 ? 250 : 1000);
+    }
+  };
+  run();
+  window.addEventListener("load", run, { once: true });
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) run();
+  });
 }
 
 if (!staticRoute) {
-  itsRegisterWebMcpTools();
+  itsScheduleWebMcpRegistration();
   itsCreateAiChatButton();
   itsCreateSplash();
   itsCreateWindowsDownloadButton();

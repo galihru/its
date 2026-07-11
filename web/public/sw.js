@@ -158,7 +158,7 @@ self.addEventListener('fetch', (event) => {
         .then((response) => {
           const copy = response.clone();
           if (cacheable && url.origin === self.location.origin) {
-            caches.open(CACHE_NAME).then((cache) => cache.put('/index.html', copy));
+            caches.open(CACHE_NAME).then((cache) => cache.put('/index.html', copy)).catch(() => {});
           }
           return response;
         })
@@ -174,7 +174,7 @@ self.addEventListener('fetch', (event) => {
       try {
         const copy = response.clone();
         if (url.origin === self.location.origin) {
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy)).catch(() => {});
         }
       } catch (e) {
         // ignore opaque responses and other failures
