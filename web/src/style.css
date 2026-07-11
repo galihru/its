@@ -2913,40 +2913,56 @@ body.its-sheet-open .leaflet-control-attribution {
   left: 16px;
   bottom: 96px;
   z-index: 14000;
-  width: 54px;
-  height: 54px;
+  width: 52px;
+  height: 52px;
   display: grid;
   place-items: center;
-  border: 1px solid rgba(14, 165, 233, 0.38);
+  border: 1px solid rgba(15, 23, 42, 0.16);
   border-radius: 16px;
-  background: rgba(15, 23, 42, 0.92);
-  color: #e0f2fe;
-  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.26);
+  background: #ffffff;
+  color: #020617;
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.2);
   cursor: pointer;
 }
 
-.its-ai-chat-fab svg {
-  width: 24px;
-  height: 24px;
+.its-ai-chat-icon {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  display: block;
 }
 
-.its-ai-chat-fab span {
+.its-ai-chat-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.its-ai-chat-spark {
   position: absolute;
-  right: 6px;
-  bottom: 5px;
-  padding: 2px 5px;
+  right: -5px;
+  bottom: -4px;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
   border-radius: 999px;
-  background: #0ea5e9;
-  color: #fff;
-  font-size: 10px;
-  font-weight: 900;
-  line-height: 1;
+  background: #ffffff;
+  color: #020617;
+  border: 1px solid rgba(15, 23, 42, 0.18);
+  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.16);
+}
+
+.its-ai-chat-spark svg {
+  width: 12px;
+  height: 12px;
 }
 
 .its-ai-chat-fab:hover,
 .its-ai-chat-fab:focus-visible {
-  outline: 2px solid rgba(94, 234, 212, 0.42);
-  background: #0f172a;
+  outline: 2px solid rgba(15, 23, 42, 0.22);
+  background: #f8fafc;
 }
 
 .its-ai-chat-modal {
@@ -2954,9 +2970,9 @@ body.its-sheet-open .leaflet-control-attribution {
   inset: 0;
   z-index: 53000;
   display: grid;
-  align-items: end;
-  justify-items: start;
-  padding: 18px;
+  align-items: center;
+  justify-items: end;
+  padding: 22px;
   background: rgba(15, 23, 42, 0.22);
   opacity: 0;
   pointer-events: none;
@@ -2969,8 +2985,9 @@ body.its-sheet-open .leaflet-control-attribution {
 }
 
 .its-ai-chat-sheet {
-  width: min(390px, calc(100vw - 32px));
-  max-height: min(720px, calc(100vh - 36px));
+  width: min(430px, calc(100vw - 44px));
+  height: min(700px, calc(100vh - 44px));
+  max-height: calc(100vh - 44px);
   display: grid;
   grid-template-rows: auto minmax(180px, 1fr) auto auto;
   gap: 12px;
@@ -2980,12 +2997,12 @@ body.its-sheet-open .leaflet-control-attribution {
   background: rgba(255, 255, 255, 0.97);
   color: #0f172a;
   box-shadow: 0 26px 80px rgba(15, 23, 42, 0.24);
-  transform: translateY(12px) scale(0.98);
+  transform: translateX(18px) scale(0.98);
   transition: transform 180ms ease;
 }
 
 .its-ai-chat-modal.open .its-ai-chat-sheet {
-  transform: translateY(0) scale(1);
+  transform: translateX(0) scale(1);
 }
 
 .its-ai-chat-head {
@@ -8438,7 +8455,8 @@ body.its-sheet-overlay-history #m-ai-history-sheet {
 
   .its-ai-chat-sheet {
     width: 100%;
-    max-height: min(86vh, 720px);
+    height: min(74vh, 720px);
+    max-height: calc(100vh - 12px);
     border-radius: 24px 24px 0 0;
     padding: 12px 14px max(18px, env(safe-area-inset-bottom));
     transform: translateY(100%);
@@ -8446,6 +8464,10 @@ body.its-sheet-overlay-history #m-ai-history-sheet {
 
   .its-ai-chat-modal.open .its-ai-chat-sheet {
     transform: translateY(0);
+  }
+
+  .its-ai-chat-modal.expanded .its-ai-chat-sheet {
+    height: min(94vh, 920px);
   }
 }
 

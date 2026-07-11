@@ -8556,7 +8556,7 @@ if (staticRoute) {
 
       // Jika lokal ada tapi kosong, coba Firebase
       if (!devices.length) {
-        console.warn("[ITS] Local snapshot empty, trying Firebase...");
+        console.debug("[ITS] Local snapshot empty, trying Firebase...");
         try {
           const fbSnapshot = await fetchFirebaseDevices();
           devices = normalizeDevices(fbSnapshot);
@@ -11736,13 +11736,15 @@ function itsAbsoluteUrl(pathname: string): string {
   return new URL(pathname, "https://itstelkom.web.app").href;
 }
 
-function itsOpenWebMcpResource(resourceValue: FormDataEntryValue | null): { resource: ItsWebMcpResource; url: string; message: string } {
+function itsOpenWebMcpResource(resourceValue: FormDataEntryValue | null, navigate = true): { resource: ItsWebMcpResource; url: string; message: string } {
   const resource = String(resourceValue || "documentation") as ItsWebMcpResource;
   const safeResource = resource in ITS_WEBMCP_RESOURCE_URLS ? resource : "documentation";
-  if (safeResource === "about") {
-    itsShowSiteInfoModal("about-site");
-  } else {
-    window.location.assign(ITS_WEBMCP_RESOURCE_URLS[safeResource]);
+  if (navigate) {
+    if (safeResource === "about") {
+      itsShowSiteInfoModal("about-site");
+    } else {
+      window.location.assign(ITS_WEBMCP_RESOURCE_URLS[safeResource]);
+    }
   }
   return {
     resource: safeResource,
@@ -11776,32 +11778,32 @@ function itsAiSparkIconSvg(): string {
 function itsHandleWebMcpSubmit(event: SubmitEvent): void {
   const form = event.currentTarget as HTMLFormElement | null;
   if (!form) return;
+  const submitEvent = event as SubmitEvent & { agentInvoked?: boolean; respondWith?: (response: Promise<unknown> | unknown) => void };
+  const respondWith = typeof submitEvent.respondWith === "function"
+    ? submitEvent.respondWith.bind(submitEvent)
+    : null;
+  if (submitEvent.agentInvoked !== true || !respondWith) return;
+
   event.preventDefault();
   const data = new FormData(form);
-  const submitEvent = event as SubmitEvent & { agentInvoked?: boolean; respondWith?: (response: Promise<unknown> | unknown) => void };
 
   if (form.matches("[data-webmcp-open-resource]")) {
-    const result = itsOpenWebMcpResource(data.get("resource"));
-    submitEvent.respondWith?.(itsWebMcpContentResponse(result.message, result));
+    const result = itsOpenWebMcpResource(data.get("resource"), false);
+    respondWith(itsWebMcpContentResponse(result.message, result));
     return;
   }
 
   if (form.matches("[data-webmcp-site-search]")) {
     const query = String(data.get("query") || "").trim();
     const target = query ? `/documentation?search=${encodeURIComponent(query)}#kode-baris-per-baris` : "/documentation";
-    window.location.assign(target);
     const result = { query, url: itsAbsoluteUrl(target) };
-    submitEvent.respondWith?.(itsWebMcpContentResponse(`Opened ITS Maps documentation search for "${query || "overview"}".`, result));
+    respondWith(itsWebMcpContentResponse(`Prepared ITS Maps documentation search for "${query || "overview"}".`, result));
     return;
   }
 
   if (form.matches("[data-webmcp-public-context]")) {
     const task = itsReadWebMcpContext(data.get("format")).then((result) => itsWebMcpContentResponse(result.text, result));
-    submitEvent.respondWith?.(task);
-    if (!submitEvent.agentInvoked) void task.then((result) => {
-      const context = (result as { structuredContent?: { url?: string } }).structuredContent;
-      if (context?.url) window.location.assign(context.url);
-    });
+    respondWith(task);
   }
 }
 
@@ -12107,6 +12109,22 @@ async function ensureItsChatModel(): Promise<any> {
   return itsChatGenerator;
 }
 
+function itsWithTimeout<T>(task: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(message)), ms);
+    task.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
 function itsExtractGeneratedAnswer(output: unknown, prompt: string): string {
   const first = Array.isArray(output) ? output[0] : output;
   const generated = (first as { generated_text?: unknown })?.generated_text;
@@ -12119,6 +12137,30 @@ function itsExtractGeneratedAnswer(output: unknown, prompt: string): string {
   return "";
 }
 
+function itsValueText(value: unknown, fallback = "-"): string {
+  if (value === null || value === undefined || value === "") return fallback;
+  return String(value);
+}
+
+function itsTrafficColorText(value: unknown): string {
+  const color = String(value || "").toLowerCase();
+  if (color === "red" || color === "merah") return "Merah";
+  if (color === "yellow" || color === "kuning") return "Kuning";
+  if (color === "green" || color === "hijau") return "Hijau";
+  return itsValueText(value, "belum tersedia");
+}
+
+function itsVehicleLines(vehicles: Record<string, unknown>): string {
+  return [
+    `mobil ${vehicles.car ?? 0}`,
+    `motor ${vehicles.motorcycle ?? 0}`,
+    `bus ${vehicles.bus ?? 0}`,
+    `truk ${vehicles.truck ?? 0}`,
+    `sepeda ${vehicles.bicycle ?? 0}`,
+    `total ${vehicles.total ?? 0}`,
+  ].join(", ");
+}
+
 function itsFallbackAssistantAnswer(question: string, status: Record<string, unknown>): string {
   const devices = Array.isArray(status.devices)
     ? status.devices as Record<string, unknown>[]
@@ -12128,14 +12170,42 @@ function itsFallbackAssistantAnswer(question: string, status: Record<string, unk
   const vehicles = (device.vehicleBreakdown as Record<string, unknown> | undefined) || {};
   const camera = (device.cameraStatus as Record<string, unknown> | undefined) || {};
   const detection = (device.objectDetection as Record<string, unknown> | undefined) || {};
+  const location = (device.location as Record<string, unknown> | undefined) || {};
+  const update = (device.update as Record<string, unknown> | undefined) || {};
+  const detections = Array.isArray(detection.detections) ? detection.detections as Record<string, unknown>[] : [];
+  const topDetection = detections
+    .slice()
+    .sort((a, b) => Number(b.confidencePercent || 0) - Number(a.confidencePercent || 0))[0];
   const q = question.toLowerCase();
-  if (q.includes("kamera") || q.includes("snapshot")) {
-    return `Kamera ${camera.publicOk === true ? "publik online" : camera.localOk === true ? "lokal online" : "belum sehat/publik offline"}. Catatan: ${camera.note || camera.streamState || "tidak ada catatan kamera"}. Objek terdeteksi: ${detection.total ?? 0}.`;
+  const statusLine = `Sistem ${device.id || "raspberry-its"} sedang ${device.status || "offline"}; update ${device.lastSeenText || "belum tersedia"}.`;
+  const trafficLine = `Lampu ${itsTrafficColorText(device.trafficColor)}${device.trafficDurationSec ? ` (${device.trafficDurationSec}s)` : ""}.`;
+  const vehicleLine = `Kendaraan: ${itsVehicleLines(vehicles)}.`;
+  const cameraLine = `Kamera ${camera.publicOk === true ? "publik online" : camera.localOk === true ? "lokal online" : "belum sehat/publik offline"}${camera.note || camera.streamState ? `; ${camera.note || camera.streamState}` : ""}.`;
+  const aiLine = `Deteksi objek ${detection.total ?? 0}${topDetection ? `; tertinggi ${topDetection.label} ${topDetection.confidencePercent}%` : ""}${detection.fps ? `; ${detection.fps} FPS` : ""}.`;
+  const locationLine = `Lokasi ${location.label || device.roadName || "belum tersedia"}.`;
+  const updateLine = update.status || update.stage || update.message
+    ? `Update controller: ${[update.status, update.stage, update.message].filter(Boolean).join(" - ")}.`
+    : "";
+
+  if (q.includes("kamera") || q.includes("snapshot") || q.includes("gambar")) {
+    return `${cameraLine} ${aiLine} ${vehicleLine}`;
   }
-  if (q.includes("lampu") || q.includes("traffic")) {
-    return `Status lampu ${device.trafficColor || "belum tersedia"}${device.trafficDurationSec ? ` selama ${device.trafficDurationSec} detik` : ""}. Total kendaraan ${device.totalVehicles ?? vehicles.total ?? 0}.`;
+  if (q.includes("lampu") || q.includes("traffic") || q.includes("lalu lintas") || q.includes("jalan")) {
+    return `${trafficLine} ${vehicleLine} ${locationLine}`;
   }
-  return `Device ${device.id || "raspberry-its"} ${device.status || "offline"} di ${device.roadName || (device.location as Record<string, unknown> | undefined)?.label || "lokasi belum tersedia"}. Total kendaraan ${device.totalVehicles ?? vehicles.total ?? 0}; mobil ${vehicles.car ?? 0}, motor ${vehicles.motorcycle ?? 0}, bus ${vehicles.bus ?? 0}, truk ${vehicles.truck ?? 0}, sepeda ${vehicles.bicycle ?? 0}.`;
+  if (q.includes("mobil") || q.includes("motor") || q.includes("bus") || q.includes("truk") || q.includes("sepeda") || q.includes("kendaraan")) {
+    return `${vehicleLine} ${trafficLine}`;
+  }
+  if (q.includes("lokasi") || q.includes("peta") || q.includes("map")) {
+    return `${locationLine} ${trafficLine} Koordinat ${itsValueText(location.lat)}, ${itsValueText(location.lng)}.`;
+  }
+  if (q.includes("model") || q.includes("ai") || q.includes("akurasi") || q.includes("deteksi")) {
+    return `${aiLine} Model ${detection.modelUrl || "RF-DETR/ONNX dari controller"}. ${vehicleLine}`;
+  }
+  if (q.includes("update") || q.includes("controller") || q.includes("raspberry") || q.includes("status")) {
+    return [statusLine, updateLine, cameraLine, trafficLine].filter(Boolean).join(" ");
+  }
+  return [statusLine, locationLine, trafficLine, vehicleLine, aiLine].filter(Boolean).join(" ");
 }
 
 async function askItsMapsAssistant(question: string, onStage?: (stage: string) => void): Promise<string> {
@@ -12143,8 +12213,12 @@ async function askItsMapsAssistant(question: string, onStage?: (stage: string) =
   const status = await itsGetRealtimeMapSummary();
   const context = JSON.stringify(status, null, 2).slice(0, 9000);
   try {
-    onStage?.("Memuat model Qwen2.5 lokal via Transformers.js");
-    const generator = await ensureItsChatModel();
+    onStage?.("Memuat model lokal untuk memahami pertanyaan");
+    const generator = await itsWithTimeout(
+      ensureItsChatModel(),
+      8000,
+      "Model lokal belum siap dalam 8 detik.",
+    );
     const prompt = [
       "Kamu asisten ITS Maps.",
       "Jawab hanya berdasarkan data realtime Firebase RTDB berikut.",
@@ -12155,15 +12229,26 @@ async function askItsMapsAssistant(question: string, onStage?: (stage: string) =
       `Pertanyaan: ${question}`,
       "Jawaban:",
     ].join("\n");
-    onStage?.("Model sedang menulis jawaban");
-    const output = await generator(prompt, { max_new_tokens: 150, temperature: 0.3, do_sample: false });
+    onStage?.("Menganalisis pertanyaan dan data realtime");
+    const output = await itsWithTimeout(
+      generator(prompt, { max_new_tokens: 150, temperature: 0.3, do_sample: false }),
+      8000,
+      "Model lokal terlalu lama menjawab.",
+    );
     const answer = itsExtractGeneratedAnswer(output, prompt);
     return answer || itsFallbackAssistantAnswer(question, status);
   } catch (error) {
     console.warn("[ITS] Local AI assistant fallback", error);
-    onStage?.("Model lokal belum siap, memakai ringkasan RTDB langsung");
+    onStage?.("Model lokal belum siap, memakai pembaca data realtime");
     return itsFallbackAssistantAnswer(question, status);
   }
+}
+
+function itsAppAiFabIconHtml(): string {
+  return `<span class="its-ai-chat-icon" aria-hidden="true">
+    <img src="${ITS_APP_ICON}" alt="">
+    <span class="its-ai-chat-spark">${itsAiSparkIconSvg()}</span>
+  </span>`;
 }
 
 function itsCreateAiChatButton(): void {
@@ -12173,9 +12258,53 @@ function itsCreateAiChatButton(): void {
   button.className = "its-ai-chat-fab";
   button.type = "button";
   button.setAttribute("aria-label", "Buka chat AI ITS Maps");
-  button.innerHTML = `${itsAiSparkIconSvg()}<span>AI</span>`;
+  button.innerHTML = itsAppAiFabIconHtml();
   button.addEventListener("click", () => itsShowAiChatModal());
   document.body.appendChild(button);
+}
+
+function setupAiChatSheetDrag(sheetEl: HTMLElement, modal: HTMLElement, onClose: () => void): void {
+  const grip = sheetEl.querySelector<HTMLElement>(".map-license-grip");
+  if (!grip) return;
+  let startY = 0;
+  let deltaY = 0;
+  let pointerId = -1;
+  let dragging = false;
+
+  grip.addEventListener("pointerdown", (event) => {
+    if (!window.matchMedia("(max-width: 820px)").matches) return;
+    dragging = true;
+    pointerId = event.pointerId;
+    startY = event.clientY;
+    deltaY = 0;
+    sheetEl.style.transition = "none";
+    try { grip.setPointerCapture?.(event.pointerId); } catch { /* Pointer capture can fail on older WebView builds. */ }
+  });
+
+  grip.addEventListener("pointermove", (event) => {
+    if (!dragging || event.pointerId !== pointerId) return;
+    deltaY = event.clientY - startY;
+    event.preventDefault();
+    if (deltaY < 0) {
+      const pull = Math.max(deltaY, -90);
+      sheetEl.style.transform = `translateY(${pull}px)`;
+    } else {
+      sheetEl.style.transform = `translateY(${deltaY}px)`;
+    }
+  });
+
+  const finish = (event: PointerEvent) => {
+    if (!dragging || event.pointerId !== pointerId) return;
+    dragging = false;
+    pointerId = -1;
+    sheetEl.style.transition = "";
+    sheetEl.style.transform = "";
+    if (deltaY < -42) modal.classList.add("expanded");
+    else if (deltaY > 84) onClose();
+  };
+
+  grip.addEventListener("pointerup", finish);
+  grip.addEventListener("pointercancel", finish);
 }
 
 function itsShowAiChatModal(): void {
@@ -12191,16 +12320,16 @@ function itsShowAiChatModal(): void {
       <div class="map-license-grip" aria-hidden="true"></div>
       <header class="its-ai-chat-head">
         <div>
-          <span>WebMCP + RTDB</span>
-          <h2 id="its-ai-chat-title">Chat AI ITS Maps</h2>
-          <p>Uji data realtime Raspberry, kamera, traffic, dan object detection.</p>
+          <span>Realtime RTDB</span>
+          <h2 id="its-ai-chat-title">Asisten ITS Maps</h2>
+          <p>Membaca data Raspberry, kamera, traffic, dan object detection.</p>
         </div>
         <button type="button" data-ai-chat-close aria-label="Tutup chat AI">${closeIconSvg()}</button>
       </header>
       <div class="its-ai-chat-log" data-ai-chat-log>
         <article class="its-ai-chat-msg assistant">
           <strong>ITS Assistant</strong>
-          <p>Tanyakan status Raspberry, traffic light, kamera, snapshot, atau jumlah kendaraan.</p>
+          <p>Tanyakan apa saja tentang status Raspberry, lampu, kamera, snapshot, lokasi, atau jumlah kendaraan.</p>
         </article>
       </div>
       <div class="its-ai-chat-quick">
@@ -12240,7 +12369,7 @@ function itsShowAiChatModal(): void {
     const trimmed = question.trim();
     if (!trimmed) return;
     addMessage("user", trimmed);
-    const statusMsg = addMessage("status", "Menyiapkan WebMCP/RTDB...");
+    const statusMsg = addMessage("status", "Membaca data realtime...");
     try {
       const answer = await askItsMapsAssistant(trimmed, (stage) => {
         if (statusMsg) statusMsg.querySelector("p")!.textContent = stage;
@@ -12265,7 +12394,7 @@ function itsShowAiChatModal(): void {
     if (input) input.value = "";
     void runPrompt(value);
   });
-  if (sheet) setupPromptSheetSwipe(sheet, close);
+  if (sheet) setupAiChatSheetDrag(sheet, modal, close);
   input?.focus();
 }
 
