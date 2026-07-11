@@ -10701,7 +10701,7 @@ function clearPromptSidePanelWidth(delayMs = 260): void {
 
 function promptSheetSwipeHandleTarget(target: HTMLElement | null): boolean {
   return Boolean(target?.closest(
-    "[data-swipe-handle], .windows-download-head, .windows-download-detail-head, .map-license-head",
+    "[data-swipe-handle], .windows-download-head, .windows-download-detail-head, .map-license-head, .its-ai-chat-head",
   ));
 }
 
@@ -11720,6 +11720,12 @@ type ItsWebMcpResource = "home" | "documentation" | "method" | "privacy" | "lice
 let itsChatGenerator: any = null;
 let itsWebMcpListenersInstalled = false;
 let itsWebMcpImperativeRegistered = false;
+let itsAgentModeEnabled = false;
+
+type ItsAssistantResponse = {
+  text: string;
+  html?: string;
+};
 
 const ITS_WEBMCP_RESOURCE_URLS: Record<ItsWebMcpResource, string> = {
   home: "/",
@@ -12163,12 +12169,88 @@ function itsVehicleLines(vehicles: Record<string, unknown>): string {
   ].join(", ");
 }
 
-function itsFallbackAssistantAnswer(question: string, status: Record<string, unknown>): string {
+function itsDevicesFromStatus(status: Record<string, unknown>): Record<string, unknown>[] {
+  return Array.isArray(status.devices)
+    ? status.devices as Record<string, unknown>[]
+    : status.device ? [status.device as Record<string, unknown>] : [];
+}
+
+function itsPrimaryDevice(status: Record<string, unknown>): Record<string, unknown> | null {
+  return itsDevicesFromStatus(status)[0] || null;
+}
+
+function itsIntentFlags(question: string): Record<string, boolean> {
+  const q = question.toLowerCase();
+  return {
+    greeting: /(^|\s)(halo|hallo|hai|hi|hello|selamat|assalam|pagi|siang|sore|malam)(\s|$|[,!.?])/.test(q),
+    image: /(gambar|snapshot|foto|riwayat|deteksi|object|objek|kamera|scan|bbox|akurasi)/.test(q),
+    video: /(video|live|stream|kamera live|cctv|rekaman)/.test(q),
+    chart: /(grafik|chart|tren|trend|statistik|histori|history|plot|visualisasi)/.test(q),
+    map: /(peta|map|lokasi|koordinat|jalan|gang|google maps|bing maps|carto)/.test(q),
+    formula: /(rumus|formula|latex|matematika|rf[- ]?detr|detr|iou|akurasi|confidence|loss|nms)/.test(q),
+    status: /(status|raspberry|online|offline|lampu|traffic|lalu lintas|kendaraan|mobil|motor|bus|truk|sepeda|sistem)/.test(q),
+    agent: /(agent|agen|lihat layar|screen|klik|buka|scroll|navigasi|kontrol|periksa halaman|cek tampilan)/.test(q),
+  };
+}
+
+function itsCssPercent(value: unknown, fallback: number): number {
+  const n = itsNumberField(value);
+  if (n === null) return fallback;
+  if (n <= 1) return Math.max(0, Math.min(100, n * 100));
+  return Math.max(0, Math.min(100, n));
+}
+
+function itsDetectionBoxStyle(detection: Record<string, unknown>): string {
+  const box = objectRecord(detection.box);
+  const x = itsCssPercent(box.x, 42);
+  const y = itsCssPercent(box.y, 32);
+  const width = Math.max(12, Math.min(54, itsCssPercent(box.width, 28)));
+  const height = Math.max(12, Math.min(48, itsCssPercent(box.height, 24)));
+  return `left:${x}%;top:${y}%;width:${width}%;height:${height}%;`;
+}
+
+function itsBestDetection(device: Record<string, unknown>): Record<string, unknown> | null {
+  const objectDetection = objectRecord(device.objectDetection);
+  const detections = Array.isArray(objectDetection.detections)
+    ? objectDetection.detections as Record<string, unknown>[]
+    : [];
+  return detections
+    .slice()
+    .sort((a, b) => Number(b.confidencePercent || 0) - Number(a.confidencePercent || 0))[0] || null;
+}
+
+function itsVehicleMetricItems(vehicles: Record<string, unknown>): Array<{ key: string; label: string; value: unknown; color: string; icon: string }> {
+  return [
+    { key: "car", label: "Mobil", value: vehicles.car ?? 0, color: "#f97316", icon: "M5 14h14l-1.4-4.2A2 2 0 0 0 15.7 8H8.3a2 2 0 0 0-1.9 1.8L5 14Zm1 0v3m12-3v3M8 17h.01M16 17h.01" },
+    { key: "motorcycle", label: "Motor", value: vehicles.motorcycle ?? 0, color: "#2563eb", icon: "M5 16a3 3 0 1 0 0 .01M19 16a3 3 0 1 0 0 .01M8 16h4l2-7h3l2 7M10 9h3" },
+    { key: "bicycle", label: "Sepeda", value: vehicles.bicycle ?? 0, color: "#0d9488", icon: "M5 16a3 3 0 1 0 0 .01M19 16a3 3 0 1 0 0 .01M8 16l4-7 3 7M12 9h4M10 7h3" },
+    { key: "bus", label: "Bus", value: vehicles.bus ?? 0, color: "#16a34a", icon: "M6 7h12v8H6V7Zm1 8v2m10-2v2M8 10h8M9 18h6" },
+    { key: "truck", label: "Truk", value: vehicles.truck ?? 0, color: "#7c3aed", icon: "M4 9h10v7H4V9Zm10 3h3l3 3v1h-6v-4ZM7 17h.01M17 17h.01" },
+    { key: "total", label: "Total", value: vehicles.total ?? 0, color: "#e11d48", icon: "M5 19V9m7 10V5m7 14v-7" },
+  ];
+}
+
+function itsMiniIcon(path: string, color: string): string {
+  return `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="${path}" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+}
+
+function itsVehicleMetricGridHtml(vehicles: Record<string, unknown>): string {
+  return `<div class="its-ai-metric-grid">
+    ${itsVehicleMetricItems(vehicles).map((item) => `
+      <div class="its-ai-metric">
+        ${itsMiniIcon(item.icon, item.color)}
+        <span>${escapeHtml(item.label)}</span>
+        <strong style="color:${item.color}">${escapeHtml(String(item.value ?? 0))}</strong>
+      </div>`).join("")}
+  </div>`;
+}
+
+function itsAssistantText(question: string, status: Record<string, unknown>, extra = ""): string {
   const devices = Array.isArray(status.devices)
     ? status.devices as Record<string, unknown>[]
     : status.device ? [status.device as Record<string, unknown>] : [];
   const device = devices[0];
-  if (!device) return "RTDB belum mengembalikan device. Cek koneksi Firebase atau node devices.";
+  if (!device) return "Saya belum menerima node device dari RTDB. Cek koneksi Firebase atau node devices terlebih dahulu.";
   const vehicles = (device.vehicleBreakdown as Record<string, unknown> | undefined) || {};
   const camera = (device.cameraStatus as Record<string, unknown> | undefined) || {};
   const detection = (device.objectDetection as Record<string, unknown> | undefined) || {};
@@ -12189,8 +12271,11 @@ function itsFallbackAssistantAnswer(question: string, status: Record<string, unk
     ? `Update controller: ${[update.status, update.stage, update.message].filter(Boolean).join(" - ")}.`
     : "";
 
+  if (itsIntentFlags(question).greeting) {
+    return `Halo. Saya siap membaca RTDB ITS Maps, snapshot kamera, grafik kendaraan, peta, video, dan rumus AI. Kondisi singkat sekarang: ${statusLine} ${trafficLine}`;
+  }
   if (q.includes("kamera") || q.includes("snapshot") || q.includes("gambar")) {
-    return `${cameraLine} ${aiLine} ${vehicleLine}`;
+    return `${cameraLine} ${aiLine} ${vehicleLine} ${extra}`.trim();
   }
   if (q.includes("lampu") || q.includes("traffic") || q.includes("lalu lintas") || q.includes("jalan")) {
     return `${trafficLine} ${vehicleLine} ${locationLine}`;
@@ -12207,18 +12292,224 @@ function itsFallbackAssistantAnswer(question: string, status: Record<string, unk
   if (q.includes("update") || q.includes("controller") || q.includes("raspberry") || q.includes("status")) {
     return [statusLine, updateLine, cameraLine, trafficLine].filter(Boolean).join(" ");
   }
-  return [statusLine, locationLine, trafficLine, vehicleLine, aiLine].filter(Boolean).join(" ");
+  return [statusLine, locationLine, trafficLine, vehicleLine, aiLine, extra].filter(Boolean).join(" ");
 }
 
-async function askItsMapsAssistant(question: string, onStage?: (stage: string) => void): Promise<string> {
+function itsFallbackAssistantAnswer(question: string, status: Record<string, unknown>): string {
+  return itsAssistantText(question, status);
+}
+
+function itsChartCardHtml(device: Record<string, unknown>): string {
+  const vehicles = objectRecord(device.vehicleBreakdown);
+  const red = Number(device.trafficColor === "red" || device.trafficColor === "merah" ? device.trafficDurationSec || 0 : 0);
+  const yellow = Number(device.trafficColor === "yellow" || device.trafficColor === "kuning" ? device.trafficDurationSec || 0 : 0);
+  const green = Number(device.trafficColor === "green" || device.trafficColor === "hijau" ? device.trafficDurationSec || 0 : 0);
+  const total = Number(vehicles.total || device.totalVehicles || 0);
+  const points = [
+    { x: 34, y: 98 - Math.min(70, red * 4), color: "#ef4444", label: "Merah" },
+    { x: 92, y: 98 - Math.min(70, yellow * 4), color: "#eab308", label: "Kuning" },
+    { x: 150, y: 98 - Math.min(70, green * 4), color: "#22c55e", label: "Hijau" },
+    { x: 208, y: 98 - Math.min(70, total * 7), color: "#38bdf8", label: "Kendaraan" },
+  ];
+  const path = points.map((p, index) => `${index ? "L" : "M"}${p.x} ${p.y}`).join(" ");
+  return `<section class="its-ai-card its-ai-chart-card">
+    <div class="its-ai-card-head">
+      <span>${itsMiniIcon("M4 19V7m6 12V5m6 14v-9m4 9H4", "#2563eb")} Grafik realtime</span>
+      <strong>${escapeHtml(String(total))} kendaraan</strong>
+    </div>
+    <svg class="its-ai-chart" viewBox="0 0 240 122" role="img" aria-label="Grafik realtime kendaraan dan durasi lampu">
+      <path d="M26 15v88h202" stroke="#cbd5e1" stroke-width="1.5"/>
+      <path d="M26 80h202M26 54h202M26 28h202" stroke="#e2e8f0" stroke-width="1"/>
+      <path d="${path}" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="4 4"/>
+      ${points.map((p) => `<circle cx="${p.x}" cy="${p.y}" r="6" fill="${p.color}" stroke="#fff" stroke-width="2"><title>${p.label}</title></circle>`).join("")}
+      <text x="28" y="116">X: jumlah/durasi</text>
+      <text x="30" y="12">Y</text>
+    </svg>
+    <div class="its-ai-chart-legend">
+      <span><i style="background:#ef4444"></i>Merah ${escapeHtml(String(red || "-"))}s</span>
+      <span><i style="background:#eab308"></i>Kuning ${escapeHtml(String(yellow || "-"))}s</span>
+      <span><i style="background:#22c55e"></i>Hijau ${escapeHtml(String(green || "-"))}s</span>
+    </div>
+  </section>`;
+}
+
+function itsSnapshotImageUrl(snapshot: Record<string, unknown>): string {
+  const base64 = itsStringField(snapshot.base64Data);
+  const mime = itsStringField(snapshot.mimeType) || "image/jpeg";
+  if (base64) return `data:${mime};base64,${base64}`;
+  return itsStringField(snapshot.imageUrl) || "/bwits.png";
+}
+
+function itsSnapshotCardHtml(device: Record<string, unknown>, snapshot: Record<string, unknown>): string {
+  const objectDetection = objectRecord(device.objectDetection);
+  const vehicles = objectRecord(device.vehicleBreakdown);
+  const detection = itsBestDetection(device);
+  const label = detection ? String(detection.label || "objek") : Number(objectDetection.total || 0) > 0 ? "objek terdeteksi" : "belum ada objek";
+  const confidence = detection ? `${detection.confidencePercent ?? 0}%` : itsNumberField(objectDetection.total) && objectDetection.fps ? `${objectDetection.fps} FPS` : "akurasi RTDB belum tersedia";
+  const bbox = detection ? `<span class="its-ai-bbox" style="${itsDetectionBoxStyle(detection)}"><b>${escapeHtml(label)} ${escapeHtml(String(confidence))}</b></span>` : "";
+  return `<section class="its-ai-card">
+    <div class="its-ai-card-head">
+      <span>${itsMiniIcon("M4 7h3l2-2h6l2 2h3v12H4V7Zm8 9a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z", "#0d9488")} Snapshot AI</span>
+      <strong>${escapeHtml(String(objectDetection.total ?? snapshot.objectCount ?? 0))} OBJ</strong>
+    </div>
+    <div class="its-ai-snapshot">
+      <img src="${escapeHtml(itsSnapshotImageUrl(snapshot))}" alt="Snapshot kamera Raspberry Pi ITS Maps">
+      <span class="its-ai-scan-frame" aria-hidden="true"></span>
+      ${bbox}
+    </div>
+    <p class="its-ai-card-note"><strong>${escapeHtml(label)}</strong> ${escapeHtml(String(confidence))}. Canvas AI memindai area kecil dan memakai bbox RTDB jika tersedia.</p>
+    ${itsVehicleMetricGridHtml(vehicles)}
+  </section>`;
+}
+
+function itsLatLng(device: Record<string, unknown>): { lat: number; lng: number } | null {
+  const location = objectRecord(device.location);
+  const lat = itsNumberField(location.lat);
+  const lng = itsNumberField(location.lng);
+  if (lat === null || lng === null) return null;
+  return { lat, lng };
+}
+
+function itsLonToTile(lon: number, zoom: number): number {
+  return Math.floor(((lon + 180) / 360) * 2 ** zoom);
+}
+
+function itsLatToTile(lat: number, zoom: number): number {
+  const rad = lat * Math.PI / 180;
+  return Math.floor((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2 * 2 ** zoom);
+}
+
+function itsMapCardHtml(device: Record<string, unknown>): string {
+  const point = itsLatLng(device) || { lat: -6.977254, lng: 107.631817 };
+  const z = 17;
+  const x = itsLonToTile(point.lng, z);
+  const y = itsLatToTile(point.lat, z);
+  const tiles = [
+    `https://a.basemaps.cartocdn.com/light_all/${z}/${x}/${y}.png`,
+    `https://b.basemaps.cartocdn.com/light_all/${z}/${x + 1}/${y}.png`,
+    `https://c.basemaps.cartocdn.com/light_all/${z}/${x}/${y + 1}.png`,
+    `https://d.basemaps.cartocdn.com/light_all/${z}/${x + 1}/${y + 1}.png`,
+  ];
+  const gmaps = `https://www.google.com/maps/search/?api=1&query=${point.lat},${point.lng}`;
+  const bing = `https://www.bing.com/maps?cp=${point.lat}~${point.lng}&lvl=18`;
+  const its = `https://itstelkom.web.app/?lat=${point.lat}&lng=${point.lng}&zoom=18`;
+  return `<section class="its-ai-card">
+    <div class="its-ai-card-head">
+      <span>${itsMiniIcon("M12 21s7-5.4 7-11a7 7 0 0 0-14 0c0 5.6 7 11 7 11Zm0-8a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z", "#2563eb")} Peta Carto</span>
+      <strong>${escapeHtml(itsTrafficColorText(device.trafficColor))}</strong>
+    </div>
+    <div class="its-ai-map-mosaic">
+      ${tiles.map((tile) => `<img src="${tile}" alt="">`).join("")}
+      <span class="its-ai-map-marker">${escapeHtml(String(device.trafficColor || "RS")).slice(0, 2).toUpperCase()}</span>
+    </div>
+    <p class="its-ai-card-note">${escapeHtml(String(device.roadName || objectRecord(device.location).label || "Gang Gotong Royong"))}: ${point.lat.toFixed(6)}, ${point.lng.toFixed(6)}.</p>
+    <div class="its-ai-actions">
+      <a href="${gmaps}" target="_blank" rel="noopener">Google Maps</a>
+      <a href="${bing}" target="_blank" rel="noopener">Bing Maps</a>
+      <a href="${its}" target="_blank" rel="noopener">ITS Maps</a>
+    </div>
+  </section>`;
+}
+
+function itsVideoCardHtml(device: Record<string, unknown>, cameraHealth: Record<string, unknown>): string {
+  const publicUrl = itsStringField(cameraHealth.publicUrl);
+  const publicOk = cameraHealth.publicOk === true;
+  const video = publicUrl && publicOk
+    ? `<video src="${escapeHtml(publicUrl)}" controls playsinline muted preload="metadata"></video>`
+    : `<img src="/bwits.png" alt="Ilustrasi video live ITS belum tersedia">`;
+  return `<section class="its-ai-card">
+    <div class="its-ai-card-head">
+      <span>${itsMiniIcon("M15 10l4.5-2.5v9L15 14M4 6h11v12H4V6Z", "#7c3aed")} Video live</span>
+      <strong>${publicOk ? "ONLINE" : "FALLBACK"}</strong>
+    </div>
+    <div class="its-ai-video-frame">${video}</div>
+    <p class="its-ai-card-note">${publicOk ? "Stream publik sehat dan dapat diputar." : `Stream publik belum sehat; ${escapeHtml(String(cameraHealth.note || device.status || "kamera belum live"))}.`}</p>
+  </section>`;
+}
+
+function itsFormulaCardHtml(): string {
+  return `<section class="its-ai-card its-ai-formula">
+    <div class="its-ai-card-head">
+      <span>${itsMiniIcon("M4 7h16M4 12h10M4 17h16", "#0f172a")} Rumus AI deteksi</span>
+      <strong>RF-DETR</strong>
+    </div>
+    <p><b>Skor objek</b>: <code>score = sigma(z_obj) x max softmax(z_cls)</code></p>
+    <p><b>IoU bbox</b>: <code>IoU = area(Bp intersect Bg) / area(Bp union Bg)</code></p>
+    <p><b>Loss ringkas</b>: <code>L = lambda_cls L_cls + lambda_box L1 + lambda_giou L_giou</code></p>
+    <p class="its-ai-card-note">Di aplikasi, confidence dan bbox final dipublikasikan controller ke RTDB, lalu UI menampilkan label, akurasi, dan kotak deteksi.</p>
+  </section>`;
+}
+
+function itsAgentCardHtml(status: Record<string, unknown>): string {
+  const openPanels = Array.from(document.querySelectorAll<HTMLElement>(".open[id], .side-panel-open"))
+    .map((el) => el.id || el.className)
+    .filter(Boolean)
+    .slice(0, 6);
+  const mapEl = document.querySelector<HTMLElement>("#map, .leaflet-container, .map-root, main");
+  const device = itsPrimaryDevice(status);
+  return `<section class="its-ai-card">
+    <div class="its-ai-card-head">
+      <span>${itsMiniIcon("M12 3l1.8 5.3L19 10l-5.2 1.7L12 17l-1.8-5.3L5 10l5.2-1.7L12 3Z", "#111827")} Agent in-page</span>
+      <strong>${itsAgentModeEnabled ? "AKTIF" : "OFF"}</strong>
+    </div>
+    <p class="its-ai-card-note">Agent membaca halaman ITS Maps yang sedang terbuka, RTDB, dan panel internal. Batas aman browser: tidak mengontrol OS atau tab di luar situs.</p>
+    <ul class="its-ai-agent-list">
+      <li>Viewport: ${window.innerWidth} x ${window.innerHeight}</li>
+      <li>Panel aktif: ${escapeHtml(openPanels.join(", ") || "tidak ada")}</li>
+      <li>Area peta: ${escapeHtml(mapEl ? `${Math.round(mapEl.getBoundingClientRect().width)} x ${Math.round(mapEl.getBoundingClientRect().height)}` : "tidak ditemukan")}</li>
+      <li>RTDB utama: ${escapeHtml(String(device?.id || "raspberry-its"))} ${escapeHtml(String(device?.status || "unknown"))}</li>
+    </ul>
+  </section>`;
+}
+
+async function itsBuildAssistantResponse(question: string, status: Record<string, unknown>, onStage?: (stage: string) => void): Promise<ItsAssistantResponse> {
+  const flags = itsIntentFlags(question);
+  const device = itsPrimaryDevice(status);
+  if (!device) return { text: itsFallbackAssistantAnswer(question, status) };
+  const cards: string[] = [];
+  if (flags.agent || itsAgentModeEnabled) {
+    onStage?.("Membaca layar internal ITS Maps");
+    cards.push(itsAgentCardHtml(status));
+  }
+  if (flags.image) {
+    onStage?.("Mengambil snapshot dan bbox dari RTDB");
+    const snapshot = await itsGetLatestSnapshotImage().catch((error) => ({ error: String(error), device }));
+    cards.push(itsSnapshotCardHtml(device, snapshot));
+  }
+  if (flags.video) {
+    onStage?.("Mengecek kesehatan video live");
+    const cameraHealth = await itsGetCameraHealth(String(device.id || "raspberry-its")).catch((error) => ({ note: String(error), publicOk: false }));
+    cards.push(itsVideoCardHtml(device, cameraHealth));
+  }
+  if (flags.chart || flags.status || flags.greeting) {
+    cards.push(itsChartCardHtml(device));
+  }
+  if (flags.map) {
+    cards.push(itsMapCardHtml(device));
+  }
+  if (flags.formula) {
+    cards.push(itsFormulaCardHtml());
+  }
+  if (!cards.length) {
+    cards.push(itsChartCardHtml(device), itsMapCardHtml(device));
+  }
+  const extra = flags.agent ? "Mode agent membaca konteks halaman, bukan OS/tab lain." : "";
+  return {
+    text: itsAssistantText(question, status, extra),
+    html: `<div class="its-ai-card-stack">${cards.join("")}</div>`,
+  };
+}
+
+async function askItsMapsAssistant(question: string, onStage?: (stage: string) => void): Promise<ItsAssistantResponse> {
   onStage?.("Mengambil data realtime dari Firebase RTDB");
   const status = await itsGetRealtimeMapSummary();
   const context = JSON.stringify(status, null, 2).slice(0, 9000);
+  const visualResponse = await itsBuildAssistantResponse(question, status, onStage);
   try {
     onStage?.("Memuat model lokal untuk memahami pertanyaan");
     const generator = await itsWithTimeout(
       ensureItsChatModel(),
-      8000,
+      3500,
       "Model lokal belum siap dalam 8 detik.",
     );
     const prompt = [
@@ -12233,16 +12524,16 @@ async function askItsMapsAssistant(question: string, onStage?: (stage: string) =
     ].join("\n");
     onStage?.("Menganalisis pertanyaan dan data realtime");
     const output = await itsWithTimeout(
-      generator(prompt, { max_new_tokens: 150, temperature: 0.3, do_sample: false }),
-      8000,
+      generator(prompt, { max_new_tokens: 180, temperature: 0.25, do_sample: false }),
+      4500,
       "Model lokal terlalu lama menjawab.",
     );
     const answer = itsExtractGeneratedAnswer(output, prompt);
-    return answer || itsFallbackAssistantAnswer(question, status);
+    return { ...visualResponse, text: answer || visualResponse.text };
   } catch (error) {
     console.warn("[ITS] Local AI assistant fallback", error);
     onStage?.("Model lokal belum siap, memakai pembaca data realtime");
-    return itsFallbackAssistantAnswer(question, status);
+    return visualResponse;
   }
 }
 
@@ -12320,30 +12611,34 @@ function itsShowAiChatModal(): void {
   modal.setAttribute("aria-labelledby", "its-ai-chat-title");
   modal.innerHTML = `
     <div class="its-ai-chat-sheet">
-      <div class="map-license-grip" aria-hidden="true"></div>
+      <div class="map-license-grip" data-swipe-handle aria-hidden="true"></div>
       <header class="its-ai-chat-head">
         <div>
           <span>Realtime RTDB</span>
           <h2 id="its-ai-chat-title">Asisten ITS Maps</h2>
-          <p>Membaca data Raspberry, kamera, traffic, dan object detection.</p>
+          <p>Membaca data Raspberry, kamera, traffic, object detection, peta, dan tampilan situs.</p>
         </div>
         <button type="button" data-ai-chat-close aria-label="Tutup chat AI">${closeIconSvg()}</button>
       </header>
       <div class="its-ai-chat-log" data-ai-chat-log>
         <article class="its-ai-chat-msg assistant">
           <strong>ITS Assistant</strong>
-          <p>Tanyakan apa saja tentang status Raspberry, lampu, kamera, snapshot, lokasi, atau jumlah kendaraan.</p>
+          <p>Tanyakan status Raspberry, buat grafik, tampilkan peta, baca snapshot AI, cek video, atau minta rumus RF-DETR.</p>
         </article>
       </div>
       <div class="its-ai-chat-quick">
         <button type="button" data-ai-chat-prompt="Bagaimana status Raspberry Pi sekarang?">Status</button>
-        <button type="button" data-ai-chat-prompt="Ada objek apa yang terdeteksi kamera?">Kamera</button>
-        <button type="button" data-ai-chat-prompt="Bagaimana kondisi lampu lalu lintas dan jumlah kendaraan?">Traffic</button>
+        <button type="button" data-ai-chat-prompt="Buatkan gambar snapshot AI dan jelaskan objeknya.">Gambar</button>
+        <button type="button" data-ai-chat-prompt="Tampilkan video live kamera dan simpulkan kondisinya.">Video</button>
+        <button type="button" data-ai-chat-prompt="Buat grafik realtime kendaraan dan lampu lalu lintas.">Grafik</button>
+        <button type="button" data-ai-chat-prompt="Tampilkan peta lokasi Raspberry dengan link maps.">Peta</button>
+        <button type="button" data-ai-chat-prompt="Jelaskan rumus RF-DETR, IoU, confidence, dan loss.">Rumus</button>
+        <button type="button" data-ai-agent-toggle aria-pressed="${itsAgentModeEnabled ? "true" : "false"}">${itsAgentModeEnabled ? "Agent aktif" : "Agent"}</button>
       </div>
       <form class="its-ai-chat-form" data-ai-chat-form>
         <label>
           <span>Pertanyaan</span>
-          <input name="question" type="text" autocomplete="off" placeholder="Tanya status ITS Maps..." required>
+          <input name="question" type="text" autocomplete="off" placeholder="Tanya apa saja tentang ITS Maps..." required>
         </label>
         <button type="submit">Kirim</button>
       </form>
@@ -12358,31 +12653,61 @@ function itsShowAiChatModal(): void {
     clearPromptSidePanelWidth();
     window.setTimeout(() => modal.remove(), 220);
   };
-  const addMessage = (role: "user" | "assistant" | "status", text: string) => {
+  const scrollLog = () => {
+    if (log) log.scrollTop = log.scrollHeight;
+  };
+  const typewrite = (node: HTMLElement, text: string): Promise<void> => new Promise((resolve) => {
+    node.classList.add("its-ai-typewriter");
+    node.textContent = "";
+    let index = 0;
+    const tick = () => {
+      node.textContent = text.slice(0, index);
+      scrollLog();
+      index += 1;
+      if (index <= text.length) window.setTimeout(tick, Math.max(5, Math.min(22, 260 / Math.max(text.length, 1))));
+      else {
+        node.classList.remove("its-ai-typewriter");
+        resolve();
+      }
+    };
+    tick();
+  });
+  const addMessage = (role: "user" | "assistant" | "status", text: string, html = "") => {
     if (!log) return null;
     const item = document.createElement("article");
     item.className = `its-ai-chat-msg ${role}`;
     item.innerHTML = role === "status"
-      ? `<span class="typing-dot"></span><p>${escapeHtml(text)}</p>`
-      : `<strong>${role === "user" ? "Anda" : "ITS Assistant"}</strong><p>${escapeHtml(text)}</p>`;
+      ? `<span class="typing-dot"></span><p>${escapeHtml(text)}</p><div class="its-ai-working-bars" aria-hidden="true"><i></i><i></i><i></i></div>`
+      : `<strong>${role === "user" ? "Anda" : "ITS Assistant"}</strong><p>${escapeHtml(text)}</p>${html}`;
     log.appendChild(item);
-    log.scrollTop = log.scrollHeight;
+    scrollLog();
     return item;
+  };
+  const addAssistantMessage = async (text: string, html = "") => {
+    const item = addMessage("assistant", "", "");
+    const paragraph = item?.querySelector<HTMLElement>("p");
+    if (paragraph) await typewrite(paragraph, text);
+    if (html && item) {
+      const host = document.createElement("div");
+      host.innerHTML = html;
+      item.appendChild(host);
+      scrollLog();
+    }
   };
   const runPrompt = async (question: string) => {
     const trimmed = question.trim();
     if (!trimmed) return;
     addMessage("user", trimmed);
-    const statusMsg = addMessage("status", "Membaca data realtime...");
+    const statusMsg = addMessage("status", "Membaca RTDB dan menyiapkan output visual...");
     try {
       const answer = await askItsMapsAssistant(trimmed, (stage) => {
         if (statusMsg) statusMsg.querySelector("p")!.textContent = stage;
       });
       statusMsg?.remove();
-      addMessage("assistant", answer);
+      await addAssistantMessage(answer.text, answer.html || "");
     } catch (error) {
       statusMsg?.remove();
-      addMessage("assistant", error instanceof Error ? error.message : "Chat AI belum dapat menjawab.");
+      await addAssistantMessage(error instanceof Error ? error.message : "Chat AI belum dapat menjawab.");
     }
   };
   modal.querySelector<HTMLButtonElement>("[data-ai-chat-close]")?.addEventListener("click", close);
@@ -12392,13 +12717,26 @@ function itsShowAiChatModal(): void {
   modal.querySelectorAll<HTMLButtonElement>("[data-ai-chat-prompt]").forEach((button) => {
     button.addEventListener("click", () => void runPrompt(button.dataset.aiChatPrompt || ""));
   });
+  modal.querySelector<HTMLButtonElement>("[data-ai-agent-toggle]")?.addEventListener("click", (event) => {
+    const button = event.currentTarget as HTMLButtonElement;
+    itsAgentModeEnabled = !itsAgentModeEnabled;
+    button.setAttribute("aria-pressed", String(itsAgentModeEnabled));
+    button.textContent = itsAgentModeEnabled ? "Agent aktif" : "Agent";
+    button.classList.toggle("active", itsAgentModeEnabled);
+    void runPrompt(itsAgentModeEnabled
+      ? "Agent aktif. Lihat layar ITS Maps sekarang dan jelaskan konteks peta serta RTDB."
+      : "Agent dimatikan. Beri ringkasan status realtime saja.");
+  });
   modal.querySelector<HTMLFormElement>("[data-ai-chat-form]")?.addEventListener("submit", (event) => {
     event.preventDefault();
     const value = input?.value || "";
     if (input) input.value = "";
     void runPrompt(value);
   });
-  if (sheet) setupAiChatSheetDrag(sheet, modal, close);
+  if (sheet) {
+    setupPromptSheetSwipe(sheet, close);
+    setupAiChatSheetDrag(sheet, modal, close);
+  }
   window.setTimeout(() => {
     setPromptSidePanelWidthFromSheet(sheet);
   }, 20);

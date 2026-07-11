@@ -8,24 +8,31 @@
   <link rel="canonical" href="https://itstelkom.web.app/roadmap/">
   <meta name="viewport" content="width=device-width,minimum-scale=1,initial-scale=1">
   <meta name="description" content="AMP story roadmap ITS Maps untuk WebApp, Android APK, Microsoft Store, Windows Widgets, AI RF-DETR, dan dokumentasi publik.">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="96x96" href="/icons/icon-96.png">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <meta name="theme-color" content="#050816">
   <meta property="og:title" content="Roadmap ITS Maps Story">
   <meta property="og:description" content="Roadmap ITS Maps dalam format web story AMP.">
   <meta property="og:url" content="https://itstelkom.web.app/roadmap/">
   <meta property="og:image" content="https://itstelkom.web.app/roadmap/assets/story1.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Roadmap ITS Maps Story">
+  <meta name="twitter:description" content="Web story ITS Maps berbasis gambar roadmap publik.">
+  <meta name="twitter:image" content="https://itstelkom.web.app/roadmap/assets/story1.png">
   <script async src="https://cdn.ampproject.org/v0.js"></script>
   <script async custom-element="amp-story" src="https://cdn.ampproject.org/v0/amp-story-1.0.js"></script>
   <style amp-boilerplate>body{-webkit-animation:-amp-start 8s steps(1,end) 0s 1 normal both;-moz-animation:-amp-start 8s steps(1,end) 0s 1 normal both;-ms-animation:-amp-start 8s steps(1,end) 0s 1 normal both;animation:-amp-start 8s steps(1,end) 0s 1 normal both}@-webkit-keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}@-moz-keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}@-ms-keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}@-o-keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}@keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}</style><noscript><style amp-boilerplate>body{-webkit-animation:none;-moz-animation:none;-ms-animation:none;animation:none}</style></noscript>
   <style amp-custom>
-    amp-story { font-family: Inter, Arial, sans-serif; color: #fff; }
-    .story-copy { align-content: end; padding: 28px; background: linear-gradient(180deg, rgba(2, 6, 23, 0.08), rgba(2, 6, 23, 0.76)); }
-    .story-card { border-radius: 24px; padding: 22px; background: rgba(8, 13, 28, 0.82); box-shadow: 0 24px 60px rgba(0, 0, 0, 0.32); }
-    .story-card p { margin: 0 0 10px; font-size: 13px; letter-spacing: .16em; text-transform: uppercase; color: #5eead4; font-weight: 800; }
-    .story-card h1 { margin: 0 0 10px; font-size: 34px; line-height: 1.02; }
-    .story-card span { display: block; color: #dbeafe; font-size: 16px; line-height: 1.45; }
-    .story-swipe { margin: 14px auto 0; padding: 10px 16px; border-radius: 999px; background: rgba(255,255,255,.92); color: #0f172a; font-size: 13px; font-weight: 800; box-shadow: 0 12px 36px rgba(0,0,0,.22); }
-    .story-progress { position: absolute; inset: 18px 20px auto; height: 4px; border-radius: 999px; background: rgba(255,255,255,.28); overflow: hidden; }
+    html, body { background: #050816; }
+    amp-story { font-family: Inter, Arial, sans-serif; color: #fff; background: #050816; }
+    .story-ui-layer { align-content: space-between; padding: 22px 18px 22px; background: linear-gradient(180deg, rgba(2, 6, 23, .18), transparent 36%, rgba(2, 6, 23, .54)); }
+    .story-counter { width: max-content; padding: 7px 10px; border-radius: 999px; background: rgba(2, 6, 23, .58); color: #67e8f9; font-size: 13px; font-weight: 900; letter-spacing: .12em; box-shadow: 0 12px 32px rgba(0,0,0,.22); }
+    .story-swipe { justify-self: center; margin: 0 auto; padding: 12px 18px; border-radius: 999px; background: rgba(255,255,255,.94); color: #0f172a; font-size: 13px; font-weight: 900; box-shadow: 0 16px 44px rgba(0,0,0,.28); }
+    .story-progress { position: absolute; inset: 16px 18px auto; height: 4px; border-radius: 999px; background: rgba(255,255,255,.28); overflow: hidden; }
     .story-progress span { display: block; width: 100%; height: 100%; transform-origin: 0 50%; transform: scaleX(0); background: linear-gradient(90deg, #22d3ee, #a7f3d0); border-radius: inherit; animation: story-progress 7s linear both; }
     @keyframes story-progress { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+    amp-story-page { background: #050816; }
   </style>
   <script type="application/ld+json">
     {
@@ -52,17 +59,13 @@
         <amp-story-grid-layer template="fill">
           <amp-img src="/roadmap/assets/story1.png" layout="fill" object-fit="cover" alt="Roadmap ITS Maps"></amp-img>
         </amp-story-grid-layer>
-        <amp-story-grid-layer template="vertical" class="story-copy">
-          <div class="story-card" animate-in="fly-in-bottom" animate-in-duration="650ms">
-            <p>1 / 2</p>
-            <h1>Roadmap ITS Maps</h1>
-            <span>Peta realtime, Windows Widgets, Android APK, AI RF-DETR, dan dokumentasi publik.</span>
-          </div>
-          <div class="story-swipe" animate-in="fade-in" animate-in-delay="900ms">Swipe ke atas untuk membuka dokumentasi</div>
+        <amp-story-grid-layer template="vertical" class="story-ui-layer">
+          <div class="story-counter" animate-in="fade-in">1 / 2</div>
+          <div class="story-swipe" animate-in="fly-in-bottom" animate-in-delay="700ms">Swipe ke atas untuk membuka dokumentasi</div>
         </amp-story-grid-layer>
 
         <amp-story-grid-layer template="vertical">
-          <div class="story-progress" aria-label="Progress story"><span id="roadmap-1-progress"></span></div>
+          <div class="story-progress" aria-label="Progress story halaman 1"><span id="roadmap-1-progress"></span></div>
         </amp-story-grid-layer>
 
         <amp-story-page-outlink layout="nodisplay">
@@ -74,19 +77,18 @@
         <amp-story-grid-layer template="fill">
           <amp-img src="/roadmap/assets/story2.png" layout="fill" object-fit="cover" alt="Roadmap 2"></amp-img>
         </amp-story-grid-layer>
-        <amp-story-grid-layer template="vertical" class="story-copy">
-          <div class="story-card" animate-in="fly-in-bottom" animate-in-duration="650ms">
-            <p>2 / 2</p>
-            <h1>Roadmap 2</h1>
-            <span>Pengembangan ITS Maps berlanjut melalui WebApp, Microsoft Store, Android, dan widget realtime.</span>
-          </div>
-
+        <amp-story-grid-layer template="vertical" class="story-ui-layer">
+          <div class="story-counter" animate-in="fade-in">2 / 2</div>
+          <div class="story-swipe" animate-in="fly-in-bottom" animate-in-delay="700ms">Swipe ke atas untuk membuka metode</div>
         </amp-story-grid-layer>
 
         <amp-story-grid-layer template="vertical">
-          <div class="story-progress" aria-label="Progress story"><span id="roadmap-2-progress"></span></div>
+          <div class="story-progress" aria-label="Progress story halaman 2"><span id="roadmap-2-progress"></span></div>
         </amp-story-grid-layer>
 
+        <amp-story-page-outlink layout="nodisplay">
+          <a href="https://itstelkom.web.app/method">Buka metode ITS Maps</a>
+        </amp-story-page-outlink>
       </amp-story-page>
     <amp-story-bookend src="/roadmap/bookend.json" layout="nodisplay"></amp-story-bookend>
   </amp-story>
