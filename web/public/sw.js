@@ -145,6 +145,7 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
+  const cacheable = url.protocol === 'http:' || url.protocol === 'https:';
 
   if (url.pathname === '/presentation-manifest.webmanifest') {
     event.respondWith(presentationManifestResponse());
@@ -156,7 +157,9 @@ self.addEventListener('fetch', (event) => {
       fetch(event.request)
         .then((response) => {
           const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put('/index.html', copy));
+          if (cacheable && url.origin === self.location.origin) {
+            caches.open(CACHE_NAME).then((cache) => cache.put('/index.html', copy));
+          }
           return response;
         })
         .catch(() => caches.match('/index.html'))
@@ -164,11 +167,15 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  if (!cacheable) return;
+
   event.respondWith(
     fetch(event.request).then((response) => {
       try {
         const copy = response.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+        if (url.origin === self.location.origin) {
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+        }
       } catch (e) {
         // ignore opaque responses and other failures
       }

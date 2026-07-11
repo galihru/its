@@ -7,6 +7,8 @@
   <title>ITS Maps | Raspberry Pi Live Traffic</title>
   <meta name="description" content="Dashboard peta ITS realtime untuk Raspberry Pi controller, traffic, kamera, dan widget Android." />
   <meta name="theme-color" content="#ffffff" />
+  <meta http-equiv="origin-trial" content="A/yLSto1peEstniGxrmY6vd5X1JtgdJcVVXDevhUBYSXYXnk536C+/SE4/y7Cdx6OYeKilNb5TfqTp35LnMWCQwAAAB4eyJvcmlnaW4iOiJodHRwczovL2l0c3RlbGtvbS53ZWIuYXBwOjQ0MyIsImZlYXR1cmUiOiJXZWJNQ1AiLCJleHBpcnkiOjE3OTQ4NzM2MDAsImlzU3ViZG9tYWluIjp0cnVlLCJpc1RoaXJkUGFydHkiOnRydWV9" />
+  <meta name="google-site-verification" content="c8bcvZrCDvCbFQbw1nvSf4Dvemq6qb35bh1J64DJ_2g" />
   <link id="pwa-manifest" rel="manifest" href="/manifest.webmanifest" />
   <link rel="alternate" type="text/markdown" href="/llms.txt" title="ITS Maps llms.txt" />
   <script>
@@ -48,34 +50,32 @@
   <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
   <style>
     .webmcp-tools {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      padding: 0;
-      margin: -1px;
-      overflow: hidden;
-      clip: rect(0, 0, 0, 0);
-      white-space: nowrap;
-      border: 0;
-    }
-
-    .webmcp-tools:focus-within {
       position: fixed;
       z-index: 2147483000;
       inset: auto 16px 16px auto;
       width: min(360px, calc(100vw - 32px));
       height: auto;
       margin: 0;
-      padding: 16px;
-      clip: auto;
-      white-space: normal;
+      padding: 12px;
       overflow: visible;
       color: #0f172a;
       background: #ffffff;
       border: 1px solid #cbd5e1;
-      border-radius: 18px;
+      border-radius: 16px;
       box-shadow: 0 22px 60px rgba(15, 23, 42, 0.18);
       font: 14px/1.5 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    .webmcp-tools summary {
+      cursor: pointer;
+      font-weight: 800;
+      color: #0f172a;
+    }
+
+    .webmcp-tools p {
+      margin: 8px 0 0;
+      color: #475569;
+      font-size: 12px;
     }
 
     .webmcp-tools form {
@@ -98,6 +98,13 @@
       color: #ffffff;
       background: #0f172a;
       cursor: pointer;
+    }
+
+    @media (max-width: 720px) {
+      .webmcp-tools {
+        inset: auto 10px 10px 10px;
+        width: auto;
+      }
     }
   </style>
   <script type="application/ld+json">
@@ -162,18 +169,20 @@
 
 <body>
   <div id="app"></div>
-  <section class="webmcp-tools" aria-label="ITS Maps WebMCP tools">
-    <h2>ITS Maps WebMCP tools</h2>
-    <form method="get" action="/documentation" data-webmcp-open-resource toolname="open_its_maps_resource" tooldescription="Open a public ITS Maps resource such as documentation, privacy policy, licence, PDF preview, llms.txt, or the realtime map.">
+  <details class="webmcp-tools" aria-label="ITS Maps WebMCP tools">
+    <summary>AI agent tools</summary>
+    <p>WebMCP tools for public ITS Maps navigation and documentation.</p>
+    <form method="get" action="/documentation" data-webmcp-open-resource toolname="open_its_maps_resource" tooldescription="Open a public ITS Maps resource such as documentation, privacy policy, licence, PDF preview, llms.txt, or the realtime map." toolautosubmit>
       <label>
         Resource
-        <select name="resource" toolparamdescription="Public ITS Maps resource to open. Choose one of home, documentation, method, privacy, licence, ai-license, pdf, llms, or about.">
+        <select name="resource" toolparamdescription="Public ITS Maps resource to open. Choose one of home, documentation, method, privacy, licence, ai-license, roadmap, pdf, llms, or about.">
           <option value="documentation">documentation</option>
           <option value="home">home</option>
           <option value="method">method</option>
           <option value="privacy">privacy</option>
           <option value="licence">licence</option>
           <option value="ai-license">ai-license</option>
+          <option value="roadmap">roadmap</option>
           <option value="pdf">pdf</option>
           <option value="llms">llms</option>
           <option value="about">about</option>
@@ -181,14 +190,14 @@
       </label>
       <button type="submit">Open ITS Maps resource</button>
     </form>
-    <form method="get" action="/documentation" data-webmcp-site-search toolname="search_its_maps_site" tooldescription="Search public ITS Maps documentation and route the user to the documentation page with the requested query.">
+    <form method="get" action="/documentation" data-webmcp-site-search toolname="search_its_maps_site" tooldescription="Search public ITS Maps documentation and route the user to the documentation page with the requested query." toolautosubmit>
       <label>
         Query
         <input type="search" name="query" autocomplete="off" toolparamdescription="Search query for public ITS Maps documentation, downloads, widgets, AI, privacy, or source-code explanation.">
       </label>
       <button type="submit">Search ITS Maps</button>
     </form>
-    <form method="get" action="/llms.txt" data-webmcp-public-context toolname="get_its_maps_public_context" tooldescription="Return public ITS Maps AI-agent context from llms.txt or llms-full.txt.">
+    <form method="get" action="/llms.txt" data-webmcp-public-context toolname="get_its_maps_public_context" tooldescription="Return public ITS Maps AI-agent context from llms.txt or llms-full.txt." toolautosubmit>
       <label>
         Format
         <select name="format" toolparamdescription="Context size to return for AI agents. Use summary for llms.txt or full for llms-full.txt.">
@@ -198,7 +207,7 @@
       </label>
       <button type="submit">Read ITS Maps context</button>
     </form>
-  </section>
+  </details>
   <script type="module" src="./src/main.ts"></script>
 </body>
 

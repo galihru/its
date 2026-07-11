@@ -564,7 +564,7 @@ function terminalStatic(commands: string[]): string {
         <div>ITS Maps terminal siap. Ketik <strong>help</strong> lalu Enter.</div>
         ${commands.map((command) => `<div><span>$</span> ${escapeStaticHtml(command)}</div>`).join("")}
       </div>
-      <form class="static-terminal-form" data-terminal-form toolname="run_its_maps_documentation_command" tooldescription="Run a safe ITS Maps documentation command or navigation helper in the public documentation terminal.">
+      <form class="static-terminal-form" data-terminal-form toolname="run_its_maps_documentation_command" tooldescription="Run a safe ITS Maps documentation command or navigation helper in the public documentation terminal." toolautosubmit>
         <span>$</span>
         <input data-terminal-input name="command" autocomplete="off" spellcheck="false" aria-label="Terminal command" placeholder="help" toolparamdescription="A safe documentation command such as help, npm run build, firebase deploy, open /documentation, or open /new.">
         <button type="submit">Run</button>
@@ -1216,6 +1216,8 @@ if (staticRoute) {
     '<button type="button" class="map-license-link" data-map-license>Lisensi Peta</button>',
     '<span class="map-license-separator" aria-hidden="true">|</span>',
     '<button type="button" class="map-license-link" data-ai-license>Lisensi AI</button>',
+    '<span class="map-license-separator" aria-hidden="true">|</span>',
+    '<button type="button" class="map-license-link" data-roadmap-story>Roadmap</button>',
     '<span class="map-license-separator" aria-hidden="true">|</span>',
     '<button type="button" class="map-license-link" data-privacy-modal>Privasi</button>',
     '<span class="map-license-separator" aria-hidden="true">|</span>',
@@ -4643,6 +4645,7 @@ if (staticRoute) {
       "#windows-download-modal.open",
       "#map-license-modal.open",
       "#ai-license-modal.open",
+      "#roadmap-story-modal.open",
       "#privacy-info-modal.open",
       "#app-license-info-modal.open",
       "#about-site-info-modal.open",
@@ -4670,7 +4673,7 @@ if (staticRoute) {
   function closePromptPanels(): void {
     const downloadModal = document.getElementById("windows-download-modal");
     if (downloadModal) downloadModal.remove();
-    document.querySelectorAll("#map-license-modal, #ai-license-modal, #privacy-info-modal, #app-license-info-modal, #about-site-info-modal")
+    document.querySelectorAll("#map-license-modal, #ai-license-modal, #roadmap-story-modal, #privacy-info-modal, #app-license-info-modal, #about-site-info-modal")
       .forEach((modal) => modal.remove());
     document.body.classList.remove("app-download-panel-open", "map-license-panel-open");
     clearSidePanelWidth(0);
@@ -10689,7 +10692,7 @@ function setPromptSidePanelWidthFromSheet(sheetEl: HTMLElement | null): void {
 function clearPromptSidePanelWidth(delayMs = 260): void {
   setPromptSidePanelWidth(0);
   window.setTimeout(() => {
-    if (!document.querySelector("#windows-download-modal.open, #map-license-modal.open, #ai-license-modal.open, #privacy-info-modal.open, #app-license-info-modal.open, #about-site-info-modal.open, #m-device-modal.open, #m-poi-modal.open")) {
+    if (!document.querySelector("#windows-download-modal.open, #map-license-modal.open, #ai-license-modal.open, #roadmap-story-modal.open, #privacy-info-modal.open, #app-license-info-modal.open, #about-site-info-modal.open, #m-device-modal.open, #m-poi-modal.open")) {
       document.body.classList.remove("side-panel-open", "app-download-panel-open", "map-license-panel-open", "map-modal-panel-open");
       document.documentElement.style.removeProperty("--side-panel-active-width");
     }
@@ -10743,7 +10746,7 @@ function installPromptWheelDismiss(sheetEl: HTMLElement, onClose: () => void): v
 }
 
 function closeFloatingMapPanels(): void {
-  document.querySelectorAll("#windows-download-modal, #map-license-modal, #ai-license-modal, #privacy-info-modal, #app-license-info-modal, #about-site-info-modal, #m-device-modal, #m-poi-modal").forEach((modal) => modal.remove());
+  document.querySelectorAll("#windows-download-modal, #map-license-modal, #ai-license-modal, #roadmap-story-modal, #privacy-info-modal, #app-license-info-modal, #about-site-info-modal, #m-device-modal, #m-poi-modal").forEach((modal) => modal.remove());
   document.body.classList.remove("app-download-panel-open", "map-license-panel-open", "map-modal-panel-open");
   clearPromptSidePanelWidth(0);
 }
@@ -10759,6 +10762,11 @@ document.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
     itsShowAiLicenseModal();
+  }
+  if (target?.closest("[data-roadmap-story]")) {
+    event.preventDefault();
+    event.stopPropagation();
+    itsShowRoadmapStoryModal();
   }
   if (target?.closest("[data-privacy-modal]")) {
     event.preventDefault();
@@ -10776,6 +10784,56 @@ document.addEventListener("click", (event) => {
     itsShowSiteInfoModal("about-site");
   }
 });
+
+function itsShowRoadmapStoryModal(): void {
+  if (document.getElementById("roadmap-story-modal")) return;
+  closeFloatingMapPanels();
+  const modal = document.createElement("div");
+  modal.id = "roadmap-story-modal";
+  modal.className = "map-license-modal roadmap-story-modal";
+  modal.innerHTML = `
+    <section class="map-license-sheet roadmap-story-sheet" role="dialog" aria-modal="true" aria-labelledby="roadmap-story-title">
+      <div class="map-license-grip" data-swipe-handle aria-hidden="true"></div>
+      <header class="map-license-head">
+        <div>
+          <span>AMP Web Story</span>
+          <h2 id="roadmap-story-title">Roadmap ITS Maps</h2>
+        </div>
+        <a class="roadmap-open-link" href="/roadmap/" target="_blank" rel="noopener">Buka penuh</a>
+        <button type="button" aria-label="Tutup Roadmap" title="Tutup" data-license-close>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+      </header>
+      <div class="roadmap-story-frame-wrap">
+        <iframe class="roadmap-story-frame" title="Roadmap ITS Maps AMP story" src="/roadmap/" loading="lazy" allow="autoplay; fullscreen; encrypted-media"></iframe>
+      </div>
+    </section>
+  `;
+  document.body.appendChild(modal);
+  let closeRoadmapModal: () => void = () => undefined;
+  const keyHandler = (keyEvent: KeyboardEvent) => {
+    if (keyEvent.key === "Escape") closeRoadmapModal();
+  };
+  closeRoadmapModal = () => {
+    window.removeEventListener("keydown", keyHandler);
+    modal.classList.remove("open");
+    document.body.classList.remove("map-license-panel-open");
+    clearPromptSidePanelWidth();
+    window.setTimeout(() => modal.remove(), 220);
+  };
+  modal.addEventListener("click", (clickEvent) => {
+    if (clickEvent.target === modal) closeRoadmapModal();
+  });
+  modal.querySelector<HTMLButtonElement>("[data-license-close]")?.addEventListener("click", closeRoadmapModal);
+  const sheet = modal.querySelector<HTMLElement>(".map-license-sheet");
+  if (sheet) setupPromptSheetSwipe(sheet, closeRoadmapModal);
+  window.addEventListener("keydown", keyHandler);
+  window.setTimeout(() => {
+    modal.classList.add("open");
+    document.body.classList.add("map-license-panel-open");
+    setPromptSidePanelWidthFromSheet(sheet);
+  }, 20);
+}
 
 type SiteInfoModalKind = "privacy" | "app-license" | "about-site";
 
@@ -11467,7 +11525,7 @@ async function itsShowWindowsDownloadModal(): Promise<void> {
   if (document.getElementById("windows-download-modal")) return;
   await refreshDynamicAppLinks(true);
   closeFloatingMapPanels();
-  document.querySelectorAll("#map-license-modal, #ai-license-modal, #privacy-info-modal, #app-license-info-modal, #about-site-info-modal")
+  document.querySelectorAll("#map-license-modal, #ai-license-modal, #roadmap-story-modal, #privacy-info-modal, #app-license-info-modal, #about-site-info-modal")
     .forEach((modal) => modal.remove());
   document.body.classList.remove("map-license-panel-open");
   const info = getAppDownloadInfo();
@@ -11657,7 +11715,9 @@ function setupPromptSheetSwipe(sheetEl: HTMLElement, onClose: () => void): void 
   installPromptWheelDismiss(sheetEl, onClose);
 }
 
-type ItsWebMcpResource = "home" | "documentation" | "method" | "privacy" | "licence" | "ai-license" | "pdf" | "llms" | "about";
+type ItsWebMcpResource = "home" | "documentation" | "method" | "privacy" | "licence" | "ai-license" | "roadmap" | "pdf" | "llms" | "about";
+
+let itsChatGenerator: any = null;
 
 const ITS_WEBMCP_RESOURCE_URLS: Record<ItsWebMcpResource, string> = {
   home: "/",
@@ -11666,6 +11726,7 @@ const ITS_WEBMCP_RESOURCE_URLS: Record<ItsWebMcpResource, string> = {
   privacy: "/privacy",
   licence: "/licence",
   "ai-license": "/license",
+  roadmap: "/roadmap/",
   pdf: "/pdf-preview/documentation",
   llms: "/llms.txt",
   about: "/#about",
@@ -11705,6 +11766,13 @@ function itsWebMcpContentResponse(text: string, structuredContent?: unknown): un
   };
 }
 
+function itsAiSparkIconSvg(): string {
+  return `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M12 3l1.8 5.3L19 10l-5.2 1.7L12 17l-1.8-5.3L5 10l5.2-1.7L12 3z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+    <path d="M18.5 15.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2zM5.5 14l.6 1.6 1.6.6-1.6.6-.6 1.6-.6-1.6-1.6-.6 1.6-.6.6-1.6z" fill="currentColor"/>
+  </svg>`;
+}
+
 function itsHandleWebMcpSubmit(event: SubmitEvent): void {
   const form = event.currentTarget as HTMLFormElement | null;
   if (!form) return;
@@ -11737,64 +11805,605 @@ function itsHandleWebMcpSubmit(event: SubmitEvent): void {
   }
 }
 
+function finiteNumber(v: unknown): number | undefined {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string" && v.trim()) {
+    const n = Number(v);
+    if (Number.isFinite(n)) return n;
+  }
+  return undefined;
+}
+
+function objectRecord(v: unknown): Record<string, unknown> {
+  return v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : {};
+}
+
+function normalizeEpoch(v: number): number {
+  if (!Number.isFinite(v) || v <= 0) return 0;
+  return v < 1_000_000_000_000 ? Math.round(v * 1000) : Math.round(v);
+}
+
+function formatAge(v: number): string {
+  const epoch = normalizeEpoch(v);
+  if (!epoch) return "belum ada update";
+  const sec = Math.max(0, Math.floor((Date.now() - epoch) / 1000));
+  if (sec < 60) return `${sec}s lalu`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m lalu`;
+  const hour = Math.floor(min / 60);
+  if (hour < 24) return `${hour}h lalu`;
+  return `${Math.floor(hour / 24)}d lalu`;
+}
+
+function escapeHtml(v: string): string {
+  return v.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;").replaceAll("'", "&#039;");
+}
+
+function closeIconSvg(): string {
+  return `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`;
+}
+
+async function itsFetchRtdbJson<T>(path: string): Promise<T | null> {
+  const cleanPath = path.replace(/^\/+/, "").replace(/\.json$/i, "");
+  const res = await fetch(`${FIREBASE_ROOT_URL}/${cleanPath}.json`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`RTDB HTTP ${res.status}`);
+  const text = await res.text();
+  if (!text || text === "null") return null;
+  return JSON.parse(text) as T;
+}
+
+function itsStringField(value: unknown): string | null {
+  const text = typeof value === "string" ? value.trim() : "";
+  return text || null;
+}
+
+function itsNumberField(value: unknown): number | null {
+  const n = finiteNumber(value);
+  return typeof n === "number" && Number.isFinite(n) ? n : null;
+}
+
+function itsVehicleBreakdownFrom(raw: Record<string, unknown>): VehicleBreakdown {
+  const objectDetection = objectRecord(raw.objectDetection);
+  const vehicleBreakdown = objectRecord(raw.vehicleBreakdown);
+  const read = (...keys: string[]) => {
+    for (const key of keys) {
+      const direct = itsNumberField(objectDetection[key]);
+      if (direct !== null) return Math.max(0, Math.round(direct));
+      const legacy = itsNumberField(vehicleBreakdown[key]);
+      if (legacy !== null) return Math.max(0, Math.round(legacy));
+    }
+    return 0;
+  };
+  const car = read("car", "mobil");
+  const motorcycle = read("motorcycle", "motor");
+  const bus = read("bus");
+  const truck = read("truck", "truk");
+  const bicycle = read("bicycle", "sepeda", "bike");
+  const explicitTotal = itsNumberField(objectDetection.total)
+    ?? itsNumberField(vehicleBreakdown.total)
+    ?? itsNumberField(raw.vehicleCount)
+    ?? itsNumberField(raw.vehicles);
+  const total = Math.max(0, Math.round(explicitTotal ?? (car + motorcycle + bus + truck + bicycle)));
+  return { car, motorcycle, bus, truck, bicycle, total };
+}
+
+function itsDetectionListFrom(raw: Record<string, unknown>): Record<string, unknown>[] {
+  const direct = Array.isArray(raw.detections) ? raw.detections : [];
+  const objectDetection = objectRecord(raw.objectDetection);
+  const nested = Array.isArray(objectDetection.detections) ? objectDetection.detections : [];
+  return [...direct, ...nested].slice(0, 20).map((entry) => {
+    const d = objectRecord(entry);
+    const confidenceRaw = itsNumberField(d.confidence) ?? itsNumberField(d.score) ?? 0;
+    const confidence = confidenceRaw > 1 ? confidenceRaw : confidenceRaw * 100;
+    return {
+      label: itsStringField(d.label) || itsStringField(d.className) || itsStringField(d.class) || "object",
+      confidencePercent: Math.max(0, Math.min(100, Math.round(confidence))),
+      isVehicle: Boolean(d.vehicle),
+      box: {
+        x: itsNumberField(d.x) ?? 0,
+        y: itsNumberField(d.y) ?? 0,
+        width: itsNumberField(d.width) ?? 0,
+        height: itsNumberField(d.height) ?? 0,
+      },
+    };
+  });
+}
+
+function itsSummarizeDevice(id: string, raw: Record<string, unknown>): Record<string, unknown> {
+  const runtime = objectRecord(raw.runtime);
+  const location = objectRecord(raw.location);
+  const traffic = objectRecord(raw.traffic);
+  const objectDetection = objectRecord(raw.objectDetection);
+  const update = objectRecord(raw.update);
+  const heartbeatAt = normalizeEpoch(itsNumberField(runtime.heartbeatAt) ?? itsNumberField(raw.heartbeatAt) ?? 0);
+  const lastSeen = normalizeEpoch(itsNumberField(raw.lastSeen) ?? itsNumberField(raw.updatedAt) ?? 0);
+  const detectorUpdatedAt = normalizeEpoch(itsNumberField(objectDetection.updatedAt) ?? itsNumberField(raw.detectorUpdatedAt) ?? 0);
+  const cameraUpdatedAt = normalizeEpoch(itsNumberField(raw.cameraUpdatedAt) ?? detectorUpdatedAt);
+  const heartbeatFresh = Boolean(heartbeatAt && Date.now() - heartbeatAt <= HARDWARE_HEARTBEAT_STALE_MS);
+  const fallbackOnline = String(raw.status || "").toLowerCase() === "online" && lastSeen > 0 && Date.now() - lastSeen <= OFFLINE_AFTER_MS;
+  const status = heartbeatFresh || fallbackOnline ? "online" : "offline";
+  const trafficColor = itsStringField(raw.trafficColor)
+    || itsStringField(traffic.current)
+    || (traffic.red === true ? "red" : traffic.yellow === true ? "yellow" : traffic.green === true ? "green" : null);
+  const trafficDurationSec = itsNumberField(raw.trafficDurationSec)
+    ?? itsNumberField(raw.trafficDuration)
+    ?? itsNumberField(traffic.durationSec)
+    ?? itsNumberField(traffic.duration);
+  const vehicles = itsVehicleBreakdownFrom(raw);
+  const label = itsStringField(raw.label) || "Raspberry Pi Controller";
+  const roadName = itsStringField(location.label) || itsStringField(raw.roadName) || itsStringField(raw.roadHint);
+  return {
+    id,
+    label,
+    status,
+    roadName,
+    lastSeenIso: lastSeen ? new Date(lastSeen).toISOString() : null,
+    lastSeenText: heartbeatAt ? formatAge(heartbeatAt) : lastSeen ? formatAge(lastSeen) : itsStringField(raw.lastSeenText),
+    trafficColor,
+    trafficDurationSec,
+    vehicleBreakdown: vehicles,
+    totalVehicles: vehicles.total,
+    objectDetection: {
+      total: itsNumberField(objectDetection.total) ?? itsNumberField(raw.objectCount) ?? vehicles.total,
+      modelUrl: itsStringField(objectDetection.modelUrl) || itsStringField(raw.detectorModel) || null,
+      fps: itsNumberField(objectDetection.fps) ?? itsNumberField(raw.detectorFps),
+      updatedAtIso: detectorUpdatedAt ? new Date(detectorUpdatedAt).toISOString() : null,
+      detections: itsDetectionListFrom(raw),
+    },
+    cameraStatus: {
+      localOk: typeof runtime.cameraLocalOk === "boolean" ? runtime.cameraLocalOk : null,
+      publicOk: typeof runtime.cameraPublicOk === "boolean" ? runtime.cameraPublicOk : null,
+      streamState: itsStringField(runtime.cameraStreamState) || itsStringField(raw.cameraStatus),
+      note: itsStringField(runtime.cameraNote) || itsStringField(raw.cameraNote),
+      updatedAtIso: cameraUpdatedAt ? new Date(cameraUpdatedAt).toISOString() : null,
+    },
+    update: Object.keys(update).length ? {
+      status: itsStringField(update.status),
+      stage: itsStringField(update.stage),
+      message: itsStringField(update.message),
+      updatedAtIso: normalizeEpoch(itsNumberField(update.updatedAt) ?? 0)
+        ? new Date(normalizeEpoch(itsNumberField(update.updatedAt) ?? 0)).toISOString()
+        : null,
+    } : null,
+    location: {
+      label: roadName,
+      lat: itsNumberField(location.lat) ?? itsNumberField(raw.lat),
+      lng: itsNumberField(location.lng) ?? itsNumberField(location.lon) ?? itsNumberField(location.long) ?? itsNumberField(raw.lng),
+    },
+  };
+}
+
+async function itsGetDeviceStatusSummary(deviceId?: string): Promise<Record<string, unknown>> {
+  const raw = await itsFetchRtdbJson<Record<string, any>>("devices");
+  if (!raw) return { devices: [] };
+  const entries = Object.entries(raw);
+  const summarized = entries.map(([id, value]) => itsSummarizeDevice(id, value));
+  if (deviceId) {
+    const match = summarized.find((d) => d.id === deviceId);
+    return match ? { device: match } : { error: `Device '${deviceId}' tidak ditemukan`, availableIds: summarized.map((d) => d.id) };
+  }
+  return { devices: summarized };
+}
+
+async function itsGetLatestAiDetections(): Promise<Record<string, unknown>> {
+  const raw = await itsFetchRtdbJson<Record<string, any>>("snapshotHistory");
+  if (!raw) return { snapshot: null, message: "Belum ada data snapshotHistory" };
+  const image1UpdatedAt = Number(raw.image1UpdatedAt) || 0;
+  const image2UpdatedAt = Number(raw.image2UpdatedAt) || 0;
+  const activeAt = Math.max(image1UpdatedAt, image2UpdatedAt);
+  return {
+    capturedAt: activeAt ? new Date(activeAt).toISOString() : null,
+    source: raw.source || null,
+    hasImage1: Boolean(raw.image1),
+    hasImage2: Boolean(raw.image2),
+    note: "Gunakan get_its_maps_device_status untuk daftar deteksi objek terbaru per device (field detections).",
+  };
+}
+
+async function itsListDeviceIds(): Promise<Record<string, unknown>> {
+  const result = await itsGetDeviceStatusSummary();
+  const devices = Array.isArray(result.devices) ? result.devices : [];
+  return {
+    devices: devices.map((device) => {
+      const d = device as Record<string, unknown>;
+      return { id: d.id, label: d.label, status: d.status };
+    }),
+  };
+}
+
+async function itsGetCameraHealth(deviceId = "raspberry-its"): Promise<Record<string, unknown>> {
+  const raw = await itsFetchRtdbJson<Record<string, any>>("devices");
+  const device = raw?.[deviceId];
+  if (!device) return { error: `Device '${deviceId}' tidak ditemukan`, availableIds: raw ? Object.keys(raw) : [] };
+  const runtime = objectRecord(device.runtime);
+  return {
+    deviceId,
+    localOk: typeof runtime.cameraLocalOk === "boolean" ? runtime.cameraLocalOk : null,
+    publicOk: typeof runtime.cameraPublicOk === "boolean" ? runtime.cameraPublicOk : null,
+    streamState: itsStringField(runtime.cameraStreamState) || itsStringField(device.cameraStatus),
+    note: itsStringField(runtime.cameraNote) || itsStringField(device.cameraNote),
+    publicUrl: itsStringField(runtime.cameraPublicUrl) || itsStringField(device.cameraUrl),
+    heartbeatAt: normalizeEpoch(itsNumberField(runtime.heartbeatAt) ?? 0) || null,
+  };
+}
+
+function itsDataUrlParts(value: unknown): { base64Data: string; mimeType: string } | null {
+  const text = typeof value === "string" ? value.trim() : "";
+  if (!text.startsWith("data:image/")) return null;
+  const parts = text.split(",");
+  if (parts.length < 2) return null;
+  const mimeType = parts[0].match(/data:(.*);base64/i)?.[1] || "image/jpeg";
+  return { base64Data: parts.slice(1).join(","), mimeType };
+}
+
+async function itsGetLatestSnapshotImage(): Promise<Record<string, unknown>> {
+  const raw = await itsFetchRtdbJson<Record<string, any>>("devices");
+  const firstId = Object.keys(raw || {})[0];
+  const device = raw?.["raspberry-its"] || (firstId ? raw?.[firstId] : undefined);
+  if (!device) return { error: "Device Raspberry belum tersedia di RTDB." };
+  const dataset = objectRecord(device.cameraDataset);
+  const candidates = [
+    dataset.snapshot1Url,
+    dataset.snapshot2Url,
+    device.cameraThumbnailUrl,
+  ];
+  const dataUrl = candidates.map(itsDataUrlParts).find(Boolean);
+  const summary = itsSummarizeDevice(device.id || "raspberry-its", device);
+  if (!dataUrl) {
+    return {
+      error: "Snapshot base64 belum tersedia dari Raspberry.",
+      imageUrl: candidates.find((item) => typeof item === "string" && item.trim()) || null,
+      objectCount: (summary.objectDetection as Record<string, unknown>)?.total ?? 0,
+      device: summary,
+    };
+  }
+  return {
+    ...dataUrl,
+    objectCount: (summary.objectDetection as Record<string, unknown>)?.total ?? 0,
+    device: summary,
+  };
+}
+
+async function itsGetRealtimeMapSummary(): Promise<Record<string, unknown>> {
+  const status = await itsGetDeviceStatusSummary();
+  const devices = Array.isArray(status.devices) ? status.devices : status.device ? [status.device] : [];
+  return {
+    generatedAt: new Date().toISOString(),
+    deviceCount: devices.length,
+    onlineCount: devices.filter((device) => (device as Record<string, unknown>).status === "online").length,
+    devices,
+  };
+}
+
+async function itsSearchTrafficLocation(location: string): Promise<Record<string, unknown>> {
+  const query = location.trim().toLowerCase();
+  const status = await itsGetDeviceStatusSummary();
+  const devices = Array.isArray(status.devices) ? status.devices as Record<string, unknown>[] : [];
+  const matches = devices.filter((device) => [
+    device.id,
+    device.label,
+    device.roadName,
+    (device.location as Record<string, unknown> | undefined)?.label,
+  ].some((value) => String(value || "").toLowerCase().includes(query)));
+  return {
+    query: location,
+    matches,
+    count: matches.length,
+    availableIds: devices.map((device) => device.id),
+  };
+}
+
+async function ensureItsChatModel(): Promise<any> {
+  if (itsChatGenerator) return itsChatGenerator;
+  const transformers = await import("@huggingface/transformers") as any;
+  transformers.env.allowLocalModels = false;
+  const hasWebGpu = "gpu" in navigator;
+  itsChatGenerator = await transformers.pipeline(
+    "text-generation",
+    "onnx-community/Qwen2.5-0.5B-Instruct",
+    { dtype: "q4", device: hasWebGpu ? "webgpu" : "wasm" },
+  );
+  return itsChatGenerator;
+}
+
+function itsExtractGeneratedAnswer(output: unknown, prompt: string): string {
+  const first = Array.isArray(output) ? output[0] : output;
+  const generated = (first as { generated_text?: unknown })?.generated_text;
+  if (Array.isArray(generated)) {
+    const last = generated.at(-1) as { content?: unknown } | undefined;
+    if (typeof last?.content === "string") return last.content.trim();
+  }
+  if (typeof generated === "string") return generated.replace(prompt, "").trim();
+  if (typeof first === "string") return first.replace(prompt, "").trim();
+  return "";
+}
+
+function itsFallbackAssistantAnswer(question: string, status: Record<string, unknown>): string {
+  const devices = Array.isArray(status.devices)
+    ? status.devices as Record<string, unknown>[]
+    : status.device ? [status.device as Record<string, unknown>] : [];
+  const device = devices[0];
+  if (!device) return "RTDB belum mengembalikan device. Cek koneksi Firebase atau node devices.";
+  const vehicles = (device.vehicleBreakdown as Record<string, unknown> | undefined) || {};
+  const camera = (device.cameraStatus as Record<string, unknown> | undefined) || {};
+  const detection = (device.objectDetection as Record<string, unknown> | undefined) || {};
+  const q = question.toLowerCase();
+  if (q.includes("kamera") || q.includes("snapshot")) {
+    return `Kamera ${camera.publicOk === true ? "publik online" : camera.localOk === true ? "lokal online" : "belum sehat/publik offline"}. Catatan: ${camera.note || camera.streamState || "tidak ada catatan kamera"}. Objek terdeteksi: ${detection.total ?? 0}.`;
+  }
+  if (q.includes("lampu") || q.includes("traffic")) {
+    return `Status lampu ${device.trafficColor || "belum tersedia"}${device.trafficDurationSec ? ` selama ${device.trafficDurationSec} detik` : ""}. Total kendaraan ${device.totalVehicles ?? vehicles.total ?? 0}.`;
+  }
+  return `Device ${device.id || "raspberry-its"} ${device.status || "offline"} di ${device.roadName || (device.location as Record<string, unknown> | undefined)?.label || "lokasi belum tersedia"}. Total kendaraan ${device.totalVehicles ?? vehicles.total ?? 0}; mobil ${vehicles.car ?? 0}, motor ${vehicles.motorcycle ?? 0}, bus ${vehicles.bus ?? 0}, truk ${vehicles.truck ?? 0}, sepeda ${vehicles.bicycle ?? 0}.`;
+}
+
+async function askItsMapsAssistant(question: string, onStage?: (stage: string) => void): Promise<string> {
+  onStage?.("Mengambil data realtime dari Firebase RTDB");
+  const status = await itsGetRealtimeMapSummary();
+  const context = JSON.stringify(status, null, 2).slice(0, 9000);
+  try {
+    onStage?.("Memuat model Qwen2.5 lokal via Transformers.js");
+    const generator = await ensureItsChatModel();
+    const prompt = [
+      "Kamu asisten ITS Maps.",
+      "Jawab hanya berdasarkan data realtime Firebase RTDB berikut.",
+      "Bahasa Indonesia, singkat, jelas, dan jangan mengarang angka.",
+      "",
+      context,
+      "",
+      `Pertanyaan: ${question}`,
+      "Jawaban:",
+    ].join("\n");
+    onStage?.("Model sedang menulis jawaban");
+    const output = await generator(prompt, { max_new_tokens: 150, temperature: 0.3, do_sample: false });
+    const answer = itsExtractGeneratedAnswer(output, prompt);
+    return answer || itsFallbackAssistantAnswer(question, status);
+  } catch (error) {
+    console.warn("[ITS] Local AI assistant fallback", error);
+    onStage?.("Model lokal belum siap, memakai ringkasan RTDB langsung");
+    return itsFallbackAssistantAnswer(question, status);
+  }
+}
+
+function itsCreateAiChatButton(): void {
+  if (document.getElementById("its-ai-chat-fab")) return;
+  const button = document.createElement("button");
+  button.id = "its-ai-chat-fab";
+  button.className = "its-ai-chat-fab";
+  button.type = "button";
+  button.setAttribute("aria-label", "Buka chat AI ITS Maps");
+  button.innerHTML = `${itsAiSparkIconSvg()}<span>AI</span>`;
+  button.addEventListener("click", () => itsShowAiChatModal());
+  document.body.appendChild(button);
+}
+
+function itsShowAiChatModal(): void {
+  document.getElementById("its-ai-chat-modal")?.remove();
+  const modal = document.createElement("section");
+  modal.id = "its-ai-chat-modal";
+  modal.className = "its-ai-chat-modal";
+  modal.setAttribute("role", "dialog");
+  modal.setAttribute("aria-modal", "true");
+  modal.setAttribute("aria-labelledby", "its-ai-chat-title");
+  modal.innerHTML = `
+    <div class="its-ai-chat-sheet">
+      <div class="map-license-grip" aria-hidden="true"></div>
+      <header class="its-ai-chat-head">
+        <div>
+          <span>WebMCP + RTDB</span>
+          <h2 id="its-ai-chat-title">Chat AI ITS Maps</h2>
+          <p>Uji data realtime Raspberry, kamera, traffic, dan object detection.</p>
+        </div>
+        <button type="button" data-ai-chat-close aria-label="Tutup chat AI">${closeIconSvg()}</button>
+      </header>
+      <div class="its-ai-chat-log" data-ai-chat-log>
+        <article class="its-ai-chat-msg assistant">
+          <strong>ITS Assistant</strong>
+          <p>Tanyakan status Raspberry, traffic light, kamera, snapshot, atau jumlah kendaraan.</p>
+        </article>
+      </div>
+      <div class="its-ai-chat-quick">
+        <button type="button" data-ai-chat-prompt="Bagaimana status Raspberry Pi sekarang?">Status</button>
+        <button type="button" data-ai-chat-prompt="Ada objek apa yang terdeteksi kamera?">Kamera</button>
+        <button type="button" data-ai-chat-prompt="Bagaimana kondisi lampu lalu lintas dan jumlah kendaraan?">Traffic</button>
+      </div>
+      <form class="its-ai-chat-form" data-ai-chat-form>
+        <label>
+          <span>Pertanyaan</span>
+          <input name="question" type="text" autocomplete="off" placeholder="Tanya status ITS Maps..." required>
+        </label>
+        <button type="submit">Kirim</button>
+      </form>
+    </div>`;
+  document.body.appendChild(modal);
+  requestAnimationFrame(() => modal.classList.add("open"));
+  const sheet = modal.querySelector<HTMLElement>(".its-ai-chat-sheet");
+  const log = modal.querySelector<HTMLElement>("[data-ai-chat-log]");
+  const input = modal.querySelector<HTMLInputElement>("input[name='question']");
+  const close = () => {
+    modal.classList.remove("open");
+    window.setTimeout(() => modal.remove(), 180);
+  };
+  const addMessage = (role: "user" | "assistant" | "status", text: string) => {
+    if (!log) return null;
+    const item = document.createElement("article");
+    item.className = `its-ai-chat-msg ${role}`;
+    item.innerHTML = role === "status"
+      ? `<span class="typing-dot"></span><p>${escapeHtml(text)}</p>`
+      : `<strong>${role === "user" ? "Anda" : "ITS Assistant"}</strong><p>${escapeHtml(text)}</p>`;
+    log.appendChild(item);
+    log.scrollTop = log.scrollHeight;
+    return item;
+  };
+  const runPrompt = async (question: string) => {
+    const trimmed = question.trim();
+    if (!trimmed) return;
+    addMessage("user", trimmed);
+    const statusMsg = addMessage("status", "Menyiapkan WebMCP/RTDB...");
+    try {
+      const answer = await askItsMapsAssistant(trimmed, (stage) => {
+        if (statusMsg) statusMsg.querySelector("p")!.textContent = stage;
+      });
+      statusMsg?.remove();
+      addMessage("assistant", answer);
+    } catch (error) {
+      statusMsg?.remove();
+      addMessage("assistant", error instanceof Error ? error.message : "Chat AI belum dapat menjawab.");
+    }
+  };
+  modal.querySelector<HTMLButtonElement>("[data-ai-chat-close]")?.addEventListener("click", close);
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal) close();
+  });
+  modal.querySelectorAll<HTMLButtonElement>("[data-ai-chat-prompt]").forEach((button) => {
+    button.addEventListener("click", () => void runPrompt(button.dataset.aiChatPrompt || ""));
+  });
+  modal.querySelector<HTMLFormElement>("[data-ai-chat-form]")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const value = input?.value || "";
+    if (input) input.value = "";
+    void runPrompt(value);
+  });
+  if (sheet) setupPromptSheetSwipe(sheet, close);
+  input?.focus();
+}
+
 function itsRegisterWebMcpTools(): void {
   document.querySelectorAll<HTMLFormElement>("[data-webmcp-open-resource], [data-webmcp-site-search], [data-webmcp-public-context]")
     .forEach((form) => form.addEventListener("submit", itsHandleWebMcpSubmit));
 
-  const modelContext = (document as unknown as {
-    modelContext?: {
-      registerTool?: (tool: Record<string, unknown>) => Promise<unknown> | unknown;
-    };
-  }).modelContext;
+  const modelContext = document.modelContext || navigator.modelContext;
 
   if (!modelContext?.registerTool) return;
-  try {
-    modelContext.registerTool({
-      name: "get_its_maps_public_context",
-      description: "Return public ITS Maps AI-agent context from llms.txt or llms-full.txt.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          format: {
-            type: "string",
-            enum: ["summary", "full"],
-            description: "Use summary for llms.txt or full for llms-full.txt.",
-          },
-        },
-      },
-      annotations: { readOnlyHint: true },
-      execute: async (input: Record<string, unknown>) => {
-        const result = await itsReadWebMcpContext(String(input.format || "summary"));
-        return itsWebMcpContentResponse(result.text, result);
-      },
-    });
+  const register = (tool: ItsWebMcpTool) => {
+    const handleError = (error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/duplicate tool name/i.test(message)) console.warn(`[ITS] WebMCP tool ${tool.name} skipped`, error);
+    };
+    try {
+      const pending = modelContext.registerTool(tool);
+      if (pending && typeof (pending as Promise<void>).catch === "function") void (pending as Promise<void>).catch(handleError);
+    } catch (error) {
+      handleError(error);
+    }
+  };
 
-    modelContext.registerTool({
-      name: "open_its_maps_resource",
-      description: "Open a public ITS Maps resource such as documentation, privacy policy, licence, PDF preview, llms.txt, or the realtime map.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          resource: {
-            type: "string",
-            enum: Object.keys(ITS_WEBMCP_RESOURCE_URLS),
-            description: "Public ITS Maps resource to open.",
-          },
+  register({
+    name: "list_its_maps_device_ids",
+    description: "List all ITS Maps Raspberry Pi device IDs and their online/offline status from Firebase RTDB.",
+    inputSchema: { type: "object", properties: {} },
+    annotations: { readOnlyHint: true },
+    execute: async () => {
+      const result = await itsListDeviceIds();
+      return itsWebMcpContentResponse(JSON.stringify(result, null, 2), result);
+    },
+  });
+
+  register({
+    name: "get_its_maps_device_status",
+    description: "Get realtime ITS Maps Raspberry Pi status: online/offline, last heartbeat, road, traffic light color/duration, vehicle counts, RF-DETR object data, camera status, and update state from Firebase RTDB.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        deviceId: {
+          type: "string",
+          description: "Optional device ID, for example 'raspberry-its'. Omit to list every device.",
         },
-        required: ["resource"],
       },
-      execute: (input: Record<string, unknown>) => {
-        const result = itsOpenWebMcpResource(String(input.resource || "documentation"));
-        return itsWebMcpContentResponse(result.message, result);
+    },
+    annotations: { readOnlyHint: true },
+    execute: async (input: Record<string, unknown>) => {
+      const result = await itsGetDeviceStatusSummary(typeof input.deviceId === "string" ? input.deviceId : undefined);
+      return itsWebMcpContentResponse(JSON.stringify(result, null, 2), result);
+    },
+  });
+
+  register({
+    name: "get_its_maps_camera_health",
+    description: "Check whether the ITS Maps Raspberry Pi camera tunnel is healthy, including local camera, public camera, stream state, note, and heartbeat.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        deviceId: {
+          type: "string",
+          description: "Device ID. Default is 'raspberry-its'.",
+        },
       },
-    });
-  } catch (error) {
-    console.warn("[ITS] WebMCP imperative registration skipped", error);
-  }
+    },
+    annotations: { readOnlyHint: true },
+    execute: async (input: Record<string, unknown>) => {
+      const result = await itsGetCameraHealth(typeof input.deviceId === "string" ? input.deviceId : "raspberry-its");
+      return itsWebMcpContentResponse(JSON.stringify(result, null, 2), result);
+    },
+  });
+
+  register({
+    name: "get_its_maps_camera_snapshot",
+    description: "Get the latest ITS Maps Raspberry Pi camera snapshot image when RTDB stores a base64 data URL, together with the current object detection count.",
+    inputSchema: { type: "object", properties: {} },
+    annotations: { readOnlyHint: true },
+    execute: async () => {
+      const result = await itsGetLatestSnapshotImage();
+      if (typeof result.base64Data === "string" && typeof result.mimeType === "string") {
+        return {
+          content: [
+            { type: "text", text: `Snapshot kamera terbaru, ${result.objectCount ?? 0} objek/kendaraan terdeteksi.` },
+            { type: "image", data: result.base64Data, mimeType: result.mimeType },
+          ],
+          structuredContent: result,
+        };
+      }
+      return itsWebMcpContentResponse(JSON.stringify(result, null, 2), result);
+    },
+  });
+
+  register({
+    name: "get_its_maps_latest_ai_detections",
+    description: "Get metadata about the latest ITS Maps AI/camera snapshot pair captured by Raspberry Pi from Firebase RTDB snapshotHistory.",
+    inputSchema: { type: "object", properties: {} },
+    annotations: { readOnlyHint: true },
+    execute: async () => {
+      const result = await itsGetLatestAiDetections();
+      return itsWebMcpContentResponse(JSON.stringify(result, null, 2), result);
+    },
+  });
+
+  register({
+    name: "get_its_maps_realtime_map_summary",
+    description: "Return a realtime ITS Maps summary for AI agents: generated time, device count, online count, and per-device traffic/camera/object status.",
+    inputSchema: { type: "object", properties: {} },
+    annotations: { readOnlyHint: true },
+    execute: async () => {
+      const result = await itsGetRealtimeMapSummary();
+      return itsWebMcpContentResponse(JSON.stringify(result, null, 2), result);
+    },
+  });
+
+  register({
+    name: "search_its_maps_traffic_location",
+    description: "Search ITS Maps RTDB traffic devices by location, road name, device ID, or Raspberry label.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        location: {
+          type: "string",
+          description: "Location text, road name, or device ID, for example 'Gang Gotong Royong' or 'raspberry-its'.",
+        },
+      },
+      required: ["location"],
+    },
+    annotations: { readOnlyHint: true },
+    execute: async (input: Record<string, unknown>) => {
+      const result = await itsSearchTrafficLocation(String(input.location || ""));
+      return itsWebMcpContentResponse(JSON.stringify(result, null, 2), result);
+    },
+  });
 }
 
 if (!staticRoute) {
   itsRegisterWebMcpTools();
+  itsCreateAiChatButton();
   itsCreateSplash();
   itsCreateWindowsDownloadButton();
 }

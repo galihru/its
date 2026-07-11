@@ -1,0 +1,20 @@
+{
+  "bookendVersion": "v1.0",
+  "shareProviders": [
+    "system"
+  ],
+  "components": [
+    {
+      "type": "small",
+      "title": "Dokumentasi ITS Maps",
+      "url": "https://itstelkom.web.app/documentation",
+      "image": "https://itstelkom.web.app/icons/icon-192.png"
+    },
+    {
+      "type": "small",
+      "title": "Metode ITS Maps",
+      "url": "https://itstelkom.web.app/method",
+      "image": "https://itstelkom.web.app/icons/icon-192.png"
+    }
+  ]
+}

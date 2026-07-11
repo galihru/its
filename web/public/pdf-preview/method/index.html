@@ -17,6 +17,8 @@
     <meta name="twitter:description" content="Metode ITS Maps dibuat oleh Hanifa Septhi Larasati pada tahun 2026. Preview PDF resmi ITS Maps dengan toolbar, sidebar, QR, dan print/save PDF." />
     <meta name="twitter:image" content="https://itstelkom.web.app/pdf-preview/og/method.svg" />
     <meta name="theme-color" content="#2a2a35" />
+    <meta http-equiv="origin-trial" content="A/yLSto1peEstniGxrmY6vd5X1JtgdJcVVXDevhUBYSXYXnk536C+/SE4/y7Cdx6OYeKilNb5TfqTp35LnMWCQwAAAB4eyJvcmlnaW4iOiJodHRwczovL2l0c3RlbGtvbS53ZWIuYXBwOjQ0MyIsImZlYXR1cmUiOiJXZWJNQ1AiLCJleHBpcnkiOjE3OTQ4NzM2MDAsImlzU3ViZG9tYWluIjp0cnVlLCJpc1RoaXJkUGFydHkiOnRydWV9" />
+    <meta name="google-site-verification" content="c8bcvZrCDvCbFQbw1nvSf4Dvemq6qb35bh1J64DJ_2g" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="alternate" type="text/markdown" href="/llms.txt" title="ITS Maps llms.txt" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
@@ -72,6 +74,33 @@
       <span>QR Preview</span>
     </div>
 
+          <section class="pdf-agent-tools" aria-label="ITS Maps WebMCP tools">
+          <h2>AI agent tools</h2>
+          <p>Public WebMCP tools for ITS Maps PDF preview.</p>
+          <form method="get" action="/pdf-preview/method" toolname="search_its_maps_pdf_preview" tooldescription="Search the active ITS Maps PDF preview document and navigate to matching pages." toolautosubmit>
+            <label>
+              <span>Search PDF</span>
+              <input type="search" name="query" autocomplete="off" toolparamdescription="Keyword or phrase to find inside this ITS Maps documentation PDF preview.">
+            </label>
+            <button type="submit">Search PDF</button>
+          </form>
+          <form method="get" action="/documentation" toolname="open_its_maps_public_resource" tooldescription="Open a public ITS Maps resource such as documentation, method pages, privacy policy, licence, roadmap story, PDF preview, or llms.txt." toolautosubmit>
+            <label>
+              <span>Resource</span>
+              <select name="resource" toolparamdescription="Public ITS Maps resource to open.">
+                <option value="documentation">documentation</option>
+                <option value="method">method</option>
+                <option value="privacy">privacy</option>
+                <option value="licence">licence</option>
+                <option value="ai-license">ai-license</option>
+                <option value="roadmap">roadmap</option>
+                <option value="pdf">pdf</option>
+                <option value="llms">llms</option>
+              </select>
+            </label>
+            <button type="submit">Open resource</button>
+          </form>
+        </section>
           <dl class="pdf-meta" data-pdf-meta></dl>
         </section>
         <section class="pdf-panel" data-pdf-panel="relations">
@@ -86,10 +115,10 @@
         </section>
       </aside>
       <div class="pdf-sidebar-scrim" data-pdf-sidebar-scrim></div>
-      <form class="pdf-search-panel" data-pdf-search-panel hidden aria-label="Pencarian dokumen" toolname="search_its_maps_pdf_preview" tooldescription="Search the active ITS Maps PDF preview document and navigate to matching pages.">
+      <form class="pdf-search-panel" data-pdf-search-panel hidden aria-label="Pencarian dokumen">
         <label>
           <span>Search document</span>
-          <input type="search" name="query" data-pdf-search-input placeholder="Ketik kata kunci..." autocomplete="off" toolparamdescription="Keyword or phrase to find inside the active ITS Maps documentation PDF preview." />
+          <input type="search" name="query" data-pdf-search-input placeholder="Ketik kata kunci..." autocomplete="off" />
         </label>
         <output data-pdf-search-count>0 hasil</output>
         <div>

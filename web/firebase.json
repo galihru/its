@@ -118,11 +118,28 @@
         "destination": "/privacy/index.html"
       },
       {
+        "source": "/roadmap",
+        "destination": "/roadmap/index.html"
+      },
+      {
+        "source": "/roadmap/**",
+        "destination": "/roadmap/index.html"
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }
     ],
     "headers": [
+      {
+        "source": "**",
+        "headers": [
+          {
+            "key": "Origin-Trial",
+            "value": "A/yLSto1peEstniGxrmY6vd5X1JtgdJcVVXDevhUBYSXYXnk536C+/SE4/y7Cdx6OYeKilNb5TfqTp35LnMWCQwAAAB4eyJvcmlnaW4iOiJodHRwczovL2l0c3RlbGtvbS53ZWIuYXBwOjQ0MyIsImZlYXR1cmUiOiJXZWJNQ1AiLCJleHBpcnkiOjE3OTQ4NzM2MDAsImlzU3ViZG9tYWluIjp0cnVlLCJpc1RoaXJkUGFydHkiOnRydWV9"
+          }
+        ]
+      },
       {
         "source": "/",
         "headers": [
@@ -210,6 +227,15 @@
       },
       {
         "source": "/license**",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
+          }
+        ]
+      },
+      {
+        "source": "/roadmap**",
         "headers": [
           {
             "key": "Cache-Control",

@@ -15,6 +15,11 @@ const licenceRoot = path.join(publicRoot, "licence");
 const licenseRoot = path.join(publicRoot, "license");
 const pdfPreviewRoot = path.join(publicRoot, "pdf-preview");
 const qrAssetsRoot = path.join(methodAssetsRoot, "qr");
+const storySourceRoot = path.join(webRoot, "img", "story");
+const roadmapRoot = path.join(publicRoot, "roadmap");
+const roadmapAssetsRoot = path.join(roadmapRoot, "assets");
+const WEBMCP_ORIGIN_TRIAL_TOKEN = "A/yLSto1peEstniGxrmY6vd5X1JtgdJcVVXDevhUBYSXYXnk536C+/SE4/y7Cdx6OYeKilNb5TfqTp35LnMWCQwAAAB4eyJvcmlnaW4iOiJodHRwczovL2l0c3RlbGtvbS53ZWIuYXBwOjQ0MyIsImZlYXR1cmUiOiJXZWJNQ1AiLCJleHBpcnkiOjE3OTQ4NzM2MDAsImlzU3ViZG9tYWluIjp0cnVlLCJpc1RoaXJkUGFydHkiOnRydWV9";
+const GOOGLE_SITE_VERIFICATION = "c8bcvZrCDvCbFQbw1nvSf4Dvemq6qb35bh1J64DJ_2g";
 
 const site = {
   title: "ITS Maps",
@@ -297,6 +302,29 @@ function copyAssets() {
   for (const [from, to] of copiedAssets) copyIfExists(from, methodAssetsRoot, to);
   for (let i = 1; i <= 10; i += 1) copyIfExists(`web/img/privacy/${i}.png`, privacyAssetsRoot, `${i}.png`);
   copyIfExists("web/FTE-CD-6.docx", path.join(publicRoot, "docs"), "FTE-CD-6.docx");
+  copyStoryAssets();
+}
+
+function storyFiles() {
+  if (!fs.existsSync(storySourceRoot)) return [];
+  return fs.readdirSync(storySourceRoot)
+    .filter((name) => /\.(png|jpe?g|webp|avif)$/i.test(name))
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
+}
+
+function copyStoryAssets() {
+  ensureDir(roadmapAssetsRoot);
+  for (const name of storyFiles()) {
+    fs.copyFileSync(path.join(storySourceRoot, name), path.join(roadmapAssetsRoot, name));
+  }
+}
+
+function webmcpOriginTrialMeta() {
+  return `<meta http-equiv="origin-trial" content="${WEBMCP_ORIGIN_TRIAL_TOKEN}" />`;
+}
+
+function searchConsoleVerificationMeta() {
+  return `<meta name="google-site-verification" content="${GOOGLE_SITE_VERIFICATION}" />`;
 }
 
 function qrFile(slug) {
@@ -365,6 +393,138 @@ function generateOgAssets() {
 </svg>`;
     fs.writeFileSync(path.join(ogRoot, `${doc.id}.svg`), svg, "utf8");
   }
+}
+
+function roadmapStoryPage() {
+  const files = storyFiles();
+  const slides = files.length ? files : ["story1.png"];
+  const poster = files[0] ? `/roadmap/assets/${files[0]}` : "/icons/icon-512.png";
+  const pages = slides.map((file, index) => {
+    const pageId = `roadmap-${index + 1}`;
+    const asset = files[index] ? `/roadmap/assets/${file}` : "/icons/icon-512.png";
+    const title = index === 0 ? "Roadmap ITS Maps" : `Roadmap ${index + 1}`;
+    const subtitle = index === 0
+      ? "Peta realtime, Windows Widgets, Android APK, AI RF-DETR, dan dokumentasi publik."
+      : "Pengembangan ITS Maps berlanjut melalui WebApp, Microsoft Store, Android, dan widget realtime.";
+    const progressAnimation = index > 0 ? `
+        <amp-story-animation layout="nodisplay" trigger="visibility">
+          <script type="application/json">
+            {
+              "duration": "7s",
+              "fill": "both",
+              "animations": [
+                {
+                  "selector": "#${pageId}-progress",
+                  "keyframes": [
+                    { "transform": "scaleX(0)" },
+                    { "transform": "scaleX(1)" }
+                  ]
+                }
+              ]
+            }
+          </script>
+        </amp-story-animation>` : "";
+    const progressLayer = index > 0 ? `
+        <amp-story-grid-layer template="vertical">
+          <div class="story-progress" aria-label="Progress story"><span id="${pageId}-progress"></span></div>
+        </amp-story-grid-layer>` : "";
+    const outlink = index === 0 ? `
+        <amp-story-page-outlink layout="nodisplay">
+          <a href="${site.url}/documentation">Buka dokumentasi ITS Maps</a>
+        </amp-story-page-outlink>` : "";
+    return `
+      <amp-story-page id="${pageId}" auto-advance-after="7s">
+        ${progressAnimation}
+        <amp-story-grid-layer template="fill">
+          <amp-img src="${asset}" layout="fill" object-fit="cover" alt="${esc(title)}"></amp-img>
+        </amp-story-grid-layer>
+        <amp-story-grid-layer template="vertical" class="story-copy">
+          <div class="story-card" animate-in="fly-in-bottom" animate-in-duration="650ms">
+            <p>${index + 1} / ${slides.length}</p>
+            <h1>${esc(title)}</h1>
+            <span>${esc(subtitle)}</span>
+          </div>
+          ${index === 0 ? '<div class="story-swipe" animate-in="fade-in" animate-in-delay="900ms">Swipe ke atas untuk membuka dokumentasi</div>' : ""}
+        </amp-story-grid-layer>
+        ${progressLayer}
+        ${outlink}
+      </amp-story-page>`;
+  }).join("\n");
+
+  return `<!doctype html>
+<html amp lang="id">
+<head>
+  <meta charset="utf-8">
+  ${webmcpOriginTrialMeta()}
+  ${searchConsoleVerificationMeta()}
+  <title>Roadmap ITS Maps Story</title>
+  <link rel="canonical" href="${site.url}/roadmap/">
+  <meta name="viewport" content="width=device-width,minimum-scale=1,initial-scale=1">
+  <meta name="description" content="AMP story roadmap ITS Maps untuk WebApp, Android APK, Microsoft Store, Windows Widgets, AI RF-DETR, dan dokumentasi publik.">
+  <meta property="og:title" content="Roadmap ITS Maps Story">
+  <meta property="og:description" content="Roadmap ITS Maps dalam format web story AMP.">
+  <meta property="og:url" content="${site.url}/roadmap/">
+  <meta property="og:image" content="${site.url}${poster}">
+  <script async src="https://cdn.ampproject.org/v0.js"></script>
+  <script async custom-element="amp-story" src="https://cdn.ampproject.org/v0/amp-story-1.0.js"></script>
+  <style amp-boilerplate>body{-webkit-animation:-amp-start 8s steps(1,end) 0s 1 normal both;-moz-animation:-amp-start 8s steps(1,end) 0s 1 normal both;-ms-animation:-amp-start 8s steps(1,end) 0s 1 normal both;animation:-amp-start 8s steps(1,end) 0s 1 normal both}@-webkit-keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}@-moz-keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}@-ms-keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}@-o-keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}@keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}</style><noscript><style amp-boilerplate>body{-webkit-animation:none;-moz-animation:none;-ms-animation:none;animation:none}</style></noscript>
+  <style amp-custom>
+    amp-story { font-family: Inter, Arial, sans-serif; color: #fff; }
+    .story-copy { align-content: end; padding: 28px; background: linear-gradient(180deg, rgba(2, 6, 23, 0.08), rgba(2, 6, 23, 0.76)); }
+    .story-card { border-radius: 24px; padding: 22px; background: rgba(8, 13, 28, 0.72); backdrop-filter: blur(10px); box-shadow: 0 24px 60px rgba(0, 0, 0, 0.32); }
+    .story-card p { margin: 0 0 10px; font-size: 13px; letter-spacing: .16em; text-transform: uppercase; color: #5eead4; font-weight: 800; }
+    .story-card h1 { margin: 0 0 10px; font-size: 34px; line-height: 1.02; }
+    .story-card span { display: block; color: #dbeafe; font-size: 16px; line-height: 1.45; }
+    .story-swipe { margin: 14px auto 0; padding: 10px 16px; border-radius: 999px; background: rgba(255,255,255,.92); color: #0f172a; font-size: 13px; font-weight: 800; box-shadow: 0 12px 36px rgba(0,0,0,.22); }
+    .story-progress { position: absolute; inset: 18px 20px auto; height: 4px; border-radius: 999px; background: rgba(255,255,255,.28); overflow: hidden; }
+    .story-progress span { display: block; width: 100%; height: 100%; transform-origin: 0 50%; transform: scaleX(0); background: linear-gradient(90deg, #22d3ee, #a7f3d0); border-radius: inherit; }
+  </style>
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Article",
+      "headline": "Roadmap ITS Maps Story",
+      "author": { "@type": "Person", "name": "${site.developer}" },
+      "publisher": { "@type": "Organization", "name": "${site.publisher}", "logo": { "@type": "ImageObject", "url": "${site.url}/icons/icon-192.png" } },
+      "image": "${site.url}${poster}",
+      "mainEntityOfPage": "${site.url}/roadmap/"
+    }
+  </script>
+</head>
+<body>
+  <amp-story standalone
+    title="Roadmap ITS Maps"
+    publisher="${site.publisher}"
+    publisher-logo-src="/icons/icon-192.png"
+    poster-portrait-src="${poster}"
+    poster-square-src="${poster}"
+    poster-landscape-src="${poster}">
+${pages}
+    <amp-story-bookend src="/roadmap/bookend.json" layout="nodisplay"></amp-story-bookend>
+  </amp-story>
+</body>
+</html>`;
+}
+
+function roadmapBookendJson() {
+  return JSON.stringify({
+    bookendVersion: "v1.0",
+    shareProviders: ["system"],
+    components: [
+      {
+        type: "small",
+        title: "Dokumentasi ITS Maps",
+        url: `${site.url}/documentation`,
+        image: `${site.url}/icons/icon-192.png`,
+      },
+      {
+        type: "small",
+        title: "Metode ITS Maps",
+        url: `${site.url}/method`,
+        image: `${site.url}/icons/icon-192.png`,
+      },
+    ],
+  }, null, 2);
 }
 
 function esc(value) {
@@ -962,6 +1122,37 @@ function pdfPreviewDescription(doc) {
   return `${doc.label} dibuat oleh ${authors} pada tahun ${doc.year || "2026"}. Preview PDF resmi ITS Maps dengan toolbar, sidebar, QR, dan print/save PDF.`;
 }
 
+function webMcpPdfTools(initialDoc) {
+  const pdfPath = `/pdf-preview/${initialDoc.id}`;
+  return `<section class="pdf-agent-tools" aria-label="ITS Maps WebMCP tools">
+          <h2>AI agent tools</h2>
+          <p>Public WebMCP tools for ITS Maps PDF preview.</p>
+          <form method="get" action="${pdfPath}" toolname="search_its_maps_pdf_preview" tooldescription="Search the active ITS Maps PDF preview document and navigate to matching pages." toolautosubmit>
+            <label>
+              <span>Search PDF</span>
+              <input type="search" name="query" autocomplete="off" toolparamdescription="Keyword or phrase to find inside this ITS Maps documentation PDF preview.">
+            </label>
+            <button type="submit">Search PDF</button>
+          </form>
+          <form method="get" action="/documentation" toolname="open_its_maps_public_resource" tooldescription="Open a public ITS Maps resource such as documentation, method pages, privacy policy, licence, roadmap story, PDF preview, or llms.txt." toolautosubmit>
+            <label>
+              <span>Resource</span>
+              <select name="resource" toolparamdescription="Public ITS Maps resource to open.">
+                <option value="documentation">documentation</option>
+                <option value="method">method</option>
+                <option value="privacy">privacy</option>
+                <option value="licence">licence</option>
+                <option value="ai-license">ai-license</option>
+                <option value="roadmap">roadmap</option>
+                <option value="pdf">pdf</option>
+                <option value="llms">llms</option>
+              </select>
+            </label>
+            <button type="submit">Open resource</button>
+          </form>
+        </section>`;
+}
+
 function pdfPreviewPage(initialId = "documentation") {
   const initialDoc = pdfDocuments.find((doc) => doc.id === initialId) || pdfDocuments[0];
   const catalog = JSON.stringify(pdfDocuments).replaceAll("</", "<\\/");
@@ -988,6 +1179,8 @@ function pdfPreviewPage(initialId = "documentation") {
     <meta name="twitter:description" content="${esc(ogDescription)}" />
     <meta name="twitter:image" content="${esc(ogImage)}" />
     <meta name="theme-color" content="#2a2a35" />
+    ${webmcpOriginTrialMeta()}
+    ${searchConsoleVerificationMeta()}
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="alternate" type="text/markdown" href="/llms.txt" title="ITS Maps llms.txt" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
@@ -1035,6 +1228,7 @@ function pdfPreviewPage(initialId = "documentation") {
             <button type="button" data-pdf-print>Print / Save PDF</button>
           </div>
           ${qrCard("pdf-documentation", "QR Preview", "qr-card pdf-qr", "data-pdf-qr")}
+          ${webMcpPdfTools(initialDoc)}
           <dl class="pdf-meta" data-pdf-meta></dl>
         </section>
         <section class="pdf-panel" data-pdf-panel="relations">
@@ -1049,10 +1243,10 @@ function pdfPreviewPage(initialId = "documentation") {
         </section>
       </aside>
       <div class="pdf-sidebar-scrim" data-pdf-sidebar-scrim></div>
-      <form class="pdf-search-panel" data-pdf-search-panel hidden aria-label="Pencarian dokumen" toolname="search_its_maps_pdf_preview" tooldescription="Search the active ITS Maps PDF preview document and navigate to matching pages.">
+      <form class="pdf-search-panel" data-pdf-search-panel hidden aria-label="Pencarian dokumen">
         <label>
           <span>Search document</span>
-          <input type="search" name="query" data-pdf-search-input placeholder="Ketik kata kunci..." autocomplete="off" toolparamdescription="Keyword or phrase to find inside the active ITS Maps documentation PDF preview." />
+          <input type="search" name="query" data-pdf-search-input placeholder="Ketik kata kunci..." autocomplete="off" />
         </label>
         <output data-pdf-search-count>0 hasil</output>
         <div>
@@ -1087,6 +1281,8 @@ function privacyPage() {
     <title>Privacy Policy - ITS Maps</title>
     <meta name="description" content="Privacy Policy for ITS Maps by Hanifa Teams, including web, Android APK, Microsoft Store Windows app, Windows widgets, maps, camera AI, Firebase, and Raspberry Pi telemetry." />
     <meta name="theme-color" content="#ffffff" />
+    ${webmcpOriginTrialMeta()}
+    ${searchConsoleVerificationMeta()}
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="alternate" type="text/markdown" href="/llms.txt" title="ITS Maps llms.txt" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
@@ -1198,6 +1394,8 @@ function pageShell({ title, bodyClass, navActive, main }) {
     <title>${esc(title)}</title>
     <meta name="description" content="ITS Maps documentation with line-by-line source explanation, Mermaid diagrams, LaTeX formulas, screenshots, and app download links." />
     <meta name="theme-color" content="#ffffff" />
+    ${webmcpOriginTrialMeta()}
+    ${searchConsoleVerificationMeta()}
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="alternate" type="text/markdown" href="/llms.txt" title="ITS Maps llms.txt" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
@@ -1365,7 +1563,7 @@ output { display: block; margin-top: 12px; padding: 12px; border-radius: 12px; b
 .pdf-sidebar-scrim { display: none; }
 .pdf-sheet-handle { display: none; }
 .pdf-tabs { display: grid; grid-template-columns: 1fr 1fr; margin-bottom: 24px; border: 1px solid rgba(255,255,255,.7); }
-.pdf-tabs button { border: 0; padding: 14px; background: transparent; color: #aeb4c3; font-weight: 900; cursor: pointer; }
+.pdf-tabs button { min-height: 48px; border: 0; padding: 14px; background: transparent; color: #aeb4c3; font-weight: 900; cursor: pointer; }
 .pdf-tabs button[aria-selected="true"] { background: #fff; color: #303240; }
 .pdf-panel { display: none; }
 .pdf-panel.is-active { display: grid; gap: 14px; }
@@ -1384,6 +1582,13 @@ output { display: block; margin-top: 12px; padding: 12px; border-radius: 12px; b
 .pdf-meta dt { color: #aeb4c3; font-weight: 800; }
 .pdf-meta dd { margin: 0; color: #f7f8fb; font-weight: 900; overflow-wrap: anywhere; }
 .pdf-qr { background: #353543; color: #eef2f7; border-color: rgba(255,255,255,.2); }
+.pdf-agent-tools { margin: 14px 0; padding: 12px; border: 1px solid rgba(255,255,255,.18); border-radius: 14px; background: rgba(255,255,255,.06); color: #eef2f7; }
+.pdf-agent-tools h2 { margin: 0; font-size: 14px; }
+.pdf-agent-tools p { margin: 4px 0 10px; color: #cbd5e1; font-size: 12px; line-height: 1.45; }
+.pdf-agent-tools form { display: grid; gap: 8px; margin-top: 10px; }
+.pdf-agent-tools label { display: grid; gap: 5px; font-size: 12px; font-weight: 900; color: #e2e8f0; }
+.pdf-agent-tools input, .pdf-agent-tools select { min-height: 44px; border: 1px solid rgba(255,255,255,.24); border-radius: 10px; padding: 0 10px; background: #111827; color: #fff; }
+.pdf-agent-tools button { min-height: 44px; border: 0; border-radius: 10px; background: #f8fafc; color: #111827; font-weight: 900; cursor: pointer; }
 .pdf-stage { position: relative; grid-row: 2; min-width: 0; min-height: 0; overflow: auto; padding: 30px 48px 64px; background: #d9dbe5; }
 .pdf-source-frame { position: absolute; left: -10000px; top: 0; width: var(--pdf-page-w); height: var(--pdf-page-h); border: 0; opacity: 0; pointer-events: none; }
 .pdf-paper-shell { width: 100%; min-height: 100%; display: grid; justify-items: center; align-items: start; }
@@ -1400,16 +1605,16 @@ output { display: block; margin-top: 12px; padding: 12px; border-radius: 12px; b
 .pdf-page:hover .pdf-page-label, .pdf-page.is-current .pdf-page-label { opacity: 1; }
 .pdf-page.is-current { outline: 3px solid rgba(13,143,165,.42); }
 .pdf-rail { position: sticky; top: 16px; z-index: 4; display: grid; gap: 10px; width: max-content; margin-left: -32px; float: left; }
-.pdf-rail button { width: 36px; height: 36px; border: 0; border-radius: 999px; background: #fff; color: #506070; box-shadow: 0 6px 18px rgba(15,23,42,.18); font-weight: 900; cursor: pointer; }
+.pdf-rail button { width: 44px; height: 44px; border: 0; border-radius: 999px; background: #fff; color: #506070; box-shadow: 0 6px 18px rgba(15,23,42,.18); font-weight: 900; cursor: pointer; }
 .pdf-rail button:hover, .pdf-rail button:focus-visible { background: #0d8fa5; color: #fff; outline: none; }
 .pdf-panel[data-pdf-panel="relations"] a { display: block; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,.12); text-decoration: none; }
 .pdf-search-panel { position: fixed; top: 82px; right: 22px; z-index: 70; display: grid; gap: 10px; width: min(360px, calc(100vw - 32px)); padding: 14px; border: 1px solid rgba(255,255,255,.2); border-radius: 16px; background: #20202a; color: #f8fafc; box-shadow: 0 22px 60px rgba(0,0,0,.35); }
 .pdf-search-panel[hidden] { display: none; }
 .pdf-search-panel label { display: grid; gap: 6px; font-weight: 900; }
-.pdf-search-panel input { min-height: 38px; border: 1px solid #465063; border-radius: 10px; padding: 0 10px; background: #111827; color: #fff; }
+.pdf-search-panel input { min-height: 44px; border: 1px solid #465063; border-radius: 10px; padding: 0 10px; background: #111827; color: #fff; }
 .pdf-search-panel output { margin: 0; padding: 0; border: 0; background: transparent; color: #cbd5e1; font-weight: 900; }
 .pdf-search-panel div { display: flex; gap: 8px; flex-wrap: wrap; }
-.pdf-search-panel button { border: 0; border-radius: 9px; padding: 8px 10px; background: #eff3f7; color: #20202a; font-weight: 900; cursor: pointer; }
+.pdf-search-panel button { min-height: 44px; border: 0; border-radius: 9px; padding: 8px 10px; background: #eff3f7; color: #20202a; font-weight: 900; cursor: pointer; }
 .policy-page { background: #fff; }
 .policy-top { background: linear-gradient(180deg, #eef7ff 0%, #fff 100%); border-bottom: 1px solid var(--line); }
 .policy-top nav { display: flex; justify-content: space-between; gap: 18px; align-items: center; width: min(1180px, calc(100% - 32px)); margin: 0 auto; padding: 18px 0; }
@@ -1453,11 +1658,11 @@ output { display: block; margin-top: 12px; padding: 12px; border-radius: 12px; b
 .pdf-app.is-sidebar-closed .pdf-sidebar { display: block; transform: translateY(calc(100% - 34px)); opacity: 1; pointer-events: auto; }
 .pdf-sidebar.is-dragging { transition: none; }
   .pdf-app:not(.is-sidebar-closed) .pdf-sidebar-scrim { display: block; position: fixed; inset: 0; z-index: 55; background: rgba(15,23,42,.42); }
-  .pdf-sheet-handle { display: flex; justify-content: center; width: 100%; border: 0; background: transparent; padding: 0 0 12px; cursor: grab; }
+  .pdf-sheet-handle { display: flex; justify-content: center; align-items: center; width: 100%; min-height: 44px; border: 0; background: transparent; padding: 0 0 12px; cursor: grab; }
   .pdf-sheet-handle span { display: block; width: 46px; height: 5px; border-radius: 999px; background: #8f98aa; }
   .pdf-stage { grid-row: 2; padding: 18px 12px 52px; }
   .pdf-rail { top: 12px; margin-left: 0; float: none; position: fixed; left: 10px; z-index: 5; }
-  .pdf-rail button { width: 32px; height: 32px; font-size: 11px; }
+  .pdf-rail button { width: 44px; height: 44px; font-size: 11px; }
   .pdf-page-grid { gap: 16px; }
   .pdf-search-panel { left: 10px; right: 10px; top: 76px; width: auto; }
 }
@@ -2183,6 +2388,7 @@ ${[
   mdLink("Privacy Policy", "/privacy"),
   mdLink("Application Licence", "/licence"),
   mdLink("AI Licence", "/license"),
+  mdLink("Roadmap AMP Story", "/roadmap/"),
   mdLink("PDF viewer for documentation", "/pdf-preview/documentation"),
   mdLink("Sitemap", "/sitemap.xml"),
   mdLink("Robots", "/robots.txt"),
@@ -2206,6 +2412,42 @@ ${pdfDocuments.map((doc) => mdLink(doc.label, `/pdf-preview/${doc.id}`)).join("\
 ## Public Source Coverage
 
 The generated documentation currently indexes ${sourceFiles.length} important source/configuration files across WebApp, Android, Windows, Windows Widgets, and controller code. See [llms-full.txt](${site.url}/llms-full.txt) for the full file map.
+`;
+}
+
+function sitemapXml() {
+  const urls = [
+    "/",
+    "/documentation",
+    "/method",
+    "/method/webapp",
+    "/method/android",
+    "/method/windows",
+    "/privacy",
+    "/licence",
+    "/license",
+    "/roadmap/",
+    "/llms.txt",
+    "/llms-full.txt",
+    "/pdf-preview/documentation",
+    "/pdf-preview/method",
+    "/pdf-preview/android",
+    "/pdf-preview/windows",
+    "/pdf-preview/webapp",
+    "/pdf-preview/licence",
+    "/pdf-preview/license",
+    "/pdf-preview/fte-cd-6",
+  ];
+  const now = new Date().toISOString().slice(0, 10);
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${urls.map((url) => `  <url>
+    <loc>${site.url}${url}</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>${url === "/" ? "daily" : "weekly"}</changefreq>
+    <priority>${url === "/" ? "1.0" : "0.7"}</priority>
+  </url>`).join("\n")}
+</urlset>
 `;
 }
 
@@ -2273,6 +2515,7 @@ async function main() {
   ensureDir(licenceRoot);
   ensureDir(licenseRoot);
   ensureDir(pdfPreviewRoot);
+  ensureDir(roadmapRoot);
   copyAssets();
   await generateQrAssets();
   generateOgAssets();
@@ -2291,8 +2534,11 @@ async function main() {
     writeFile(`pdf-preview/${doc.id}/index.html`, pdfPreviewPage(doc.id));
   }
   writeFile("privacy/index.html", privacyPage());
+  writeFile("roadmap/index.html", roadmapStoryPage());
+  writeFile("roadmap/bookend.json", roadmapBookendJson());
   writeFile("llms.txt", llmsTxt());
   writeFile("llms-full.txt", llmsFullTxt());
+  writeFile("sitemap.xml", sitemapXml());
 }
 
 await main();

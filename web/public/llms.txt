@@ -17,6 +17,7 @@ Public documentation, method pages, screenshots, app listing assets, and downloa
 - [Privacy Policy](https://itstelkom.web.app/privacy)
 - [Application Licence](https://itstelkom.web.app/licence)
 - [AI Licence](https://itstelkom.web.app/license)
+- [Roadmap AMP Story](https://itstelkom.web.app/roadmap/)
 - [PDF viewer for documentation](https://itstelkom.web.app/pdf-preview/documentation)
 - [Sitemap](https://itstelkom.web.app/sitemap.xml)
 - [Robots](https://itstelkom.web.app/robots.txt)
