@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Metode WebApp ITS Maps | ITS Maps</title>
     <meta name="description" content="ITS Maps documentation with line-by-line source explanation, Mermaid diagrams, LaTeX formulas, screenshots, and app download links." />
+    <meta name="theme-color" content="#ffffff" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
     <link rel="icon" type="image/png" href="/its.png" />
     <link rel="stylesheet" href="/method/method.css" />
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js" defer></script>
@@ -266,8 +269,8 @@ const green = Math.min(120, Math.max(10, 0.85 * total + 8));</code></pre>
 
         <div role="row">
           <span role="cell"><code title="web/firebase.json">web/firebase.json</code></span>
-          <span role="cell">323</span>
-          <span role="cell">322</span>
+          <span role="cell">377</span>
+          <span role="cell">376</span>
           <span role="cell">template / konfigurasi</span>
         </div>
 
@@ -136634,7 +136637,7 @@ const green = Math.min(120, Math.max(10, 0.85 * total + 8));</code></pre>
     <details class="source-file" >
       <summary>
         <span>web/firebase.json</span>
-        <small>323 baris</small>
+        <small>377 baris</small>
       </summary>
 
       <div class="code-table" role="table" aria-label="Penjelasan baris per baris web/firebase.json">
@@ -137642,7 +137645,7 @@ const green = Math.min(120, Math.max(10, 0.85 * total + 8));</code></pre>
 
             <div role="row" id="web-firebase-json-167">
               <span role="cell" class="line-no">167</span>
-              <code role="cell">        &quot;source&quot;: &quot;/presentation/**&quot;,</code>
+              <code role="cell">        &quot;source&quot;: &quot;/documentation**&quot;,</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:167; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
@@ -137660,924 +137663,1248 @@ const green = Math.min(120, Math.max(10, 0.85 * total + 8));</code></pre>
 
             <div role="row" id="web-firebase-json-170">
               <span role="cell" class="line-no">170</span>
-              <code role="cell">            &quot;key&quot;: &quot;Cross-Origin-Opener-Policy&quot;,</code>
+              <code role="cell">            &quot;key&quot;: &quot;Cache-Control&quot;,</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:170; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-171">
               <span role="cell" class="line-no">171</span>
-              <code role="cell">            &quot;value&quot;: &quot;same-origin-allow-popups&quot;</code>
+              <code role="cell">            &quot;value&quot;: &quot;no-cache, no-store, must-revalidate&quot;</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:171; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-172">
               <span role="cell" class="line-no">172</span>
-              <code role="cell">          },</code>
-              <span role="cell">Instruksi implementasi pada web/firebase.json:172; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+              <code role="cell">          }</code>
+              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
             </div>
 
             <div role="row" id="web-firebase-json-173">
               <span role="cell" class="line-no">173</span>
-              <code role="cell">          {</code>
+              <code role="cell">        ]</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:173; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-174">
               <span role="cell" class="line-no">174</span>
-              <code role="cell">            &quot;key&quot;: &quot;Cache-Control&quot;,</code>
+              <code role="cell">      },</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:174; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-175">
               <span role="cell" class="line-no">175</span>
-              <code role="cell">            &quot;value&quot;: &quot;no-cache, no-store, must-revalidate&quot;</code>
+              <code role="cell">      {</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:175; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-176">
               <span role="cell" class="line-no">176</span>
-              <code role="cell">          }</code>
-              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
+              <code role="cell">        &quot;source&quot;: &quot;/method**&quot;,</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:176; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-177">
               <span role="cell" class="line-no">177</span>
-              <code role="cell">        ]</code>
+              <code role="cell">        &quot;headers&quot;: [</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:177; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-178">
               <span role="cell" class="line-no">178</span>
-              <code role="cell">      },</code>
+              <code role="cell">          {</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:178; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-179">
               <span role="cell" class="line-no">179</span>
-              <code role="cell">      {</code>
+              <code role="cell">            &quot;key&quot;: &quot;Cache-Control&quot;,</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:179; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-180">
               <span role="cell" class="line-no">180</span>
-              <code role="cell">        &quot;source&quot;: &quot;/sw.js&quot;,</code>
+              <code role="cell">            &quot;value&quot;: &quot;no-cache, no-store, must-revalidate&quot;</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:180; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-181">
               <span role="cell" class="line-no">181</span>
-              <code role="cell">        &quot;headers&quot;: [</code>
-              <span role="cell">Instruksi implementasi pada web/firebase.json:181; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+              <code role="cell">          }</code>
+              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
             </div>
 
             <div role="row" id="web-firebase-json-182">
               <span role="cell" class="line-no">182</span>
-              <code role="cell">          {</code>
+              <code role="cell">        ]</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:182; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-183">
               <span role="cell" class="line-no">183</span>
-              <code role="cell">            &quot;key&quot;: &quot;Cache-Control&quot;,</code>
+              <code role="cell">      },</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:183; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-184">
               <span role="cell" class="line-no">184</span>
-              <code role="cell">            &quot;value&quot;: &quot;no-cache, no-store, must-revalidate&quot;</code>
+              <code role="cell">      {</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:184; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-185">
               <span role="cell" class="line-no">185</span>
-              <code role="cell">          }</code>
-              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
+              <code role="cell">        &quot;source&quot;: &quot;/pdf-preview&quot;,</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:185; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-186">
               <span role="cell" class="line-no">186</span>
-              <code role="cell">        ]</code>
+              <code role="cell">        &quot;headers&quot;: [</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:186; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-187">
               <span role="cell" class="line-no">187</span>
-              <code role="cell">      },</code>
+              <code role="cell">          {</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:187; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-188">
               <span role="cell" class="line-no">188</span>
-              <code role="cell">      {</code>
+              <code role="cell">            &quot;key&quot;: &quot;Cache-Control&quot;,</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:188; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-189">
               <span role="cell" class="line-no">189</span>
-              <code role="cell">        &quot;source&quot;: &quot;/app-update.json&quot;,</code>
+              <code role="cell">            &quot;value&quot;: &quot;no-cache, no-store, must-revalidate&quot;</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:189; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-190">
               <span role="cell" class="line-no">190</span>
-              <code role="cell">        &quot;headers&quot;: [</code>
-              <span role="cell">Instruksi implementasi pada web/firebase.json:190; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+              <code role="cell">          }</code>
+              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
             </div>
 
             <div role="row" id="web-firebase-json-191">
               <span role="cell" class="line-no">191</span>
-              <code role="cell">          {</code>
+              <code role="cell">        ]</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:191; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-192">
               <span role="cell" class="line-no">192</span>
-              <code role="cell">            &quot;key&quot;: &quot;Cache-Control&quot;,</code>
+              <code role="cell">      },</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:192; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-193">
               <span role="cell" class="line-no">193</span>
-              <code role="cell">            &quot;value&quot;: &quot;no-cache, no-store, must-revalidate&quot;</code>
+              <code role="cell">      {</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:193; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-194">
               <span role="cell" class="line-no">194</span>
-              <code role="cell">          }</code>
-              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
+              <code role="cell">        &quot;source&quot;: &quot;/pdf-preview/**&quot;,</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:194; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-195">
               <span role="cell" class="line-no">195</span>
-              <code role="cell">        ]</code>
+              <code role="cell">        &quot;headers&quot;: [</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:195; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-196">
               <span role="cell" class="line-no">196</span>
-              <code role="cell">      },</code>
+              <code role="cell">          {</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:196; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-197">
               <span role="cell" class="line-no">197</span>
-              <code role="cell">      {</code>
+              <code role="cell">            &quot;key&quot;: &quot;Cache-Control&quot;,</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:197; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-198">
               <span role="cell" class="line-no">198</span>
-              <code role="cell">        &quot;source&quot;: &quot;**/*.apk&quot;,</code>
+              <code role="cell">            &quot;value&quot;: &quot;no-cache, no-store, must-revalidate&quot;</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:198; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-199">
               <span role="cell" class="line-no">199</span>
-              <code role="cell">        &quot;headers&quot;: [</code>
-              <span role="cell">Instruksi implementasi pada web/firebase.json:199; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+              <code role="cell">          }</code>
+              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
             </div>
 
             <div role="row" id="web-firebase-json-200">
               <span role="cell" class="line-no">200</span>
-              <code role="cell">          {</code>
+              <code role="cell">        ]</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:200; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-201">
               <span role="cell" class="line-no">201</span>
-              <code role="cell">            &quot;key&quot;: &quot;Content-Type&quot;,</code>
+              <code role="cell">      },</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:201; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-202">
               <span role="cell" class="line-no">202</span>
-              <code role="cell">            &quot;value&quot;: &quot;application/vnd.android.package-archive&quot;</code>
+              <code role="cell">      {</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:202; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-203">
               <span role="cell" class="line-no">203</span>
-              <code role="cell">          },</code>
+              <code role="cell">        &quot;source&quot;: &quot;/licence**&quot;,</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:203; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-204">
               <span role="cell" class="line-no">204</span>
-              <code role="cell">          {</code>
+              <code role="cell">        &quot;headers&quot;: [</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:204; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-205">
               <span role="cell" class="line-no">205</span>
-              <code role="cell">            &quot;key&quot;: &quot;Cache-Control&quot;,</code>
+              <code role="cell">          {</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:205; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-206">
               <span role="cell" class="line-no">206</span>
-              <code role="cell">            &quot;value&quot;: &quot;public, max-age=3600&quot;</code>
+              <code role="cell">            &quot;key&quot;: &quot;Cache-Control&quot;,</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:206; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-207">
               <span role="cell" class="line-no">207</span>
-              <code role="cell">          }</code>
-              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
+              <code role="cell">            &quot;value&quot;: &quot;no-cache, no-store, must-revalidate&quot;</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:207; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-208">
               <span role="cell" class="line-no">208</span>
-              <code role="cell">        ]</code>
-              <span role="cell">Instruksi implementasi pada web/firebase.json:208; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+              <code role="cell">          }</code>
+              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
             </div>
 
             <div role="row" id="web-firebase-json-209">
               <span role="cell" class="line-no">209</span>
-              <code role="cell">      },</code>
+              <code role="cell">        ]</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:209; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-210">
               <span role="cell" class="line-no">210</span>
-              <code role="cell">      {</code>
+              <code role="cell">      },</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:210; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-211">
               <span role="cell" class="line-no">211</span>
-              <code role="cell">        &quot;source&quot;: &quot;**/*.b64&quot;,</code>
+              <code role="cell">      {</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:211; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-212">
               <span role="cell" class="line-no">212</span>
-              <code role="cell">        &quot;headers&quot;: [</code>
+              <code role="cell">        &quot;source&quot;: &quot;/license**&quot;,</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:212; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-213">
               <span role="cell" class="line-no">213</span>
-              <code role="cell">          {</code>
+              <code role="cell">        &quot;headers&quot;: [</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:213; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-214">
               <span role="cell" class="line-no">214</span>
-              <code role="cell">            &quot;key&quot;: &quot;Content-Type&quot;,</code>
+              <code role="cell">          {</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:214; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-215">
               <span role="cell" class="line-no">215</span>
-              <code role="cell">            &quot;value&quot;: &quot;text/plain; charset=utf-8&quot;</code>
+              <code role="cell">            &quot;key&quot;: &quot;Cache-Control&quot;,</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:215; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-216">
               <span role="cell" class="line-no">216</span>
-              <code role="cell">          },</code>
+              <code role="cell">            &quot;value&quot;: &quot;no-cache, no-store, must-revalidate&quot;</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:216; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-217">
               <span role="cell" class="line-no">217</span>
-              <code role="cell">          {</code>
-              <span role="cell">Instruksi implementasi pada web/firebase.json:217; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+              <code role="cell">          }</code>
+              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
             </div>
 
             <div role="row" id="web-firebase-json-218">
               <span role="cell" class="line-no">218</span>
-              <code role="cell">            &quot;key&quot;: &quot;Cache-Control&quot;,</code>
+              <code role="cell">        ]</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:218; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-219">
               <span role="cell" class="line-no">219</span>
-              <code role="cell">            &quot;value&quot;: &quot;public, max-age=3600&quot;</code>
+              <code role="cell">      },</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:219; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-220">
               <span role="cell" class="line-no">220</span>
-              <code role="cell">          }</code>
-              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
+              <code role="cell">      {</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:220; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-221">
               <span role="cell" class="line-no">221</span>
-              <code role="cell">        ]</code>
+              <code role="cell">        &quot;source&quot;: &quot;/presentation/**&quot;,</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:221; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-222">
               <span role="cell" class="line-no">222</span>
-              <code role="cell">      },</code>
+              <code role="cell">        &quot;headers&quot;: [</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:222; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-223">
               <span role="cell" class="line-no">223</span>
-              <code role="cell">      {</code>
+              <code role="cell">          {</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:223; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-224">
               <span role="cell" class="line-no">224</span>
-              <code role="cell">        &quot;source&quot;: &quot;**/*.webmanifest&quot;,</code>
+              <code role="cell">            &quot;key&quot;: &quot;Cross-Origin-Opener-Policy&quot;,</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:224; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-225">
               <span role="cell" class="line-no">225</span>
-              <code role="cell">        &quot;headers&quot;: [</code>
+              <code role="cell">            &quot;value&quot;: &quot;same-origin-allow-popups&quot;</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:225; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-226">
               <span role="cell" class="line-no">226</span>
-              <code role="cell">          {</code>
+              <code role="cell">          },</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:226; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-227">
               <span role="cell" class="line-no">227</span>
-              <code role="cell">            &quot;key&quot;: &quot;Content-Type&quot;,</code>
+              <code role="cell">          {</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:227; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-228">
               <span role="cell" class="line-no">228</span>
-              <code role="cell">            &quot;value&quot;: &quot;application/manifest+json; charset=utf-8&quot;</code>
+              <code role="cell">            &quot;key&quot;: &quot;Cache-Control&quot;,</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:228; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-229">
               <span role="cell" class="line-no">229</span>
-              <code role="cell">          },</code>
+              <code role="cell">            &quot;value&quot;: &quot;no-cache, no-store, must-revalidate&quot;</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:229; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-230">
               <span role="cell" class="line-no">230</span>
-              <code role="cell">          {</code>
-              <span role="cell">Instruksi implementasi pada web/firebase.json:230; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+              <code role="cell">          }</code>
+              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
             </div>
 
             <div role="row" id="web-firebase-json-231">
               <span role="cell" class="line-no">231</span>
-              <code role="cell">            &quot;key&quot;: &quot;Cache-Control&quot;,</code>
+              <code role="cell">        ]</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:231; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-232">
               <span role="cell" class="line-no">232</span>
-              <code role="cell">            &quot;value&quot;: &quot;no-cache, no-store, must-revalidate&quot;</code>
+              <code role="cell">      },</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:232; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-233">
               <span role="cell" class="line-no">233</span>
-              <code role="cell">          }</code>
-              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
+              <code role="cell">      {</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:233; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-234">
               <span role="cell" class="line-no">234</span>
-              <code role="cell">        ]</code>
+              <code role="cell">        &quot;source&quot;: &quot;/sw.js&quot;,</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:234; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-235">
               <span role="cell" class="line-no">235</span>
-              <code role="cell">      },</code>
+              <code role="cell">        &quot;headers&quot;: [</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:235; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-236">
               <span role="cell" class="line-no">236</span>
-              <code role="cell">      {</code>
+              <code role="cell">          {</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:236; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-237">
               <span role="cell" class="line-no">237</span>
-              <code role="cell">        &quot;source&quot;: &quot;/data/**&quot;,</code>
+              <code role="cell">            &quot;key&quot;: &quot;Cache-Control&quot;,</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:237; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-238">
               <span role="cell" class="line-no">238</span>
-              <code role="cell">        &quot;headers&quot;: [</code>
+              <code role="cell">            &quot;value&quot;: &quot;no-cache, no-store, must-revalidate&quot;</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:238; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-239">
               <span role="cell" class="line-no">239</span>
-              <code role="cell">          {</code>
-              <span role="cell">Instruksi implementasi pada web/firebase.json:239; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+              <code role="cell">          }</code>
+              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
             </div>
 
             <div role="row" id="web-firebase-json-240">
               <span role="cell" class="line-no">240</span>
-              <code role="cell">            &quot;key&quot;: &quot;Access-Control-Allow-Origin&quot;,</code>
+              <code role="cell">        ]</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:240; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-241">
               <span role="cell" class="line-no">241</span>
-              <code role="cell">            &quot;value&quot;: &quot;*&quot;</code>
+              <code role="cell">      },</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:241; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-242">
               <span role="cell" class="line-no">242</span>
-              <code role="cell">          },</code>
+              <code role="cell">      {</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:242; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-243">
               <span role="cell" class="line-no">243</span>
-              <code role="cell">          {</code>
+              <code role="cell">        &quot;source&quot;: &quot;/app-update.json&quot;,</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:243; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-244">
               <span role="cell" class="line-no">244</span>
-              <code role="cell">            &quot;key&quot;: &quot;Cache-Control&quot;,</code>
+              <code role="cell">        &quot;headers&quot;: [</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:244; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-245">
               <span role="cell" class="line-no">245</span>
-              <code role="cell">            &quot;value&quot;: &quot;no-cache, no-store, must-revalidate&quot;</code>
+              <code role="cell">          {</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:245; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-246">
               <span role="cell" class="line-no">246</span>
-              <code role="cell">          }</code>
-              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
+              <code role="cell">            &quot;key&quot;: &quot;Cache-Control&quot;,</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:246; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-247">
               <span role="cell" class="line-no">247</span>
-              <code role="cell">        ]</code>
+              <code role="cell">            &quot;value&quot;: &quot;no-cache, no-store, must-revalidate&quot;</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:247; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-248">
               <span role="cell" class="line-no">248</span>
-              <code role="cell">      },</code>
-              <span role="cell">Instruksi implementasi pada web/firebase.json:248; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+              <code role="cell">          }</code>
+              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
             </div>
 
             <div role="row" id="web-firebase-json-249">
               <span role="cell" class="line-no">249</span>
-              <code role="cell">      {</code>
+              <code role="cell">        ]</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:249; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-250">
               <span role="cell" class="line-no">250</span>
-              <code role="cell">        &quot;source&quot;: &quot;/assets/**&quot;,</code>
+              <code role="cell">      },</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:250; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-251">
               <span role="cell" class="line-no">251</span>
-              <code role="cell">        &quot;headers&quot;: [</code>
+              <code role="cell">      {</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:251; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-252">
               <span role="cell" class="line-no">252</span>
-              <code role="cell">          {</code>
+              <code role="cell">        &quot;source&quot;: &quot;**/*.apk&quot;,</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:252; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-253">
               <span role="cell" class="line-no">253</span>
-              <code role="cell">            &quot;key&quot;: &quot;Access-Control-Allow-Origin&quot;,</code>
+              <code role="cell">        &quot;headers&quot;: [</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:253; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-254">
               <span role="cell" class="line-no">254</span>
-              <code role="cell">            &quot;value&quot;: &quot;*&quot;</code>
+              <code role="cell">          {</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:254; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-255">
               <span role="cell" class="line-no">255</span>
-              <code role="cell">          },</code>
+              <code role="cell">            &quot;key&quot;: &quot;Content-Type&quot;,</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:255; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-256">
               <span role="cell" class="line-no">256</span>
-              <code role="cell">          {</code>
+              <code role="cell">            &quot;value&quot;: &quot;application/vnd.android.package-archive&quot;</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:256; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-257">
               <span role="cell" class="line-no">257</span>
-              <code role="cell">            &quot;key&quot;: &quot;Cache-Control&quot;,</code>
+              <code role="cell">          },</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:257; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-258">
               <span role="cell" class="line-no">258</span>
-              <code role="cell">            &quot;value&quot;: &quot;public, max-age=31536000, immutable&quot;</code>
+              <code role="cell">          {</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:258; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-259">
               <span role="cell" class="line-no">259</span>
-              <code role="cell">          }</code>
-              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
+              <code role="cell">            &quot;key&quot;: &quot;Cache-Control&quot;,</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:259; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-260">
               <span role="cell" class="line-no">260</span>
-              <code role="cell">        ]</code>
+              <code role="cell">            &quot;value&quot;: &quot;public, max-age=3600&quot;</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:260; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-261">
               <span role="cell" class="line-no">261</span>
-              <code role="cell">      },</code>
-              <span role="cell">Instruksi implementasi pada web/firebase.json:261; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+              <code role="cell">          }</code>
+              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
             </div>
 
             <div role="row" id="web-firebase-json-262">
               <span role="cell" class="line-no">262</span>
-              <code role="cell">      {</code>
+              <code role="cell">        ]</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:262; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-263">
               <span role="cell" class="line-no">263</span>
-              <code role="cell">        &quot;source&quot;: &quot;**/*.png&quot;,</code>
+              <code role="cell">      },</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:263; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-264">
               <span role="cell" class="line-no">264</span>
-              <code role="cell">        &quot;headers&quot;: [</code>
+              <code role="cell">      {</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:264; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-265">
               <span role="cell" class="line-no">265</span>
-              <code role="cell">          {</code>
+              <code role="cell">        &quot;source&quot;: &quot;**/*.b64&quot;,</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:265; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-266">
               <span role="cell" class="line-no">266</span>
-              <code role="cell">            &quot;key&quot;: &quot;Access-Control-Allow-Origin&quot;,</code>
+              <code role="cell">        &quot;headers&quot;: [</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:266; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-267">
               <span role="cell" class="line-no">267</span>
-              <code role="cell">            &quot;value&quot;: &quot;*&quot;</code>
+              <code role="cell">          {</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:267; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-268">
               <span role="cell" class="line-no">268</span>
-              <code role="cell">          },</code>
+              <code role="cell">            &quot;key&quot;: &quot;Content-Type&quot;,</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:268; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-269">
               <span role="cell" class="line-no">269</span>
-              <code role="cell">          {</code>
+              <code role="cell">            &quot;value&quot;: &quot;text/plain; charset=utf-8&quot;</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:269; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-270">
               <span role="cell" class="line-no">270</span>
-              <code role="cell">            &quot;key&quot;: &quot;Cache-Control&quot;,</code>
+              <code role="cell">          },</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:270; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-271">
               <span role="cell" class="line-no">271</span>
-              <code role="cell">            &quot;value&quot;: &quot;public, max-age=31536000&quot;</code>
+              <code role="cell">          {</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:271; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-272">
               <span role="cell" class="line-no">272</span>
-              <code role="cell">          }</code>
-              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
+              <code role="cell">            &quot;key&quot;: &quot;Cache-Control&quot;,</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:272; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-273">
               <span role="cell" class="line-no">273</span>
-              <code role="cell">        ]</code>
+              <code role="cell">            &quot;value&quot;: &quot;public, max-age=3600&quot;</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:273; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-274">
               <span role="cell" class="line-no">274</span>
-              <code role="cell">      },</code>
-              <span role="cell">Instruksi implementasi pada web/firebase.json:274; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+              <code role="cell">          }</code>
+              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
             </div>
 
             <div role="row" id="web-firebase-json-275">
               <span role="cell" class="line-no">275</span>
-              <code role="cell">      {</code>
+              <code role="cell">        ]</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:275; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-276">
               <span role="cell" class="line-no">276</span>
-              <code role="cell">        &quot;source&quot;: &quot;**/*.jpg&quot;,</code>
+              <code role="cell">      },</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:276; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-277">
               <span role="cell" class="line-no">277</span>
-              <code role="cell">        &quot;headers&quot;: [</code>
+              <code role="cell">      {</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:277; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-278">
               <span role="cell" class="line-no">278</span>
-              <code role="cell">          {</code>
+              <code role="cell">        &quot;source&quot;: &quot;**/*.webmanifest&quot;,</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:278; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-279">
               <span role="cell" class="line-no">279</span>
-              <code role="cell">            &quot;key&quot;: &quot;Access-Control-Allow-Origin&quot;,</code>
+              <code role="cell">        &quot;headers&quot;: [</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:279; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-280">
               <span role="cell" class="line-no">280</span>
-              <code role="cell">            &quot;value&quot;: &quot;*&quot;</code>
+              <code role="cell">          {</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:280; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-281">
               <span role="cell" class="line-no">281</span>
-              <code role="cell">          },</code>
+              <code role="cell">            &quot;key&quot;: &quot;Content-Type&quot;,</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:281; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-282">
               <span role="cell" class="line-no">282</span>
-              <code role="cell">          {</code>
+              <code role="cell">            &quot;value&quot;: &quot;application/manifest+json; charset=utf-8&quot;</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:282; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-283">
               <span role="cell" class="line-no">283</span>
-              <code role="cell">            &quot;key&quot;: &quot;Cache-Control&quot;,</code>
+              <code role="cell">          },</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:283; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-284">
               <span role="cell" class="line-no">284</span>
-              <code role="cell">            &quot;value&quot;: &quot;public, max-age=31536000&quot;</code>
+              <code role="cell">          {</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:284; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-285">
               <span role="cell" class="line-no">285</span>
-              <code role="cell">          }</code>
-              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
+              <code role="cell">            &quot;key&quot;: &quot;Cache-Control&quot;,</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:285; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-286">
               <span role="cell" class="line-no">286</span>
-              <code role="cell">        ]</code>
+              <code role="cell">            &quot;value&quot;: &quot;no-cache, no-store, must-revalidate&quot;</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:286; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-287">
               <span role="cell" class="line-no">287</span>
-              <code role="cell">      },</code>
-              <span role="cell">Instruksi implementasi pada web/firebase.json:287; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+              <code role="cell">          }</code>
+              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
             </div>
 
             <div role="row" id="web-firebase-json-288">
               <span role="cell" class="line-no">288</span>
-              <code role="cell">      {</code>
+              <code role="cell">        ]</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:288; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-289">
               <span role="cell" class="line-no">289</span>
-              <code role="cell">        &quot;source&quot;: &quot;**/*.jpeg&quot;,</code>
+              <code role="cell">      },</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:289; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-290">
               <span role="cell" class="line-no">290</span>
-              <code role="cell">        &quot;headers&quot;: [</code>
+              <code role="cell">      {</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:290; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-291">
               <span role="cell" class="line-no">291</span>
-              <code role="cell">          {</code>
+              <code role="cell">        &quot;source&quot;: &quot;/data/**&quot;,</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:291; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-292">
               <span role="cell" class="line-no">292</span>
-              <code role="cell">            &quot;key&quot;: &quot;Access-Control-Allow-Origin&quot;,</code>
+              <code role="cell">        &quot;headers&quot;: [</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:292; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-293">
               <span role="cell" class="line-no">293</span>
-              <code role="cell">            &quot;value&quot;: &quot;*&quot;</code>
+              <code role="cell">          {</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:293; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-294">
               <span role="cell" class="line-no">294</span>
-              <code role="cell">          },</code>
+              <code role="cell">            &quot;key&quot;: &quot;Access-Control-Allow-Origin&quot;,</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:294; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-295">
               <span role="cell" class="line-no">295</span>
-              <code role="cell">          {</code>
+              <code role="cell">            &quot;value&quot;: &quot;*&quot;</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:295; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-296">
               <span role="cell" class="line-no">296</span>
-              <code role="cell">            &quot;key&quot;: &quot;Cache-Control&quot;,</code>
+              <code role="cell">          },</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:296; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-297">
               <span role="cell" class="line-no">297</span>
-              <code role="cell">            &quot;value&quot;: &quot;public, max-age=31536000&quot;</code>
+              <code role="cell">          {</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:297; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-298">
               <span role="cell" class="line-no">298</span>
-              <code role="cell">          }</code>
-              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
+              <code role="cell">            &quot;key&quot;: &quot;Cache-Control&quot;,</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:298; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-299">
               <span role="cell" class="line-no">299</span>
-              <code role="cell">        ]</code>
+              <code role="cell">            &quot;value&quot;: &quot;no-cache, no-store, must-revalidate&quot;</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:299; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-300">
               <span role="cell" class="line-no">300</span>
-              <code role="cell">      },</code>
-              <span role="cell">Instruksi implementasi pada web/firebase.json:300; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+              <code role="cell">          }</code>
+              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
             </div>
 
             <div role="row" id="web-firebase-json-301">
               <span role="cell" class="line-no">301</span>
-              <code role="cell">      {</code>
+              <code role="cell">        ]</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:301; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-302">
               <span role="cell" class="line-no">302</span>
-              <code role="cell">        &quot;source&quot;: &quot;**/*.webp&quot;,</code>
+              <code role="cell">      },</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:302; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-303">
               <span role="cell" class="line-no">303</span>
-              <code role="cell">        &quot;headers&quot;: [</code>
+              <code role="cell">      {</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:303; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-304">
               <span role="cell" class="line-no">304</span>
-              <code role="cell">          {</code>
+              <code role="cell">        &quot;source&quot;: &quot;/assets/**&quot;,</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:304; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-305">
               <span role="cell" class="line-no">305</span>
-              <code role="cell">            &quot;key&quot;: &quot;Access-Control-Allow-Origin&quot;,</code>
+              <code role="cell">        &quot;headers&quot;: [</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:305; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-306">
               <span role="cell" class="line-no">306</span>
-              <code role="cell">            &quot;value&quot;: &quot;*&quot;</code>
+              <code role="cell">          {</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:306; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-307">
               <span role="cell" class="line-no">307</span>
-              <code role="cell">          },</code>
+              <code role="cell">            &quot;key&quot;: &quot;Access-Control-Allow-Origin&quot;,</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:307; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-308">
               <span role="cell" class="line-no">308</span>
-              <code role="cell">          {</code>
+              <code role="cell">            &quot;value&quot;: &quot;*&quot;</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:308; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-309">
               <span role="cell" class="line-no">309</span>
-              <code role="cell">            &quot;key&quot;: &quot;Cache-Control&quot;,</code>
+              <code role="cell">          },</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:309; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-310">
               <span role="cell" class="line-no">310</span>
-              <code role="cell">            &quot;value&quot;: &quot;public, max-age=31536000&quot;</code>
+              <code role="cell">          {</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:310; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-311">
               <span role="cell" class="line-no">311</span>
-              <code role="cell">          }</code>
-              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
+              <code role="cell">            &quot;key&quot;: &quot;Cache-Control&quot;,</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:311; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-312">
               <span role="cell" class="line-no">312</span>
-              <code role="cell">        ]</code>
+              <code role="cell">            &quot;value&quot;: &quot;public, max-age=31536000, immutable&quot;</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:312; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-313">
               <span role="cell" class="line-no">313</span>
-              <code role="cell">      }</code>
+              <code role="cell">          }</code>
               <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
             </div>
 
             <div role="row" id="web-firebase-json-314">
               <span role="cell" class="line-no">314</span>
-              <code role="cell">    ]</code>
+              <code role="cell">        ]</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:314; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-315">
               <span role="cell" class="line-no">315</span>
-              <code role="cell">  },</code>
+              <code role="cell">      },</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:315; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-316">
               <span role="cell" class="line-no">316</span>
-              <code role="cell">  &quot;emulators&quot;: {</code>
+              <code role="cell">      {</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:316; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-317">
               <span role="cell" class="line-no">317</span>
-              <code role="cell">    &quot;auth&quot;: { &quot;port&quot;: 9099 },</code>
+              <code role="cell">        &quot;source&quot;: &quot;**/*.png&quot;,</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:317; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-318">
               <span role="cell" class="line-no">318</span>
-              <code role="cell">    &quot;database&quot;: { &quot;port&quot;: 9000 },</code>
-              <span role="cell">Operasi asinkron/network. Data dikirim atau diambil dari Firebase, kamera, service lokal, atau endpoint aplikasi.</span>
+              <code role="cell">        &quot;headers&quot;: [</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:318; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-319">
               <span role="cell" class="line-no">319</span>
-              <code role="cell">    &quot;hosting&quot;: { &quot;port&quot;: 5000 },</code>
+              <code role="cell">          {</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:319; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-320">
               <span role="cell" class="line-no">320</span>
-              <code role="cell">    &quot;ui&quot;: { &quot;enabled&quot;: true, &quot;port&quot;: 4000 }</code>
+              <code role="cell">            &quot;key&quot;: &quot;Access-Control-Allow-Origin&quot;,</code>
               <span role="cell">Instruksi implementasi pada web/firebase.json:320; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-321">
               <span role="cell" class="line-no">321</span>
-              <code role="cell">  }</code>
-              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
+              <code role="cell">            &quot;value&quot;: &quot;*&quot;</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:321; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-322">
               <span role="cell" class="line-no">322</span>
-              <code role="cell">}</code>
-              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
+              <code role="cell">          },</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:322; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
             </div>
 
             <div role="row" id="web-firebase-json-323">
               <span role="cell" class="line-no">323</span>
+              <code role="cell">          {</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:323; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-324">
+              <span role="cell" class="line-no">324</span>
+              <code role="cell">            &quot;key&quot;: &quot;Cache-Control&quot;,</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:324; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-325">
+              <span role="cell" class="line-no">325</span>
+              <code role="cell">            &quot;value&quot;: &quot;public, max-age=31536000&quot;</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:325; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-326">
+              <span role="cell" class="line-no">326</span>
+              <code role="cell">          }</code>
+              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-327">
+              <span role="cell" class="line-no">327</span>
+              <code role="cell">        ]</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:327; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-328">
+              <span role="cell" class="line-no">328</span>
+              <code role="cell">      },</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:328; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-329">
+              <span role="cell" class="line-no">329</span>
+              <code role="cell">      {</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:329; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-330">
+              <span role="cell" class="line-no">330</span>
+              <code role="cell">        &quot;source&quot;: &quot;**/*.jpg&quot;,</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:330; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-331">
+              <span role="cell" class="line-no">331</span>
+              <code role="cell">        &quot;headers&quot;: [</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:331; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-332">
+              <span role="cell" class="line-no">332</span>
+              <code role="cell">          {</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:332; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-333">
+              <span role="cell" class="line-no">333</span>
+              <code role="cell">            &quot;key&quot;: &quot;Access-Control-Allow-Origin&quot;,</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:333; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-334">
+              <span role="cell" class="line-no">334</span>
+              <code role="cell">            &quot;value&quot;: &quot;*&quot;</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:334; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-335">
+              <span role="cell" class="line-no">335</span>
+              <code role="cell">          },</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:335; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-336">
+              <span role="cell" class="line-no">336</span>
+              <code role="cell">          {</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:336; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-337">
+              <span role="cell" class="line-no">337</span>
+              <code role="cell">            &quot;key&quot;: &quot;Cache-Control&quot;,</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:337; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-338">
+              <span role="cell" class="line-no">338</span>
+              <code role="cell">            &quot;value&quot;: &quot;public, max-age=31536000&quot;</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:338; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-339">
+              <span role="cell" class="line-no">339</span>
+              <code role="cell">          }</code>
+              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-340">
+              <span role="cell" class="line-no">340</span>
+              <code role="cell">        ]</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:340; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-341">
+              <span role="cell" class="line-no">341</span>
+              <code role="cell">      },</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:341; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-342">
+              <span role="cell" class="line-no">342</span>
+              <code role="cell">      {</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:342; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-343">
+              <span role="cell" class="line-no">343</span>
+              <code role="cell">        &quot;source&quot;: &quot;**/*.jpeg&quot;,</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:343; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-344">
+              <span role="cell" class="line-no">344</span>
+              <code role="cell">        &quot;headers&quot;: [</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:344; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-345">
+              <span role="cell" class="line-no">345</span>
+              <code role="cell">          {</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:345; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-346">
+              <span role="cell" class="line-no">346</span>
+              <code role="cell">            &quot;key&quot;: &quot;Access-Control-Allow-Origin&quot;,</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:346; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-347">
+              <span role="cell" class="line-no">347</span>
+              <code role="cell">            &quot;value&quot;: &quot;*&quot;</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:347; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-348">
+              <span role="cell" class="line-no">348</span>
+              <code role="cell">          },</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:348; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-349">
+              <span role="cell" class="line-no">349</span>
+              <code role="cell">          {</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:349; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-350">
+              <span role="cell" class="line-no">350</span>
+              <code role="cell">            &quot;key&quot;: &quot;Cache-Control&quot;,</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:350; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-351">
+              <span role="cell" class="line-no">351</span>
+              <code role="cell">            &quot;value&quot;: &quot;public, max-age=31536000&quot;</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:351; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-352">
+              <span role="cell" class="line-no">352</span>
+              <code role="cell">          }</code>
+              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-353">
+              <span role="cell" class="line-no">353</span>
+              <code role="cell">        ]</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:353; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-354">
+              <span role="cell" class="line-no">354</span>
+              <code role="cell">      },</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:354; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-355">
+              <span role="cell" class="line-no">355</span>
+              <code role="cell">      {</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:355; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-356">
+              <span role="cell" class="line-no">356</span>
+              <code role="cell">        &quot;source&quot;: &quot;**/*.webp&quot;,</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:356; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-357">
+              <span role="cell" class="line-no">357</span>
+              <code role="cell">        &quot;headers&quot;: [</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:357; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-358">
+              <span role="cell" class="line-no">358</span>
+              <code role="cell">          {</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:358; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-359">
+              <span role="cell" class="line-no">359</span>
+              <code role="cell">            &quot;key&quot;: &quot;Access-Control-Allow-Origin&quot;,</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:359; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-360">
+              <span role="cell" class="line-no">360</span>
+              <code role="cell">            &quot;value&quot;: &quot;*&quot;</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:360; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-361">
+              <span role="cell" class="line-no">361</span>
+              <code role="cell">          },</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:361; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-362">
+              <span role="cell" class="line-no">362</span>
+              <code role="cell">          {</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:362; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-363">
+              <span role="cell" class="line-no">363</span>
+              <code role="cell">            &quot;key&quot;: &quot;Cache-Control&quot;,</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:363; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-364">
+              <span role="cell" class="line-no">364</span>
+              <code role="cell">            &quot;value&quot;: &quot;public, max-age=31536000&quot;</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:364; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-365">
+              <span role="cell" class="line-no">365</span>
+              <code role="cell">          }</code>
+              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-366">
+              <span role="cell" class="line-no">366</span>
+              <code role="cell">        ]</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:366; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-367">
+              <span role="cell" class="line-no">367</span>
+              <code role="cell">      }</code>
+              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-368">
+              <span role="cell" class="line-no">368</span>
+              <code role="cell">    ]</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:368; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-369">
+              <span role="cell" class="line-no">369</span>
+              <code role="cell">  },</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:369; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-370">
+              <span role="cell" class="line-no">370</span>
+              <code role="cell">  &quot;emulators&quot;: {</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:370; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-371">
+              <span role="cell" class="line-no">371</span>
+              <code role="cell">    &quot;auth&quot;: { &quot;port&quot;: 9099 },</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:371; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-372">
+              <span role="cell" class="line-no">372</span>
+              <code role="cell">    &quot;database&quot;: { &quot;port&quot;: 9000 },</code>
+              <span role="cell">Operasi asinkron/network. Data dikirim atau diambil dari Firebase, kamera, service lokal, atau endpoint aplikasi.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-373">
+              <span role="cell" class="line-no">373</span>
+              <code role="cell">    &quot;hosting&quot;: { &quot;port&quot;: 5000 },</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:373; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-374">
+              <span role="cell" class="line-no">374</span>
+              <code role="cell">    &quot;ui&quot;: { &quot;enabled&quot;: true, &quot;port&quot;: 4000 }</code>
+              <span role="cell">Instruksi implementasi pada web/firebase.json:374; bagian ini mendukung logika platform sesuai konteks fungsi di sekitarnya.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-375">
+              <span role="cell" class="line-no">375</span>
+              <code role="cell">  }</code>
+              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-376">
+              <span role="cell" class="line-no">376</span>
+              <code role="cell">}</code>
+              <span role="cell">Menutup blok atau ekspresi sebelumnya; menjaga scope kode tetap tepat.</span>
+            </div>
+
+            <div role="row" id="web-firebase-json-377">
+              <span role="cell" class="line-no">377</span>
               <code role="cell"> </code>
               <span role="cell">Baris kosong yang memisahkan blok agar struktur kode lebih mudah dibaca.</span>
             </div>

@@ -1,6 +1,10 @@
 
 window.addEventListener("DOMContentLoaded", () => {
   const query = new URLSearchParams(window.location.search);
+  if ("serviceWorker" in navigator && window.location.protocol !== "file:") {
+    navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+  }
+
   if (query.has("pdf")) {
     document.body.classList.add("pdf-source-mode");
     document.querySelectorAll(".source-file").forEach((details) => { details.open = true; });
@@ -195,6 +199,7 @@ window.addEventListener("DOMContentLoaded", () => {
   let totalPages = 1;
   let pageWidth = 794;
   let pageHeight = 1123;
+  let docHeight = 1123;
   let currentColumns = 1;
   let renderedPages = new Map();
   let pageNodes = [];
@@ -258,17 +263,18 @@ window.addEventListener("DOMContentLoaded", () => {
 
   const prepareInnerFrame = (iframe, pageIndex = 0) => {
     const scrollY = pageIndex * pageHeight;
+    const pageFrameHeight = () => Math.min(docHeight, scrollY + pageHeight);
+    iframe.style.height = pageFrameHeight() + "px";
+    iframe.style.transform = "translateY(-" + scrollY + "px)";
     const apply = () => {
       try {
         const doc = iframe.contentDocument;
-        const win = iframe.contentWindow;
         doc.body.style.width = pageWidth + "px";
-        win.scrollTo(0, scrollY);
-        doc.documentElement.scrollTop = scrollY;
-        doc.body.scrollTop = scrollY;
         doc.documentElement.style.overflow = "hidden";
         doc.body.style.overflow = "hidden";
-        requestAnimationFrame(() => win.scrollTo(0, scrollY));
+        const measuredHeight = Math.max(docHeight, doc.documentElement.scrollHeight || 0, doc.body.scrollHeight || 0);
+        iframe.style.height = Math.min(measuredHeight, scrollY + pageHeight) + "px";
+        iframe.style.transform = "translateY(-" + scrollY + "px)";
       } catch {}
     };
     iframe.addEventListener("load", apply, { once: true });
@@ -313,7 +319,7 @@ window.addEventListener("DOMContentLoaded", () => {
         if (entry.isIntersecting) attachPage(node);
         else if (renderedPages.size > Math.max(4, currentColumns * 3)) detachPage(node);
       });
-    }, { root: stage, rootMargin: "360px 120px" });
+    }, { root: stage, rootMargin: "80px 80px" });
     pageNodes.forEach((node) => pageObserver.observe(node));
   };
 
@@ -342,7 +348,7 @@ window.addEventListener("DOMContentLoaded", () => {
     rebuildObserver();
     updateColumns();
     requestAnimationFrame(() => {
-      pageNodes.slice(0, Math.max(2, currentColumns * 2)).forEach((node) => attachPage(node));
+      pageNodes.slice(0, Math.max(1, currentColumns)).forEach((node) => attachPage(node));
     });
     updateCurrentPage();
   };
@@ -406,12 +412,7 @@ window.addEventListener("DOMContentLoaded", () => {
   const renderCoverPage = () => {
     if (!coverPageEl || !activeDoc) return;
     coverPageEl.innerHTML = "";
-    const iframe = document.createElement("iframe");
-    iframe.title = "Cover " + activeDoc.label;
-    iframe.src = activeDoc.source;
-    iframe.setAttribute("scrolling", "no");
-    prepareInnerFrame(iframe, 0);
-    coverPageEl.appendChild(iframe);
+    if (coverEl) coverEl.src = "/pdf-preview/og/" + encodeURIComponent(activeDoc.id) + ".svg";
   };
 
   const updateFromFrame = () => {
@@ -434,8 +435,9 @@ window.addEventListener("DOMContentLoaded", () => {
       pageHeight = Math.max(900, Math.round(frame.clientHeight || 1123));
       pdfApp.style.setProperty("--pdf-page-w", pageWidth + "px");
       pdfApp.style.setProperty("--pdf-page-h", pageHeight + "px");
-      const height = Math.max(doc.documentElement.scrollHeight || 0, doc.body.scrollHeight || 0, pageHeight);
-      buildPages(Math.ceil(height / pageHeight));
+      docHeight = Math.max(doc.documentElement.scrollHeight || 0, doc.body.scrollHeight || 0, pageHeight);
+      pdfApp.style.setProperty("--pdf-doc-h", docHeight + "px");
+      buildPages(Math.ceil(docHeight / pageHeight));
     } catch {
       detected = {};
     }

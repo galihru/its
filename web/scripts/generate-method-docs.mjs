@@ -987,6 +987,9 @@ function pdfPreviewPage(initialId = "documentation") {
     <meta name="twitter:title" content="${esc(ogTitle)}" />
     <meta name="twitter:description" content="${esc(ogDescription)}" />
     <meta name="twitter:image" content="${esc(ogImage)}" />
+    <meta name="theme-color" content="#2a2a35" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
     <link rel="icon" type="image/png" href="/its.png" />
     <link rel="stylesheet" href="/method/method.css" />
     <script src="/method/method.js" defer></script>
@@ -1082,6 +1085,9 @@ function privacyPage() {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Privacy Policy - ITS Maps</title>
     <meta name="description" content="Privacy Policy for ITS Maps by Hanifa Teams, including web, Android APK, Microsoft Store Windows app, Windows widgets, maps, camera AI, Firebase, and Raspberry Pi telemetry." />
+    <meta name="theme-color" content="#ffffff" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
     <link rel="icon" type="image/png" href="/its.png" />
     <link rel="stylesheet" href="/method/method.css" />
   </head>
@@ -1189,6 +1195,9 @@ function pageShell({ title, bodyClass, navActive, main }) {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>${esc(title)}</title>
     <meta name="description" content="ITS Maps documentation with line-by-line source explanation, Mermaid diagrams, LaTeX formulas, screenshots, and app download links." />
+    <meta name="theme-color" content="#ffffff" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
     <link rel="icon" type="image/png" href="/its.png" />
     <link rel="stylesheet" href="/method/method.css" />
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js" defer></script>
@@ -1339,7 +1348,7 @@ output { display: block; margin-top: 12px; padding: 12px; border-radius: 12px; b
 .pdf-source-mode .code-table { font-size: 7.5pt; min-width: 0; }
 .pdf-source-mode .code-table > div { grid-template-columns: 12mm 78mm 74mm; }
 .pdf-preview-page { margin: 0; overflow: hidden; background: #292934; color: #f8fafc; font-family: Inter, "Segoe UI", Roboto, Arial, sans-serif; }
-.pdf-app { --pdf-zoom: 1; --pdf-columns: 1; --pdf-page-w: 794px; --pdf-page-h: 1123px; --pdf-gap: 28px; display: grid; grid-template-columns: 420px minmax(0, 1fr); grid-template-rows: 68px minmax(0, calc(100vh - 68px)); height: 100vh; background: #d9dbe5; }
+.pdf-app { --pdf-zoom: 1; --pdf-columns: 1; --pdf-page-w: 794px; --pdf-page-h: 1123px; --pdf-doc-h: 1123px; --pdf-gap: 28px; display: grid; grid-template-columns: 420px minmax(0, 1fr); grid-template-rows: 68px minmax(0, calc(100vh - 68px)); height: 100vh; background: #d9dbe5; }
 .pdf-toolbar { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; padding: 0 18px; background: #2a2a35; border-bottom: 1px solid rgba(255,255,255,.12); color: #cfd3df; overflow-x: auto; scrollbar-width: thin; }
 .pdf-toolbar a, .pdf-toolbar button, .pdf-toolbar select { border: 0; border-radius: 10px; min-height: 34px; background: transparent; color: #cfd3df; font-weight: 900; text-decoration: none; cursor: pointer; white-space: nowrap; }
 .pdf-toolbar button, .pdf-toolbar a { min-width: 34px; display: inline-grid; place-items: center; }
@@ -1358,8 +1367,8 @@ output { display: block; margin-top: 12px; padding: 12px; border-radius: 12px; b
 .pdf-panel { display: none; }
 .pdf-panel.is-active { display: grid; gap: 14px; }
 .pdf-cover-wrap { position: relative; width: 132px; aspect-ratio: 210 / 297; border-radius: 8px; overflow: hidden; background: #eef2f7; box-shadow: 0 14px 30px rgba(0,0,0,.22); }
-.pdf-cover-wrap img { display: none; }
-.pdf-cover-page { width: 100%; height: 100%; background: #fff; }
+.pdf-cover-wrap img { display: block; width: 100%; height: 100%; object-fit: cover; background: #fff; }
+.pdf-cover-page { display: none; width: 100%; height: 100%; background: #fff; }
 .pdf-cover-page iframe { width: 794px; height: 1123px; border: 0; transform: scale(.166); transform-origin: top left; pointer-events: none; }
 .pdf-kicker { color: #aeb4c3; margin: 16px 0 0; font-size: 12px; font-weight: 900; text-transform: uppercase; }
 .pdf-sidebar h1 { margin: 0; font-size: 20px; line-height: 1.35; }
@@ -1380,8 +1389,8 @@ output { display: block; margin-top: 12px; padding: 12px; border-radius: 12px; b
 .pdf-page { position: relative; width: calc(var(--pdf-page-w) * var(--pdf-zoom)); height: calc(var(--pdf-page-h) * var(--pdf-zoom)); overflow: hidden; background: #fff; box-shadow: 0 10px 30px rgba(15,23,42,.24); outline: 1px solid rgba(15,23,42,.12); }
 .pdf-page.is-loading::before { content: "Loading page"; position: absolute; inset: 0; display: grid; place-items: center; color: #64748b; font-weight: 800; background: linear-gradient(180deg,#fff,#f8fafc); }
 .pdf-page.is-print-queued::before { content: "Preparing page"; }
-.pdf-page-viewport { width: var(--pdf-page-w); height: var(--pdf-page-h); transform: scale(var(--pdf-zoom)); transform-origin: top left; }
-.pdf-page-viewport iframe { width: var(--pdf-page-w); height: var(--pdf-page-h); border: 0; background: #fff; pointer-events: none; }
+.pdf-page-viewport { position: relative; width: var(--pdf-page-w); height: var(--pdf-page-h); overflow: hidden; transform: scale(var(--pdf-zoom)); transform-origin: top left; }
+.pdf-page-viewport iframe { position: absolute; left: 0; top: 0; width: var(--pdf-page-w); height: var(--pdf-page-h); border: 0; background: #fff; pointer-events: none; transform-origin: top left; }
 .pdf-paper-shell.is-rotated .pdf-page { width: calc(var(--pdf-page-h) * var(--pdf-zoom)); height: calc(var(--pdf-page-w) * var(--pdf-zoom)); }
 .pdf-paper-shell.is-rotated .pdf-page-viewport { transform: scale(var(--pdf-zoom)) rotate(90deg) translateY(-100%); transform-origin: top left; }
 .pdf-page-label { position: absolute; right: 10px; bottom: 8px; z-index: 2; padding: 2px 7px; border-radius: 999px; background: rgba(15,23,42,.7); color: #fff; font-size: 11px; font-weight: 900; opacity: 0; transition: opacity .15s ease; }
@@ -1485,8 +1494,8 @@ output { display: block; margin-top: 12px; padding: 12px; border-radius: 12px; b
   .pdf-preview-page .pdf-page-grid { display: block; }
   .pdf-preview-page .pdf-page { width: 210mm !important; height: 297mm !important; margin: 0 !important; box-shadow: none; outline: 0; break-after: page; page-break-after: always; overflow: hidden; }
   .pdf-preview-page .pdf-page:last-child { break-after: auto; page-break-after: auto; }
-  .pdf-preview-page .pdf-page-viewport { width: 794px; height: 1123px; transform: scale(1) !important; transform-origin: top left; }
-  .pdf-preview-page .pdf-page-viewport iframe { width: 794px; height: 1123px; }
+  .pdf-preview-page .pdf-page-viewport { position: relative; width: 794px; height: 1123px; overflow: hidden; transform: scale(1) !important; transform-origin: top left; }
+  .pdf-preview-page .pdf-page-viewport iframe { width: 794px; }
   .pdf-preview-page .pdf-page-label { display: none; }
   .pdf-preview-page .pdf-page:not(.is-rendered)::before { content: none; }
 }
@@ -1497,6 +1506,10 @@ function methodJs() {
   return `
 window.addEventListener("DOMContentLoaded", () => {
   const query = new URLSearchParams(window.location.search);
+  if ("serviceWorker" in navigator && window.location.protocol !== "file:") {
+    navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+  }
+
   if (query.has("pdf")) {
     document.body.classList.add("pdf-source-mode");
     document.querySelectorAll(".source-file").forEach((details) => { details.open = true; });
@@ -1691,6 +1704,7 @@ window.addEventListener("DOMContentLoaded", () => {
   let totalPages = 1;
   let pageWidth = 794;
   let pageHeight = 1123;
+  let docHeight = 1123;
   let currentColumns = 1;
   let renderedPages = new Map();
   let pageNodes = [];
@@ -1754,17 +1768,18 @@ window.addEventListener("DOMContentLoaded", () => {
 
   const prepareInnerFrame = (iframe, pageIndex = 0) => {
     const scrollY = pageIndex * pageHeight;
+    const pageFrameHeight = () => Math.min(docHeight, scrollY + pageHeight);
+    iframe.style.height = pageFrameHeight() + "px";
+    iframe.style.transform = "translateY(-" + scrollY + "px)";
     const apply = () => {
       try {
         const doc = iframe.contentDocument;
-        const win = iframe.contentWindow;
         doc.body.style.width = pageWidth + "px";
-        win.scrollTo(0, scrollY);
-        doc.documentElement.scrollTop = scrollY;
-        doc.body.scrollTop = scrollY;
         doc.documentElement.style.overflow = "hidden";
         doc.body.style.overflow = "hidden";
-        requestAnimationFrame(() => win.scrollTo(0, scrollY));
+        const measuredHeight = Math.max(docHeight, doc.documentElement.scrollHeight || 0, doc.body.scrollHeight || 0);
+        iframe.style.height = Math.min(measuredHeight, scrollY + pageHeight) + "px";
+        iframe.style.transform = "translateY(-" + scrollY + "px)";
       } catch {}
     };
     iframe.addEventListener("load", apply, { once: true });
@@ -1809,7 +1824,7 @@ window.addEventListener("DOMContentLoaded", () => {
         if (entry.isIntersecting) attachPage(node);
         else if (renderedPages.size > Math.max(4, currentColumns * 3)) detachPage(node);
       });
-    }, { root: stage, rootMargin: "360px 120px" });
+    }, { root: stage, rootMargin: "80px 80px" });
     pageNodes.forEach((node) => pageObserver.observe(node));
   };
 
@@ -1838,7 +1853,7 @@ window.addEventListener("DOMContentLoaded", () => {
     rebuildObserver();
     updateColumns();
     requestAnimationFrame(() => {
-      pageNodes.slice(0, Math.max(2, currentColumns * 2)).forEach((node) => attachPage(node));
+      pageNodes.slice(0, Math.max(1, currentColumns)).forEach((node) => attachPage(node));
     });
     updateCurrentPage();
   };
@@ -1902,12 +1917,7 @@ window.addEventListener("DOMContentLoaded", () => {
   const renderCoverPage = () => {
     if (!coverPageEl || !activeDoc) return;
     coverPageEl.innerHTML = "";
-    const iframe = document.createElement("iframe");
-    iframe.title = "Cover " + activeDoc.label;
-    iframe.src = activeDoc.source;
-    iframe.setAttribute("scrolling", "no");
-    prepareInnerFrame(iframe, 0);
-    coverPageEl.appendChild(iframe);
+    if (coverEl) coverEl.src = "/pdf-preview/og/" + encodeURIComponent(activeDoc.id) + ".svg";
   };
 
   const updateFromFrame = () => {
@@ -1930,8 +1940,9 @@ window.addEventListener("DOMContentLoaded", () => {
       pageHeight = Math.max(900, Math.round(frame.clientHeight || 1123));
       pdfApp.style.setProperty("--pdf-page-w", pageWidth + "px");
       pdfApp.style.setProperty("--pdf-page-h", pageHeight + "px");
-      const height = Math.max(doc.documentElement.scrollHeight || 0, doc.body.scrollHeight || 0, pageHeight);
-      buildPages(Math.ceil(height / pageHeight));
+      docHeight = Math.max(doc.documentElement.scrollHeight || 0, doc.body.scrollHeight || 0, pageHeight);
+      pdfApp.style.setProperty("--pdf-doc-h", docHeight + "px");
+      buildPages(Math.ceil(docHeight / pageHeight));
     } catch {
       detected = {};
     }
