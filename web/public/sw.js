@@ -1,4 +1,4 @@
-const CACHE_NAME = 'its-maps-cache-v16';
+const CACHE_NAME = 'its-maps-cache-v18';
 const OFFLINE_URLS = [
   '/',
   '/index.html',
@@ -146,8 +146,11 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
   const cacheable = url.protocol === 'http:' || url.protocol === 'https:';
+  const sameOrigin = url.origin === self.location.origin;
 
-  if (url.pathname === '/presentation-manifest.webmanifest') {
+  if (!cacheable) return;
+
+  if (sameOrigin && url.pathname === '/presentation-manifest.webmanifest') {
     event.respondWith(presentationManifestResponse());
     return;
   }
@@ -157,7 +160,7 @@ self.addEventListener('fetch', (event) => {
       fetch(event.request)
         .then((response) => {
           const copy = response.clone();
-          if (cacheable && url.origin === self.location.origin) {
+          if (sameOrigin) {
             caches.open(CACHE_NAME).then((cache) => cache.put('/index.html', copy)).catch(() => {});
           }
           return response;
@@ -167,20 +170,22 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  if (!cacheable) return;
+  if (!sameOrigin) return;
 
   event.respondWith(
     fetch(event.request).then((response) => {
       try {
         const copy = response.clone();
-        if (url.origin === self.location.origin) {
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy)).catch(() => {});
-        }
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy)).catch(() => {});
       } catch (e) {
         // ignore opaque responses and other failures
       }
       return response;
-    }).catch(() => caches.match(event.request).then((cached) => cached || caches.match('/index.html')))
+    }).catch(() => caches.match(event.request).then((cached) => {
+      if (cached) return cached;
+      if (event.request.destination === 'document') return caches.match('/index.html');
+      return Response.error();
+    }))
   );
 });
 

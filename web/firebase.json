@@ -5,13 +5,13 @@
   "hosting": {
     "site": "itstelkom",
     "public": "dist",
-      "ignore": [
-        "firebase.json",
-        "**/.*",
-        "**/node_modules/**",
-        "**/*.apk",
-        "**/*.idsig"
-      ],
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**",
+      "**/*.apk",
+      "**/*.idsig"
+    ],
     "rewrites": [
       {
         "source": "/documentation",
@@ -235,7 +235,7 @@
         ]
       },
       {
-        "source": "/roadmap**",
+        "source": "/roadmap/**",
         "headers": [
           {
             "key": "Cache-Control",
@@ -394,9 +394,18 @@
     ]
   },
   "emulators": {
-    "auth": { "port": 9099 },
-    "database": { "port": 9000 },
-    "hosting": { "port": 5000 },
-    "ui": { "enabled": true, "port": 4000 }
+    "auth": {
+      "port": 9099
+    },
+    "database": {
+      "port": 9000
+    },
+    "hosting": {
+      "port": 5000
+    },
+    "ui": {
+      "enabled": true,
+      "port": 4000
+    }
   }
 }
