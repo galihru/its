@@ -1149,6 +1149,7 @@ if (staticRoute) {
     tabletSearchQuery: "",
     routeLayer: null as L.LayerGroup | null,
     destinationMarker: null as L.Marker | null,
+    lastUserLocation: null as { lat: number; lng: number; accuracy?: number; source: string; updatedAt: number } | null,
     userLocationWatchId: null as number | null,
     nativeLocationPollTimer: 0,
     activeModalDeviceId: null as string | null,
@@ -6351,6 +6352,7 @@ if (staticRoute) {
 
   function applyLocatedUser(lat: number, lng: number, accuracy?: number, center = true, source = "gps"): void {
     const latlng: [number, number] = [lat, lng];
+    state.lastUserLocation = { lat, lng, accuracy, source, updatedAt: Date.now() };
     if (center) map.setView(latlng, Math.max(map.getZoom(), 16), { animate: true });
     showVehicleMarker(latlng);
     state.vehicleMarker?.bindPopup(`Lokasi Anda${accuracy ? ` ±${Math.round(accuracy)}m` : ""}`);
@@ -8014,6 +8016,37 @@ if (staticRoute) {
   }
 
   // ─── Toolbar Control ─────────────────────────────────────────────
+
+  Object.assign(itsRuntimeBridge(), {
+    getPoiSnapshot: () => Array.from(state.poiData.values()).map((poi) => ({
+      id: poi.id,
+      title: poi.title,
+      kind: poi.kind,
+      icon: poi.icon,
+      lat: poi.lat,
+      lng: poi.lng,
+      address: poi.address,
+    })),
+    getUserLocation: () => state.lastUserLocation,
+    applyUserLocation: (lat: number, lng: number, accuracy?: number, center = true, source = "ai-chat-gps") => {
+      applyLocatedUser(lat, lng, accuracy, center, source);
+    },
+    focusPoi: (poiId: string, lat: number, lng: number) => {
+      const poi = state.poiData.get(poiId);
+      map.setView([lat, lng], Math.max(17, map.getZoom()), { animate: true });
+      if (poi) {
+        openPoiModal(poi);
+        void setDestinationToPoi(poi);
+      }
+    },
+    focusLatLng: (lat: number, lng: number, label = "Lokasi") => {
+      map.setView([lat, lng], Math.max(17, map.getZoom()), { animate: true });
+      L.popup({ closeButton: true, autoClose: true })
+        .setLatLng([lat, lng])
+        .setContent(escapeHtml(label))
+        .openOn(map);
+    },
+  } satisfies ItsMapsRuntimeBridge);
 
   function makeCompassSvg(): string {
     return `<svg class="compass-svg" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -11744,7 +11777,31 @@ type ItsAssistantDetectionDetail = {
   vehicleBreakdown: VehicleBreakdown;
 };
 
+type ItsRuntimePoiSnapshot = {
+  id: string;
+  title: string;
+  kind: string;
+  icon: string;
+  lat: number;
+  lng: number;
+  address?: string;
+};
+
+type ItsMapsRuntimeBridge = {
+  getPoiSnapshot?: () => ItsRuntimePoiSnapshot[];
+  getUserLocation?: () => { lat: number; lng: number; accuracy?: number; source?: string; updatedAt?: number } | null;
+  applyUserLocation?: (lat: number, lng: number, accuracy?: number, center?: boolean, source?: string) => void;
+  focusPoi?: (poiId: string, lat: number, lng: number) => void;
+  focusLatLng?: (lat: number, lng: number, label?: string) => void;
+};
+
 const itsChatDetectionDetails = new Map<string, ItsAssistantDetectionDetail>();
+
+function itsRuntimeBridge(): ItsMapsRuntimeBridge {
+  const host = window as typeof window & { __itsMapsRuntimeBridge?: ItsMapsRuntimeBridge };
+  if (!host.__itsMapsRuntimeBridge) host.__itsMapsRuntimeBridge = {};
+  return host.__itsMapsRuntimeBridge;
+}
 
 const ITS_WEBMCP_RESOURCE_URLS: Record<ItsWebMcpResource, string> = {
   home: "/",
@@ -12078,9 +12135,28 @@ async function itsGetLatestSnapshotImage(): Promise<Record<string, unknown>> {
   const dataUrl = candidates.map(itsDataUrlParts).find(Boolean);
   const summary = itsSummarizeDevice(device.id || "raspberry-its", device);
   if (!dataUrl) {
+    const history = await itsFetchRtdbJson<Record<string, any>>("snapshotHistory").catch(() => null);
+    const historyCandidates = [
+      history?.image1,
+      history?.image2,
+      history?.snapshot1Url,
+      history?.snapshot2Url,
+      history?.nama1,
+      history?.nama2,
+      objectRecord(history?.cameraDataset).snapshot1Url,
+      objectRecord(history?.cameraDataset).snapshot2Url,
+    ].map((item) => typeof item === "string" ? item.trim() : "").filter(Boolean);
+    const historyImage = historyCandidates.find((item) => item.startsWith("data:image/") || /^https?:\/\//i.test(item) || item.startsWith("/"));
+    const capturedAt = normalizeEpoch(
+      itsNumberField(history?.image1UpdatedAt)
+      ?? itsNumberField(history?.image2UpdatedAt)
+      ?? itsNumberField(history?.updatedAt)
+      ?? 0,
+    );
     return {
-      error: "Snapshot base64 belum tersedia dari Raspberry.",
-      imageUrl: candidates.find((item) => typeof item === "string" && item.trim()) || null,
+      error: historyImage ? "" : "Snapshot base64 belum tersedia dari Raspberry.",
+      imageUrl: candidates.find((item) => typeof item === "string" && item.trim()) || historyImage || null,
+      capturedAt: capturedAt || null,
       objectCount: (summary.objectDetection as Record<string, unknown>)?.total ?? 0,
       device: summary,
     };
@@ -12212,32 +12288,26 @@ function itsIncludesAny(q: string, words: string[]): boolean {
 function itsIntentFlags(question: string): Record<string, boolean> {
   const q = itsNormalizeQuestion(question);
   const plainGreeting = itsIsPlainGreeting(question);
+  const history = !plainGreeting && itsIncludesAny(q, ["riwayat ai", "riwayat", "history", "snapshot history"]);
+  const userLocation = !plainGreeting && /(lokasi saya|posisi saya|lokasi terkini|di sekitar saya|dekat saya|macet di sini|macet disini|tempat saya sekarang)/.test(q);
   return {
     greeting: /(^|\s)(halo|hallo|hai|hi|hello|selamat|assalam|pagi|siang|sore|malam)(\s|$)/.test(q),
     plainGreeting,
-    image: !plainGreeting && itsIncludesAny(q, ["gambar", "snapshot", "foto", "deteksi", "object", "objek", "kamera", "scan", "bbox", "akurasi"]),
+    history,
+    image: !plainGreeting && !history && itsIncludesAny(q, ["gambar", "snapshot", "foto", "deteksi", "object", "objek", "kamera", "scan", "bbox", "akurasi"]),
     video: !plainGreeting && itsIncludesAny(q, ["video", "live", "stream", "kamera live", "cctv", "rekaman"]),
-    chart: !plainGreeting && itsIncludesAny(q, ["grafik", "chart", "tren", "trend", "statistik", "histori", "history", "plot", "visualisasi"]),
+    chart: !plainGreeting && !history && itsIncludesAny(q, ["grafik", "chart", "tren", "trend", "statistik", "histori", "history", "plot", "visualisasi"]),
     map: !plainGreeting && itsIncludesAny(q, ["peta", "map", "lokasi", "koordinat", "jalan", "gang", "google maps", "bing maps"]),
+    poi: !plainGreeting && itsIncludesAny(q, ["poi", "tempat", "gedung", "kampus", "fakultas", "masjid", "mall", "terminal", "stasiun", "sekitar", "terdekat"]),
     formula: !plainGreeting && itsIncludesAny(q, ["rumus", "formula", "latex", "matematika", "rf-detr", "rf detr", "detr", "iou", "confidence", "loss", "nms"]),
     status: !plainGreeting && itsIncludesAny(q, ["status", "raspberry", "online", "offline", "lampu", "traffic", "lalu lintas", "kendaraan", "mobil", "motor", "bus", "truk", "sepeda", "sistem"]),
-    identity: !plainGreeting && itsIncludesAny(q, ["siapa", "pencipta", "developer", "hanifa", "hanifa septhi", "pembuat", "author", "dibuat oleh"]),
+    identity: !plainGreeting && itsIncludesAny(q, ["siapa", "pencipta", "developer", "hanifa", "hanifa septhi", "pembuat", "author", "dibuat oleh", "profil", "instagram", "linkedin", "github"]),
     about: !plainGreeting && itsIncludesAny(q, ["apa itu", "tentang its maps", "fitur", "aplikasi ini", "its maps itu"]),
     license: !plainGreeting && itsIncludesAny(q, ["lisensi", "licence", "license", "privasi", "privacy", "data pribadi"]),
     roadmap: !plainGreeting && itsIncludesAny(q, ["roadmap", "story", "rencana", "pengembangan"]),
     agent: !plainGreeting && itsIncludesAny(q, ["agent", "agen", "lihat layar", "screen", "klik", "buka", "scroll", "navigasi", "kontrol", "periksa halaman", "cek tampilan"]),
-    userLocation: !plainGreeting && /(lokasi saya|posisi saya|lokasi terkini|di sekitar saya|dekat saya|macet di sini|macet disini)/.test(q),
+    userLocation,
   };
-}
-
-function itsBestDetection(device: Record<string, unknown>): Record<string, unknown> | null {
-  const objectDetection = objectRecord(device.objectDetection);
-  const detections = Array.isArray(objectDetection.detections)
-    ? objectDetection.detections as Record<string, unknown>[]
-    : [];
-  return detections
-    .slice()
-    .sort((a, b) => Number(b.confidencePercent || 0) - Number(a.confidencePercent || 0))[0] || null;
 }
 
 function itsVehicleMetricItems(vehicles: Record<string, unknown>): Array<{ key: string; label: string; value: unknown; color: string; icon: string }> {
@@ -12314,6 +12384,12 @@ function itsAssistantText(question: string, status: Record<string, unknown>, ext
   if (flags.greeting) {
     return `Halo. Saya bisa bantu membaca data ITS Maps. Ringkasnya: ${statusLine} ${trafficLine}`;
   }
+  if (flags.userLocation) {
+    return "Saya perlu izin lokasi dari browser dulu. Setelah diizinkan, saya tampilkan dua peta: posisi Anda dan Raspberry terdekat, lalu saya hitung jaraknya untuk melihat apakah titik ITS Maps cukup dekat dengan lokasi Anda.";
+  }
+  if (flags.poi) {
+    return "Saya baca POI yang sedang termuat di peta ITS Maps, urutkan dari yang terdekat, lalu setiap item bisa diklik untuk membuka detail dan arah rute di peta.";
+  }
   if (q.includes("kamera") || q.includes("snapshot") || q.includes("gambar")) {
     return `Saya ambil snapshot terbaru dari RTDB, lalu jalankan RF-DETR di browser untuk memeriksa objeknya. Data awal: ${cameraLine} ${aiLine} ${vehicleLine} ${extra}`.trim();
   }
@@ -12350,33 +12426,40 @@ function itsChartCardHtml(device: Record<string, unknown>): string {
     { key: "green", label: "Hijau", color: "#22c55e", value: currentColor === "green" || currentColor === "hijau" ? currentDuration : 0 },
   ];
   const maxY = Math.max(10, currentDuration, total);
-  const pointY = (value: number) => 96 - Math.min(72, (value / maxY) * 72);
-  const realtimeX = 126;
+  const plot = { left: 44, top: 24, right: 226, bottom: 110 };
+  const pointY = (value: number) => plot.bottom - Math.min(plot.bottom - plot.top, (value / maxY) * (plot.bottom - plot.top));
+  const pointX = (index: number) => 84 + index * 42;
   const totalY = pointY(total);
+  const ticks = [maxY, Math.round(maxY / 2), 0];
   return `<section class="its-ai-card its-ai-chart-card">
     <div class="its-ai-card-head">
       <span>${itsMiniIcon("M4 19V7m6 12V5m6 14v-9m4 9H4", "#2563eb")} Grafik realtime</span>
       <strong>${escapeHtml(String(total))} kendaraan</strong>
     </div>
-    <svg class="its-ai-chart" viewBox="0 0 240 132" role="img" aria-label="Grafik realtime RTDB: sumbu X adalah waktu update terakhir, sumbu Y adalah durasi lampu dan jumlah kendaraan">
-      <path d="M26 15v88h202" stroke="#cbd5e1" stroke-width="1.5"/>
-      <path d="M26 80h202M26 54h202M26 28h202" stroke="#e2e8f0" stroke-width="1"/>
-      ${series.map((item, index) => {
-    const x = realtimeX + (index - 1) * 24;
-    const y = pointY(item.value);
-    return `<circle cx="${x}" cy="${y}" r="${item.value ? 6 : 4}" fill="${item.color}" stroke="#fff" stroke-width="2"><title>${item.label} ${item.value}s</title></circle>`;
+    <svg class="its-ai-chart" viewBox="0 0 260 154" role="img" aria-label="Grafik realtime RTDB: sumbu X adalah jenis data saat update terakhir, sumbu Y adalah durasi lampu dan jumlah kendaraan">
+      <path d="M${plot.left} ${plot.top}v${plot.bottom - plot.top}h${plot.right - plot.left}" stroke="#cbd5e1" stroke-width="1.5"/>
+      ${ticks.map((tick) => {
+    const y = pointY(tick);
+    return `<path d="M${plot.left} ${y}H${plot.right}" stroke="#1e293b" stroke-width="0.8" opacity="0.5"/><text x="${plot.left - 6}" y="${y + 3}" text-anchor="end">${tick}</text>`;
   }).join("")}
-      <rect x="178" y="${Math.max(24, totalY - 10)}" width="16" height="${Math.max(4, 102 - Math.max(24, totalY - 10))}" rx="4" fill="#94a3b8" opacity="0.8"><title>Jumlah kendaraan ${total}</title></rect>
-      <text x="28" y="119">X: update RTDB</text>
-      <text x="30" y="12">Y: detik / kendaraan</text>
-      <text x="108" y="119">sekarang</text>
-      <text x="166" y="119">kendaraan</text>
+      ${series.map((item, index) => {
+    const x = pointX(index);
+    const y = pointY(item.value);
+    return `<path d="M${x} ${plot.bottom}V${y}" stroke="${item.color}" stroke-width="2.2" stroke-linecap="round" opacity="0.86"/>
+      <circle cx="${x}" cy="${y}" r="${item.value ? 6 : 4}" fill="${item.color}" stroke="#fff" stroke-width="2"><title>${item.label} ${item.value}s</title></circle>
+      <text x="${x}" y="124" text-anchor="middle">${item.label}</text>`;
+  }).join("")}
+      <rect x="204" y="${Math.max(plot.top, totalY)}" width="18" height="${Math.max(4, plot.bottom - Math.max(plot.top, totalY))}" rx="4" fill="#94a3b8" opacity="0.9"><title>Jumlah kendaraan ${total}</title></rect>
+      <circle cx="213" cy="${totalY}" r="4.5" fill="#94a3b8" stroke="#fff" stroke-width="2"/>
+      <text x="213" y="124" text-anchor="middle">Kend.</text>
+      <text x="${plot.left}" y="146">X: status lampu + kendaraan</text>
+      <text x="${plot.left}" y="13">Y: detik / jumlah</text>
     </svg>
     <div class="its-ai-chart-legend">
       ${series.map((item) => `<span><i style="background:${item.color}"></i>${item.label} ${item.value}s</span>`).join("")}
       <span><i style="background:#94a3b8"></i>Kendaraan ${escapeHtml(String(total))}</span>
     </div>
-    <p class="its-ai-card-note">Tidak ada histori seri di RTDB saat ini; grafik menampilkan titik realtime terakhir.</p>
+    <p class="its-ai-card-note">Grafik mengikuti nilai realtime terakhir yang tersedia di RTDB.</p>
   </section>`;
 }
 
@@ -12450,35 +12533,119 @@ function itsLoadImageForAi(src: string): Promise<HTMLImageElement> {
   });
 }
 
-function itsFormatDetectionConclusion(result: BrowserRfDetrResult): string {
+function itsTrafficLightSignalDetection(image: HTMLImageElement, colorValue: unknown): BrowserRfDetrDetection[] {
+  const color = String(colorValue || "").toLowerCase();
+  const expected = color.includes("merah") || color.includes("red")
+    ? "red"
+    : color.includes("kuning") || color.includes("yellow")
+      ? "yellow"
+      : color.includes("hijau") || color.includes("green")
+        ? "green"
+        : "";
+  if (!image.naturalWidth || !image.naturalHeight) return [];
+  const maxEdge = 360;
+  const scale = Math.min(1, maxEdge / Math.max(image.naturalWidth, image.naturalHeight));
+  const width = Math.max(1, Math.round(image.naturalWidth * scale));
+  const height = Math.max(1, Math.round(image.naturalHeight * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) return [];
+  ctx.drawImage(image, 0, 0, width, height);
+  const pixels = ctx.getImageData(0, 0, width, height).data;
+  const buckets: Record<string, { minX: number; minY: number; maxX: number; maxY: number; score: number; area: number; sx: number; sy: number }> = {
+    red: { minX: width, minY: height, maxX: 0, maxY: 0, score: 0, area: 0, sx: 0, sy: 0 },
+    yellow: { minX: width, minY: height, maxX: 0, maxY: 0, score: 0, area: 0, sx: 0, sy: 0 },
+    green: { minX: width, minY: height, maxX: 0, maxY: 0, score: 0, area: 0, sx: 0, sy: 0 },
+  };
+  const addHit = (key: "red" | "yellow" | "green", x: number, y: number, bright: number) => {
+    const bucket = buckets[key];
+    bucket.minX = Math.min(bucket.minX, x);
+    bucket.minY = Math.min(bucket.minY, y);
+    bucket.maxX = Math.max(bucket.maxX, x);
+    bucket.maxY = Math.max(bucket.maxY, y);
+    const weight = bright / 255;
+    bucket.score += weight;
+    bucket.area += 1;
+    bucket.sx += x * weight;
+    bucket.sy += y * weight;
+  };
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const idx = (y * width + x) * 4;
+      const r = pixels[idx];
+      const g = pixels[idx + 1];
+      const b = pixels[idx + 2];
+      const bright = Math.max(r, g, b);
+      if (bright < 90) continue;
+      if (r > 130 && r > g * 1.22 && r > b * 1.18) addHit("red", x, y, bright);
+      if (r > 120 && g > 92 && r > b * 1.25 && g > b * 1.2) addHit("yellow", x, y, bright);
+      if (g > 120 && g > r * 1.14 && g > b * 1.12) addHit("green", x, y, bright);
+    }
+  }
+  const selectedKey = expected && buckets[expected]?.score >= 5
+    ? expected
+    : Object.entries(buckets).sort((a, b) => b[1].score - a[1].score)[0]?.[0] || "";
+  const selected = selectedKey ? buckets[selectedKey] : null;
+  if (!selected || selected.score < 7 || selected.area < 12) return [];
+  const rawArea = Math.max(0, (selected.maxX - selected.minX + 1) * (selected.maxY - selected.minY + 1));
+  let sx = selected.minX;
+  let sy = selected.minY;
+  let sw = selected.maxX - selected.minX + 1;
+  let sh = selected.maxY - selected.minY + 1;
+  if (rawArea > width * height * 0.18) {
+    const cx = selected.sx / Math.max(1, selected.score);
+    const cy = selected.sy / Math.max(1, selected.score);
+    const size = Math.max(34, Math.min(width, height) * 0.22);
+    sx = Math.max(0, Math.round(cx - size / 2));
+    sy = Math.max(0, Math.round(cy - size / 2));
+    sw = Math.min(width - sx, Math.round(size));
+    sh = Math.min(height - sy, Math.round(size));
+  } else {
+    const pad = Math.max(8, Math.round(Math.sqrt(rawArea) * 1.2));
+    sx = Math.max(0, selected.minX - pad);
+    sy = Math.max(0, selected.minY - pad);
+    sw = Math.min(width - sx, selected.maxX - selected.minX + 1 + pad * 2);
+    sh = Math.min(height - sy, selected.maxY - selected.minY + 1 + pad * 2);
+  }
+  const confidence = Math.min(0.95, 0.74 + Math.min(0.2, selected.score / Math.max(120, width * height * 0.01)));
+  return [{
+    label: "traffic light",
+    confidence,
+    vehicle: false,
+    x: sx / scale,
+    y: sy / scale,
+    width: sw / scale,
+    height: sh / scale,
+  }];
+}
+
+function itsFormatDetectionConclusion(result: BrowserRfDetrResult, visualSource = "rfdetr", trafficColor?: unknown): string {
   if (!result.detections.length) {
-    return `RF-DETR selesai (${result.fps.toFixed(1)} FPS), tetapi model belum mengonfirmasi objek pada snapshot ini. Saya tidak menambahkan bbox palsu.`;
+    return `RF-DETR selesai (${result.fps.toFixed(1)} FPS), tetapi belum ada objek visual yang cukup yakin pada snapshot ini.`;
   }
   const top = result.detections.slice().sort((a, b) => b.confidence - a.confidence)[0];
+  if (visualSource === "traffic-signal") {
+    return `RF-DETR selesai (${result.fps.toFixed(1)} FPS). Validasi visual + RTDB mengonfirmasi ${itsDetectionLabelText(top.label)} ${itsTrafficColorText(trafficColor)} dengan akurasi ${Math.round(top.confidence * 100)}%.`;
+  }
   return `RF-DETR mendeteksi ${result.detections.length} objek. Tertinggi: ${itsDetectionLabelText(top.label)} dengan akurasi ${Math.round(top.confidence * 100)}%.`;
 }
 
 function itsSnapshotCardHtml(device: Record<string, unknown>, snapshot: Record<string, unknown>): string {
   const objectDetection = objectRecord(device.objectDetection);
   const vehicles = objectRecord(device.vehicleBreakdown);
-  const detection = itsBestDetection(device);
-  const frameWidth = itsNumberField(objectDetection.frameWidth) ?? itsNumberField(device.detectorFrameWidth) ?? 0;
-  const frameHeight = itsNumberField(objectDetection.frameHeight) ?? itsNumberField(device.detectorFrameHeight) ?? 0;
-  const label = detection ? itsDetectionLabelText(detection.label) : "Menunggu RF-DETR";
-  const confidence = detection ? `${detection.confidencePercent ?? 0}%` : objectDetection.fps ? `${objectDetection.fps} FPS terakhir dari RTDB` : "RF-DETR browser akan memindai snapshot";
-  const bbox = detection ? itsDetectionBboxHtml([detection], frameWidth, frameHeight) : "";
   const detailId = `chat-detection-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   return `<section class="its-ai-card">
     <div class="its-ai-card-head">
       <span>${itsMiniIcon("M4 7h3l2-2h6l2 2h3v12H4V7Zm8 9a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z", "#0d9488")} Snapshot AI</span>
       <strong data-ai-rfdetr-count>${escapeHtml(String(objectDetection.total ?? snapshot.objectCount ?? 0))} OBJ</strong>
     </div>
-    <div class="its-ai-snapshot" data-ai-rfdetr-card data-ai-detail-id="${escapeHtml(detailId)}" data-device-id="${escapeHtml(String(device.id || "raspberry-its"))}">
-      <img src="${escapeHtml(itsSnapshotImageUrl(snapshot))}" alt="Snapshot kamera Raspberry Pi ITS Maps">
-      <span class="its-ai-scan-frame" aria-hidden="true"></span>
-      <span data-ai-rfdetr-bboxes>${bbox}</span>
+    <div class="its-ai-snapshot" data-ai-rfdetr-card data-ai-detail-id="${escapeHtml(detailId)}" data-device-id="${escapeHtml(String(device.id || "raspberry-its"))}" data-system-color="${escapeHtml(String(device.trafficColor || ""))}" data-system-duration="${escapeHtml(String(device.trafficDurationSec || ""))}">
+      <img src="${escapeHtml(itsSnapshotImageUrl(snapshot))}" alt="Snapshot kamera Raspberry Pi ITS Maps" crossorigin="anonymous">
+      <canvas data-ai-chat-rfdetr-canvas data-detector-fit="contain" aria-hidden="true"></canvas>
     </div>
-    <p class="its-ai-card-note" data-ai-rfdetr-status><strong>${escapeHtml(label)}</strong> ${escapeHtml(String(confidence))}. Memanggil RF-DETR untuk memeriksa snapshot terbaru.</p>
+    <p class="its-ai-card-note" data-ai-rfdetr-status><strong>Menunggu RF-DETR</strong> Snapshot masuk. AI akan memindai frame, menjalankan object detection, lalu menampilkan hasil akhir.</p>
     ${itsVehicleMetricGridHtml(vehicles)}
     <button type="button" class="its-ai-detail-btn" data-ai-detection-detail="${escapeHtml(detailId)}" disabled>Lihat hasil deteksi lengkap</button>
   </section>`;
@@ -12490,51 +12657,100 @@ async function itsHydrateSnapshotDetectionCards(root: ParentNode): Promise<void>
     if (card.dataset.aiRfDetrHydrated === "true") continue;
     card.dataset.aiRfDetrHydrated = "true";
     const img = card.querySelector<HTMLImageElement>("img");
+    const canvas = card.querySelector<HTMLCanvasElement>("[data-ai-chat-rfdetr-canvas]");
     const wrapper = card.closest<HTMLElement>(".its-ai-card");
     const status = wrapper?.querySelector<HTMLElement>("[data-ai-rfdetr-status]");
     const count = wrapper?.querySelector<HTMLElement>("[data-ai-rfdetr-count]");
-    const bboxHost = wrapper?.querySelector<HTMLElement>("[data-ai-rfdetr-bboxes]");
     const detailButton = wrapper?.querySelector<HTMLButtonElement>("[data-ai-detection-detail]");
-    if (!img || !wrapper || !status || !count || !bboxHost || !detailButton) continue;
-    status.innerHTML = "<strong>Memanggil RF-DETR</strong> Model browser sedang dimuat. FPS dan jumlah objek akan berubah setelah inference selesai.";
+    if (!img || !canvas || !wrapper || !status || !count || !detailButton) continue;
+    let animationFrame = 0;
+    let running = true;
+    let frameWidth = 0;
+    let frameHeight = 0;
+    let visibleDetections: BrowserRfDetrDetection[] = [];
+    const draw = () => {
+      const width = frameWidth || img.naturalWidth;
+      const height = frameHeight || img.naturalHeight;
+      if (width && height) {
+        drawRfDetrDetections(canvas, visibleDetections, width, height, {
+          hud: false,
+          scanActive: running,
+          scannerFocus: visibleDetections[0] || null,
+        });
+      }
+      if (running) animationFrame = requestAnimationFrame(draw);
+    };
+    status.innerHTML = "<strong>Memanggil RF-DETR</strong> Model browser sedang dimuat. FPS dan jumlah objek akan berubah saat inference selesai.";
     wrapper.classList.remove("rfdetr-complete");
     wrapper.classList.add("rfdetr-running");
     try {
       const source = await itsLoadImageForAi(img.currentSrc || img.src);
+      frameWidth = source.naturalWidth;
+      frameHeight = source.naturalHeight;
+      animationFrame = requestAnimationFrame(draw);
       status.innerHTML = "<strong>RF-DETR aktif</strong> Mohon tunggu, AI sedang memindai snapshot dan mencari bbox objek.";
       const result = await runBrowserRfDetr(source, {
         captureMaxEdge: 720,
         confidenceThreshold: 0.05,
+        minLabelConfidenceScale: 0.42,
         includeThumbnails: false,
         worker: true,
         workerFallbackToMainThread: true,
       });
-      const detections = result.detections.map((detection) => itsBrowserDetectionToRecord(detection));
-      bboxHost.innerHTML = itsDetectionBboxHtml(detections, result.frameWidth, result.frameHeight);
-      count.textContent = `${result.objectCount} OBJ`;
-      status.innerHTML = `<strong>RF-DETR selesai</strong> ${escapeHtml(itsFormatDetectionConclusion(result))}`;
-      wrapper.classList.add("rfdetr-complete");
+      const confidentDetections = result.detections.filter((detection) => detection.confidence >= 0.35);
+      const signalDetections = confidentDetections.length
+        ? []
+        : itsTrafficLightSignalDetection(source, card.dataset.systemColor);
+      const finalDetections = confidentDetections.length ? confidentDetections : signalDetections;
+      const visualSource = confidentDetections.length ? "rfdetr" : signalDetections.length ? "traffic-signal" : "none";
+      const finalResult: BrowserRfDetrResult = {
+        ...result,
+        note: visualSource === "traffic-signal"
+          ? "RF-DETR selesai; deteksi confidence rendah diabaikan, lalu lampu lalu lintas divalidasi oleh analisis warna snapshot dan status RTDB."
+          : result.note,
+        objectCount: finalDetections.length,
+        detections: finalDetections,
+      };
+      frameWidth = result.frameWidth || source.naturalWidth;
+      frameHeight = result.frameHeight || source.naturalHeight;
+      visibleDetections = finalDetections;
+      count.textContent = `${finalDetections.length} OBJ`;
+      status.innerHTML = `<strong>Hasil akhir</strong> ${escapeHtml(itsFormatDetectionConclusion(finalResult, visualSource, card.dataset.systemColor))}`;
       const detailId = detailButton.dataset.aiDetectionDetail || card.dataset.aiDetailId || `chat-detection-${Date.now()}`;
       itsChatDetectionDetails.set(detailId, {
         imageUrl: img.currentSrc || img.src,
         capturedAt: Date.now(),
-        modelUrl: result.modelUrl,
-        note: result.note,
+        modelUrl: finalResult.modelUrl,
+        note: finalResult.note,
         fps: result.fps,
-        frameWidth: result.frameWidth,
-        frameHeight: result.frameHeight,
-        detections: result.detections,
-        vehicleBreakdown: result.vehicleBreakdown,
+        frameWidth,
+        frameHeight,
+        detections: finalDetections,
+        vehicleBreakdown: finalResult.vehicleBreakdown,
       });
       detailButton.disabled = false;
-      detailButton.textContent = result.detections.length ? "Lihat hasil deteksi lengkap" : "Lihat rincian RF-DETR";
-      const nextMetricGrid = document.createRange().createContextualFragment(itsVehicleMetricGridHtml(result.vehicleBreakdown)).firstElementChild;
+      detailButton.textContent = finalDetections.length ? "Lihat hasil deteksi lengkap" : "Lihat rincian RF-DETR";
+      const nextMetricGrid = document.createRange().createContextualFragment(itsVehicleMetricGridHtml(finalResult.vehicleBreakdown)).firstElementChild;
       if (nextMetricGrid) wrapper.querySelector<HTMLElement>(".its-ai-metric-grid")?.replaceWith(nextMetricGrid);
+      window.setTimeout(() => {
+        running = false;
+        if (animationFrame) cancelAnimationFrame(animationFrame);
+        drawRfDetrDetections(canvas, finalDetections, frameWidth, frameHeight, {
+          hud: false,
+          scanActive: false,
+          scannerFocus: finalDetections[0] || null,
+        });
+        wrapper.classList.add("rfdetr-complete");
+      }, finalDetections.length ? 1800 : 900);
     } catch (error) {
       status.innerHTML = `<strong>RF-DETR belum selesai</strong> ${escapeHtml(error instanceof Error ? error.message : String(error))}`;
       wrapper.classList.add("rfdetr-complete");
     } finally {
-      wrapper.classList.remove("rfdetr-running");
+      window.setTimeout(() => {
+        running = false;
+        if (animationFrame) cancelAnimationFrame(animationFrame);
+        wrapper.classList.remove("rfdetr-running");
+      }, 1900);
     }
   }
 }
@@ -12582,17 +12798,30 @@ function itsTrafficLightMarkerHtml(colorValue: unknown): string {
   </span>`;
 }
 
-function itsMapCardHtml(device: Record<string, unknown>): string {
-  const point = itsLatLng(device) || { lat: -6.977254, lng: 107.631817 };
-  const z = 17;
+function itsMapTiles(point: { lat: number; lng: number }, z = 17): string[] {
   const x = itsLonToTile(point.lng, z);
   const y = itsLatToTile(point.lat, z);
-  const tiles = [
+  return [
     `https://a.basemaps.cartocdn.com/light_all/${z}/${x}/${y}.png`,
     `https://b.basemaps.cartocdn.com/light_all/${z}/${x + 1}/${y}.png`,
     `https://c.basemaps.cartocdn.com/light_all/${z}/${x}/${y + 1}.png`,
     `https://d.basemaps.cartocdn.com/light_all/${z}/${x + 1}/${y + 1}.png`,
   ];
+}
+
+function itsMapMosaicHtml(point: { lat: number; lng: number }, markerHtml: string, label: string): string {
+  return `<div class="its-ai-map-mosaic" aria-label="${escapeHtml(label)}">
+    ${itsMapTiles(point).map((tile) => `<img src="${tile}" alt="">`).join("")}
+    ${markerHtml}
+  </div>`;
+}
+
+function itsUserMarkerHtml(): string {
+  return `<span class="its-ai-map-marker its-ai-user-marker" aria-label="Marker lokasi user">Anda</span>`;
+}
+
+function itsMapCardHtml(device: Record<string, unknown>): string {
+  const point = itsLatLng(device) || { lat: -6.977254, lng: 107.631817 };
   const gmaps = `https://www.google.com/maps/search/?api=1&query=${point.lat},${point.lng}`;
   const bing = `https://www.bing.com/maps?cp=${point.lat}~${point.lng}&lvl=18`;
   const its = `https://itstelkom.web.app/?lat=${point.lat}&lng=${point.lng}&zoom=18`;
@@ -12601,10 +12830,7 @@ function itsMapCardHtml(device: Record<string, unknown>): string {
       <span>${itsMiniIcon("M12 21s7-5.4 7-11a7 7 0 0 0-14 0c0 5.6 7 11 7 11Zm0-8a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z", "#2563eb")} Peta lokasi</span>
       <strong>${escapeHtml(itsTrafficColorText(device.trafficColor))}</strong>
     </div>
-    <div class="its-ai-map-mosaic">
-      ${tiles.map((tile) => `<img src="${tile}" alt="">`).join("")}
-      ${itsTrafficLightMarkerHtml(device.trafficColor)}
-    </div>
+    ${itsMapMosaicHtml(point, itsTrafficLightMarkerHtml(device.trafficColor), "Peta titik Raspberry ITS Maps")}
     <p class="its-ai-card-note">${escapeHtml(String(device.roadName || objectRecord(device.location).label || "Gang Gotong Royong"))}: ${point.lat.toFixed(6)}, ${point.lng.toFixed(6)}.</p>
     <div class="its-ai-actions">
       <a href="${gmaps}" target="_blank" rel="noopener">Google Maps</a>
@@ -12625,6 +12851,36 @@ function itsUserLocationCardHtml(device: Record<string, unknown>): string {
     <div class="its-ai-actions">
       <button type="button" data-ai-user-location>Gunakan lokasi saya</button>
     </div>
+  </section>`;
+}
+
+function itsPoiCardHtml(device: Record<string, unknown>): string {
+  const origin = itsRuntimeBridge().getUserLocation?.() || itsLatLng(device) || { lat: -6.977254, lng: 107.631817 };
+  const runtimePois = itsRuntimeBridge().getPoiSnapshot?.() || [];
+  const fallbackPois: ItsRuntimePoiSnapshot[] = [
+    { id: "its-ai-rs", title: "Raspberry Pi 5 Controller", kind: "traffic", icon: "RS", lat: itsLatLng(device)?.lat || -6.977254, lng: itsLatLng(device)?.lng || 107.631817 },
+    { id: "its-ai-campus", title: "Kawasan Kampus", kind: "campus", icon: "Edu", lat: -6.97655, lng: 107.63262 },
+    { id: "its-ai-parking", title: "Area Parkir", kind: "parking", icon: "P", lat: -6.9791, lng: 107.6304 },
+  ];
+  const pois = (runtimePois.length ? runtimePois : fallbackPois)
+    .map((poi) => ({
+      poi,
+      distance: itsChatDistanceMeters(origin.lat, origin.lng, poi.lat, poi.lng),
+    }))
+    .sort((a, b) => a.distance - b.distance)
+    .slice(0, 5);
+  return `<section class="its-ai-card its-ai-poi-card">
+    <div class="its-ai-card-head">
+      <span>${itsMiniIcon("M4 6h16M4 12h16M4 18h10", "#0d9488")} POI sekitar</span>
+      <strong>${pois.length || 0}</strong>
+    </div>
+    ${pois.length ? `<div class="its-ai-poi-list">
+      ${pois.map(({ poi, distance }) => `<button type="button" data-ai-poi-id="${escapeHtml(poi.id)}" data-ai-poi-lat="${poi.lat}" data-ai-poi-lng="${poi.lng}">
+        <span>${escapeHtml(poi.icon || "*")}</span>
+        <b>${escapeHtml(poi.title)}</b>
+        <em>${escapeHtml(poi.kind)} - ${escapeHtml(itsChatDistanceText(distance))}</em>
+      </button>`).join("")}
+    </div>` : `<p class="its-ai-card-note">POI belum termuat di viewport ini. Buka peta atau geser area peta supaya Overpass/POI lokal dimuat, lalu tanya lagi.</p>`}
   </section>`;
 }
 
@@ -12657,6 +12913,23 @@ function itsFormulaCardHtml(): string {
   </section>`;
 }
 
+function itsDeveloperProfileCardHtml(): string {
+  const query = encodeURIComponent("Hanifa Septhi Larasati ITS Maps Hanifa Teams");
+  return `<section class="its-ai-card">
+    <div class="its-ai-card-head">
+      <span>${itsMiniIcon("M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm7 9a7 7 0 0 0-14 0", "#0f172a")} Profil developer</span>
+      <strong>Hanifa Teams</strong>
+    </div>
+    <p class="its-ai-card-note">Data internal aplikasi menyebut developer: Hanifa Septhi Larasati dan Hanifa Teams. Untuk profil eksternal, buka sumber berikut agar tidak menebak identitas.</p>
+    <div class="its-ai-actions">
+      <a href="https://github.com/hanifasepthi/its" target="_blank" rel="noopener">GitHub ITS</a>
+      <a href="https://www.google.com/search?q=${query}" target="_blank" rel="noopener">Google</a>
+      <a href="https://www.linkedin.com/search/results/all/?keywords=${query}" target="_blank" rel="noopener">LinkedIn</a>
+      <a href="https://www.instagram.com/explore/search/keyword/?q=${query}" target="_blank" rel="noopener">Instagram</a>
+    </div>
+  </section>`;
+}
+
 function itsAgentCardHtml(status: Record<string, unknown>): string {
   const openPanels = Array.from(document.querySelectorAll<HTMLElement>(".open[id], .side-panel-open"))
     .map((el) => el.id || el.className)
@@ -12679,27 +12952,55 @@ function itsAgentCardHtml(status: Record<string, unknown>): string {
   </section>`;
 }
 
+function itsShowInPageAgentRunner(text: string, durationMs = 1500): void {
+  document.getElementById("its-ai-agent-runner")?.remove();
+  const chatModal = document.getElementById("its-ai-chat-modal");
+  chatModal?.classList.add("agent-mini");
+  const runner = document.createElement("div");
+  runner.id = "its-ai-agent-runner";
+  runner.className = "its-ai-agent-runner";
+  runner.innerHTML = `
+    ${itsAppAiFabIconHtml()}
+    <div>
+      <strong>Agent aktif</strong>
+      <span>${escapeHtml(text)}</span>
+    </div>
+    <i aria-hidden="true"></i>`;
+  document.body.appendChild(runner);
+  requestAnimationFrame(() => runner.classList.add("open"));
+  window.setTimeout(() => {
+    runner.classList.remove("open");
+    chatModal?.classList.remove("agent-mini");
+    window.setTimeout(() => runner.remove(), 220);
+  }, durationMs);
+}
+
 function itsPerformInPageAgentAction(question: string): string {
   const q = itsNormalizeQuestion(question);
   const wantsAction = itsIncludesAny(q, ["buka", "bukakan", "tunjukkan", "tampilkan", "lihat", "open", "show", "scroll", "navigasi"]);
   if (!wantsAction) return "";
   if (itsIncludesAny(q, ["riwayat ai", "riwayat", "history", "snapshot history"])) {
+    itsShowInPageAgentRunner("Membuka Riwayat AI dan membaca snapshot terbaru...");
     window.dispatchEvent(new CustomEvent("its:open-ai-history", { detail: { source: "its-ai-chat" } }));
     return "Agent in-page membuka panel Riwayat AI di halaman ITS Maps.";
   }
   if (itsIncludesAny(q, ["roadmap", "story", "rencana"])) {
+    itsShowInPageAgentRunner("Membuka Roadmap story...");
     itsShowRoadmapStoryModal();
     return "Agent in-page membuka panel Roadmap.";
   }
   if (itsIncludesAny(q, ["privasi", "privacy"])) {
+    itsShowInPageAgentRunner("Membuka panel Privasi...");
     itsShowSiteInfoModal("privacy");
     return "Agent in-page membuka panel Privasi.";
   }
   if (itsIncludesAny(q, ["lisensi ai", "license ai", "licence ai"])) {
+    itsShowInPageAgentRunner("Membuka Lisensi AI...");
     itsShowAiLicenseModal();
     return "Agent in-page membuka panel Lisensi AI.";
   }
   if (itsIncludesAny(q, ["licence", "license", "lisensi"])) {
+    itsShowInPageAgentRunner("Membuka Licence Aplikasi...");
     itsShowSiteInfoModal("app-license");
     return "Agent in-page membuka panel Licence Aplikasi.";
   }
@@ -12711,6 +13012,9 @@ async function itsBuildAssistantResponse(question: string, status: Record<string
   const device = itsPrimaryDevice(status);
   if (flags.plainGreeting || flags.identity || flags.about || flags.license || flags.roadmap) {
     const cards: string[] = [];
+    if (flags.identity) {
+      cards.push(itsDeveloperProfileCardHtml());
+    }
     if (flags.license) {
       cards.push(`<section class="its-ai-card">
         <div class="its-ai-card-head"><span>${itsMiniIcon("M6 3h12v18H6V3Zm3 5h6M9 12h6M9 16h4", "#0f172a")} Tautan legal</span><strong>ITS Maps</strong></div>
@@ -12735,7 +13039,7 @@ async function itsBuildAssistantResponse(question: string, status: Record<string
   }
   if (!device) return { text: itsFallbackAssistantAnswer(question, status) };
   const cards: string[] = [];
-  if (flags.agent || itsAgentModeEnabled) {
+  if (flags.agent || flags.history || itsAgentModeEnabled) {
     onStage?.("Membaca layar internal ITS Maps");
     cards.push(itsAgentCardHtml(status));
   }
@@ -12754,6 +13058,9 @@ async function itsBuildAssistantResponse(question: string, status: Record<string
   }
   if (flags.map) {
     cards.push(itsMapCardHtml(device));
+  }
+  if (flags.poi) {
+    cards.push(itsPoiCardHtml(device));
   }
   if (flags.userLocation) {
     cards.push(itsUserLocationCardHtml(device));
@@ -12775,7 +13082,7 @@ async function askItsMapsAssistant(question: string, onStage?: (stage: string) =
   const context = JSON.stringify(status, null, 2).slice(0, 9000);
   const visualResponse = await itsBuildAssistantResponse(question, status, onStage);
   const flags = itsIntentFlags(question);
-  if (flags.plainGreeting || flags.identity || flags.about || flags.license || flags.roadmap || flags.image || flags.video || flags.chart || flags.map || flags.formula || flags.status || flags.agent) {
+  if (flags.plainGreeting || flags.identity || flags.about || flags.license || flags.roadmap || flags.image || flags.video || flags.chart || flags.map || flags.poi || flags.userLocation || flags.formula || flags.status || flags.agent || flags.history) {
     return visualResponse;
   }
   try {
@@ -12875,12 +13182,22 @@ function setupAiChatSheetDrag(sheetEl: HTMLElement, modal: HTMLElement, onClose:
 
 function itsOpenChatDetectionDetail(detail: ItsAssistantDetectionDetail): void {
   document.getElementById("its-ai-chat-detection-detail-modal")?.remove();
+  const chatModal = document.getElementById("its-ai-chat-modal");
+  const stacked = promptUsesDesktopSidePanel() && Boolean(chatModal?.classList.contains("open"));
+  if (stacked) {
+    document.documentElement.style.setProperty("--ai-chat-detail-height", `${detail.detections.length ? 360 : 300}px`);
+    chatModal?.classList.add("detail-stack-open");
+  }
   const closeDetail = () => {
     const modal = document.getElementById("its-ai-chat-detection-detail-modal");
     if (!modal) return;
     modal.classList.remove("open");
     modal.classList.add("closing");
-    window.setTimeout(() => modal.remove(), 240);
+    window.setTimeout(() => {
+      modal.remove();
+      chatModal?.classList.remove("detail-stack-open");
+      document.documentElement.style.removeProperty("--ai-chat-detail-height");
+    }, 240);
   };
   const rows = detail.detections.map((detection, index) => {
     const left = Math.round((detection.x / Math.max(1, detail.frameWidth)) * 100);
@@ -12899,7 +13216,7 @@ function itsOpenChatDetectionDetail(detail: ItsAssistantDetectionDetail): void {
   }).join("");
   const overlay = document.createElement("section");
   overlay.id = "its-ai-chat-detection-detail-modal";
-  overlay.className = "map-license-modal its-ai-chat-detection-detail-modal";
+  overlay.className = `map-license-modal its-ai-chat-detection-detail-modal${stacked ? " ai-chat-detail-stacked" : ""}`;
   overlay.innerHTML = `
     <section class="map-license-sheet m-ai-history-detail-sheet its-ai-chat-detection-detail-sheet" role="dialog" aria-modal="true" aria-labelledby="its-ai-chat-detection-detail-title">
       <div class="m-sheet-handle-bar" data-swipe-handle></div>
@@ -13036,7 +13353,8 @@ function itsShowAiChatModal(): void {
       });
       statusMsg?.remove();
       await addAssistantMessage(answer.text, answer.html || "");
-      if (itsAgentModeEnabled || itsIntentFlags(trimmed).agent) {
+      const flags = itsIntentFlags(trimmed);
+      if (itsAgentModeEnabled || flags.agent || flags.history) {
         const actionText = itsPerformInPageAgentAction(trimmed);
         if (actionText) addMessage("status", actionText);
       }
@@ -13065,6 +13383,16 @@ function itsShowAiChatModal(): void {
       else if (panel === "roadmap") itsShowRoadmapStoryModal();
       return;
     }
+    const poiButton = target?.closest<HTMLButtonElement>("[data-ai-poi-id]");
+    if (poiButton) {
+      event.preventDefault();
+      const lat = Number(poiButton.dataset.aiPoiLat);
+      const lng = Number(poiButton.dataset.aiPoiLng);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        itsRuntimeBridge().focusPoi?.(poiButton.dataset.aiPoiId || "", lat, lng);
+      }
+      return;
+    }
     const userLocationButton = target?.closest<HTMLButtonElement>("[data-ai-user-location]");
     if (userLocationButton) {
       event.preventDefault();
@@ -13079,6 +13407,7 @@ function itsShowAiChatModal(): void {
       navigator.geolocation.getCurrentPosition((position) => {
         const lat = position.coords.latitude;
         const lng = position.coords.longitude;
+        itsRuntimeBridge().applyUserLocation?.(lat, lng, position.coords.accuracy, true, "ai-chat-gps");
         const systemLat = Number(card.dataset.systemLat || "-6.977254");
         const systemLng = Number(card.dataset.systemLng || "107.631817");
         const distance = itsChatDistanceMeters(lat, lng, systemLat, systemLng);
@@ -13086,9 +13415,16 @@ function itsShowAiChatModal(): void {
         const gmaps = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
         const bing = `https://www.bing.com/maps?cp=${lat}~${lng}&lvl=17`;
         const its = `https://itstelkom.web.app/?lat=${lat}&lng=${lng}&zoom=17`;
-        resultEl.innerHTML = near
-          ? `Lokasi Anda berjarak ${escapeHtml(itsChatDistanceText(distance))} dari titik Raspberry. Status titik ITS Maps terdekat: ${escapeHtml(itsTrafficColorText(card.dataset.systemColor))}.`
-          : `Lokasi Anda berjarak ${escapeHtml(itsChatDistanceText(distance))} dari titik Raspberry. Belum ada sensor ITS Maps yang cukup dekat untuk menyimpulkan kondisi macet di lokasi Anda.`;
+        const userPoint = { lat, lng };
+        const systemPoint = { lat: systemLat, lng: systemLng };
+        resultEl.innerHTML = `
+          <span>${near
+    ? `Lokasi Anda berjarak ${escapeHtml(itsChatDistanceText(distance))} dari titik Raspberry terdekat. Status titik ITS Maps: ${escapeHtml(itsTrafficColorText(card.dataset.systemColor))}.`
+    : `Lokasi Anda berjarak ${escapeHtml(itsChatDistanceText(distance))} dari titik Raspberry. Belum ada sensor ITS Maps yang cukup dekat untuk menyimpulkan macet di titik Anda.`}</span>
+          <div class="its-ai-map-split">
+            <div><b>Lokasi Anda</b>${itsMapMosaicHtml(userPoint, itsUserMarkerHtml(), "Peta lokasi user")}</div>
+            <div><b>Raspberry terdekat</b>${itsMapMosaicHtml(systemPoint, itsTrafficLightMarkerHtml(card.dataset.systemColor), "Peta Raspberry terdekat")}</div>
+          </div>`;
         const actions = card.querySelector<HTMLElement>(".its-ai-actions");
         if (actions) actions.innerHTML = `
           <a href="${gmaps}" target="_blank" rel="noopener">Google Maps</a>

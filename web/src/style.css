@@ -3226,12 +3226,28 @@ body.its-sheet-open .leaflet-control-attribution {
 }
 
 .its-ai-snapshot img,
+.its-ai-snapshot canvas,
 .its-ai-video-frame img,
 .its-ai-video-frame video {
   width: 100%;
   height: 100%;
   display: block;
   object-fit: cover;
+}
+
+.its-ai-snapshot img,
+.its-ai-snapshot canvas {
+  position: absolute;
+  inset: 0;
+}
+
+.its-ai-snapshot img {
+  object-fit: contain;
+}
+
+.its-ai-snapshot canvas {
+  z-index: 2;
+  pointer-events: none;
 }
 
 .its-ai-scan-frame {
@@ -3364,7 +3380,7 @@ body.its-sheet-open .leaflet-control-attribution {
 
 .its-ai-chart {
   width: 100%;
-  aspect-ratio: 240 / 122;
+  aspect-ratio: 260 / 154;
   display: block;
   border-radius: 12px;
   background: #081225;
@@ -3372,7 +3388,7 @@ body.its-sheet-open .leaflet-control-attribution {
 
 .its-ai-chart text {
   fill: #cbd5e1;
-  font-size: 7px;
+  font-size: 9px;
   font-weight: 800;
 }
 
@@ -3426,6 +3442,35 @@ body.its-sheet-open .leaflet-control-attribution {
   font-weight: 1000;
   transform: translate(-50%, -50%);
   box-shadow: 0 12px 30px rgba(15, 23, 42, 0.18);
+}
+
+.its-ai-user-marker {
+  border-color: #2563eb;
+  background: rgba(239, 246, 255, 0.96);
+  color: #1d4ed8;
+}
+
+.its-ai-map-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 9px;
+}
+
+.its-ai-map-split > div {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.its-ai-map-split b {
+  font-size: 11px;
+  color: #334155;
+}
+
+.its-ai-map-split .its-ai-map-mosaic {
+  aspect-ratio: 4 / 3;
+  border-radius: 10px;
 }
 
 .its-ai-traffic-marker {
@@ -3492,6 +3537,57 @@ body.its-sheet-open .leaflet-control-attribution {
   font-weight: 900;
   text-decoration: none;
   cursor: pointer;
+}
+
+.its-ai-poi-list {
+  display: grid;
+  gap: 7px;
+}
+
+.its-ai-poi-list button {
+  min-height: 52px;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  column-gap: 9px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid #dbe4ef;
+  border-radius: 12px;
+  background: #f8fbff;
+  color: #0f172a;
+  text-align: left;
+  cursor: pointer;
+}
+
+.its-ai-poi-list button span {
+  grid-row: 1 / span 2;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: #ecfeff;
+  color: #0f766e;
+  font-weight: 900;
+}
+
+.its-ai-poi-list button b,
+.its-ai-poi-list button em {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.its-ai-poi-list button b {
+  font-size: 12px;
+}
+
+.its-ai-poi-list button em {
+  color: #64748b;
+  font-size: 11px;
+  font-style: normal;
 }
 
 .its-ai-video-frame {
@@ -3634,6 +3730,139 @@ body.its-sheet-open .leaflet-control-attribution {
 
   .its-ai-chat-modal.open .its-ai-chat-sheet {
     transform: none;
+  }
+
+  .its-ai-chat-modal.detail-stack-open .its-ai-chat-sheet {
+    height: calc(100dvh - 20px - var(--ai-chat-detail-height, 330px) - 8px);
+    max-height: calc(100dvh - 20px - var(--ai-chat-detail-height, 330px) - 8px);
+    border-radius: 18px 0 0 0;
+  }
+
+  .its-ai-chat-detection-detail-modal.ai-chat-detail-stacked {
+    display: block;
+    padding: 0;
+    background: transparent;
+    opacity: 1;
+    pointer-events: none;
+  }
+
+  .its-ai-chat-detection-detail-modal.ai-chat-detail-stacked .m-layer-backdrop {
+    display: none;
+  }
+
+  .its-ai-chat-detection-detail-modal.ai-chat-detail-stacked .its-ai-chat-detection-detail-sheet {
+    position: fixed;
+    right: 0;
+    bottom: 10px;
+    width: var(--side-panel-active-width, var(--download-panel-width, min(430px, 32vw)));
+    height: var(--ai-chat-detail-height, 330px);
+    max-height: none;
+    padding: 0;
+    border-radius: 16px 0 0 0;
+    border-top: 1px solid #dbe4ef;
+    border-left: 1px solid #dbe4ef;
+    box-shadow: 0 -18px 34px rgba(15, 23, 42, 0.12);
+    pointer-events: auto;
+    transform: translateY(calc(100% + 32px));
+    transition: transform 240ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  .its-ai-chat-detection-detail-modal.ai-chat-detail-stacked.open .its-ai-chat-detection-detail-sheet {
+    transform: translateY(0);
+  }
+
+  .its-ai-chat-detection-detail-modal.ai-chat-detail-stacked.closing .its-ai-chat-detection-detail-sheet {
+    transform: translateY(calc(100% + 32px));
+  }
+
+  .its-ai-chat-modal.agent-mini .its-ai-chat-sheet {
+    opacity: 0.1;
+    transform: translateX(14px) scale(0.985);
+    pointer-events: none;
+  }
+}
+
+.its-ai-agent-runner {
+  position: fixed;
+  left: 16px;
+  top: 118px;
+  z-index: 54020;
+  min-width: min(360px, calc(100vw - 32px));
+  max-width: min(420px, calc(100vw - 32px));
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 42px;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(203, 213, 225, 0.92);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.97);
+  color: #0f172a;
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.22);
+  opacity: 0;
+  transform: translateY(8px) scale(0.98);
+  pointer-events: none;
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.its-ai-agent-runner.open {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.its-ai-agent-runner .its-ai-chat-icon {
+  position: relative;
+  inset: auto;
+  width: 44px;
+  height: 44px;
+  box-shadow: none;
+}
+
+.its-ai-agent-runner div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.its-ai-agent-runner strong {
+  font-size: 12px;
+  font-weight: 1000;
+}
+
+.its-ai-agent-runner span {
+  overflow: hidden;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.its-ai-agent-runner > i {
+  width: 32px;
+  height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(6, 182, 212, 0.16), rgba(6, 182, 212, 0.78), rgba(6, 182, 212, 0.16));
+  background-size: 200% 100%;
+  animation: its-chat-skeleton 1.1s ease-in-out infinite;
+}
+
+@media (max-width: 720px) {
+  .its-ai-chat-modal.agent-mini .its-ai-chat-sheet {
+    opacity: 0.12;
+    pointer-events: none;
+    transform: translateY(calc(100% - 92px));
+  }
+
+  .its-ai-agent-runner {
+    left: 12px;
+    right: 12px;
+    top: auto;
+    bottom: calc(102px + env(safe-area-inset-bottom));
+    min-width: 0;
+    max-width: none;
+    grid-template-columns: 42px minmax(0, 1fr) 36px;
+    border-radius: 18px;
   }
 }
 
