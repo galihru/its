@@ -17,6 +17,21 @@ import {
   type BrowserRfDetrResult,
 } from "./browserRfDetr";
 import { publicResearchAgent } from "./publicResearchAgent";
+import { mountAgentLiveActivity } from "./agentLiveActivity";
+import {
+  disposeBrowserTextWorker,
+  generateBrowserText,
+  isBrowserTextModelReady,
+  warmBrowserTextModel,
+} from "./ai/browserTextModelClient";
+import { mapDetailCache } from "./map-detail/MapDetailCache";
+import {
+  detailGroupsForZoom,
+  EMPTY_MAP_DETAIL_COLLECTION,
+  ensureMapDetailStyle,
+  setMapDetailData,
+  type MapDetailFeatureCollection,
+} from "./map-detail/MapDetailStyle";
 
 type ItsWebMcpTool = {
   name: string;
@@ -394,6 +409,12 @@ type CrossingGuideRecord = {
   type: "rail" | "road";
 };
 
+type MapPointGuideRecord = {
+  id: string;
+  name: string;
+  latlng: L.LatLng;
+};
+
 type WaterGuideRecord = {
   id: string;
   name: string;
@@ -414,6 +435,8 @@ type RoadGuideBundle = {
   crossings: CrossingGuideRecord[];
   waterways: WaterGuideRecord[];
   greens: GreenGuideRecord[];
+  signals: MapPointGuideRecord[];
+  trees: MapPointGuideRecord[];
 };
 
 type VisionFeatureKind = "road" | "sidewalk" | "vegetation" | "water" | "building";
@@ -589,8 +612,8 @@ const WEBRTC_ICE_SERVERS: RTCIceServer[] = [
 
 const BEARING_STEP = 90;
 const BEARING_SNAP = 5;
-const MAPLIBRE_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
-const MAPLIBRE_3D_PITCH = 66;
+const MAPLIBRE_STYLE_URL = "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json";
+const MAPLIBRE_3D_PITCH = 60;
 const VISION_SEGMENTATION_MODEL = "Xenova/segformer-b0-finetuned-ade-512-512";
 const VISION_MIN_ZOOM = 16;
 const VISION_CANVAS_SIZE = 512;
@@ -1001,45 +1024,40 @@ function bindStaticDocumentation(): void {
 function renderStaticMath(): void {
   const root = document.querySelector<HTMLElement>(".static-content");
   if (!root) return;
-  const run = () => {
-    const w = window as Window & {
-      katex?: { render?: (expression: string, element: Element, options?: Record<string, unknown>) => void };
-    };
-    if (!w.katex?.render) return;
+  renderMathIn(root);
+}
+
+let katexModulePromise: Promise<typeof import("katex")> | null = null;
+
+function renderMathIn(root: ParentNode): void {
+  const inlineNodes = Array.from(root.querySelectorAll<HTMLElement>("[data-katex-inline]"));
+  const displayNodes = Array.from(root.querySelectorAll<HTMLElement>("[data-katex-display]"));
+  if (!inlineNodes.length && !displayNodes.length) return;
+  inlineNodes.forEach((node) => {
+    if (!node.textContent) node.textContent = node.dataset.katexInline || "";
+  });
+  displayNodes.forEach((node) => {
+    if (!node.textContent) node.textContent = node.dataset.katexDisplay || "";
+  });
+  if (!katexModulePromise) {
+    void import("katex/dist/katex.min.css");
+    katexModulePromise = import("katex");
+  }
+  void katexModulePromise.then((module) => {
+    const renderer = module.default;
     root.querySelectorAll<HTMLElement>("[data-katex-inline]").forEach((node) => {
       const expression = node.dataset.katexInline;
       if (!expression || node.dataset.katexDone === "true") return;
-      w.katex?.render?.(expression, node, { throwOnError: false });
+      renderer.render(expression, node, { throwOnError: false });
       node.dataset.katexDone = "true";
     });
     root.querySelectorAll<HTMLElement>("[data-katex-display]").forEach((node) => {
       const expression = node.dataset.katexDisplay;
       if (!expression || node.dataset.katexDone === "true") return;
-      w.katex?.render?.(expression, node, { throwOnError: false, displayMode: true });
+      renderer.render(expression, node, { throwOnError: false, displayMode: true });
       node.dataset.katexDone = "true";
     });
-  };
-  if (!document.getElementById("its-katex-style")) {
-    const style = document.createElement("link");
-    style.id = "its-katex-style";
-    style.rel = "stylesheet";
-    style.href = "https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css";
-    style.crossOrigin = "anonymous";
-    document.head.appendChild(style);
-  }
-  const existingScript = document.getElementById("its-katex-script") as HTMLScriptElement | null;
-  if (existingScript) {
-    if ((window as Window & { katex?: unknown }).katex) run();
-    else existingScript.addEventListener("load", run, { once: true });
-    return;
-  }
-  const script = document.createElement("script");
-  script.id = "its-katex-script";
-  script.src = "https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js";
-  script.defer = true;
-  script.crossOrigin = "anonymous";
-  script.addEventListener("load", run, { once: true });
-  document.head.appendChild(script);
+  }).catch((error) => console.warn("KaTeX lokal gagal dimuat; formula TeX tetap ditampilkan.", error));
 }
 
 function newsPageHtml(): string {
@@ -1238,6 +1256,7 @@ if (staticRoute) {
     maplibreMap: null as any,
     maplibreContainer: null as HTMLDivElement | null,
     maplibreSyncing: false,
+    maplibreSyncFrame: 0,
     // Tablet / routing helpers
     vehicleMarker: null as L.Marker | null,
     tabletCategoryIndex: null as number | null,
@@ -1277,16 +1296,23 @@ if (staticRoute) {
     } as WebRtcRuntime,
   };
 
-  const OVERPASS_TIMEOUT_MS = 8000;
+  const OVERPASS_TIMEOUT_MS = 16_000;
   const OVERPASS_COOLDOWN_MS = 5 * 60 * 1000;
+  const OVERPASS_ENDPOINTS = [
+    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+    "https://overpass.private.coffee/api/interpreter",
+    "https://overpass-api.de/api/interpreter",
+  ] as const;
   const OVERPASS_NETWORK_ENABLED = (() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("overpass") === "1") return true;
     if (params.get("overpass") === "0") return false;
-    return window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+    return true;
   })();
   let overpassPoiCooldownUntil = 0;
   let overpassRoadCooldownUntil = 0;
+  type OverpassInFlight = { query: string; request: Promise<any> };
+  let overpassPoiInFlight: OverpassInFlight | null = null;
+  let overpassRoadInFlight: OverpassInFlight | null = null;
 
   function fetchTimeoutSignal(ms: number): AbortSignal | undefined {
     const signalWithTimeout = AbortSignal as typeof AbortSignal & { timeout?: (timeout: number) => AbortSignal };
@@ -1309,6 +1335,10 @@ if (staticRoute) {
 
   const CARTO_TILE_URL = "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
   const CARTO_ATTRIBUTION = [
+    '<a class="map-license-link" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>',
+    '<span class="map-license-separator" aria-hidden="true">|</span>',
+    '<a class="map-license-link" href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>',
+    '<span class="map-license-separator" aria-hidden="true">|</span>',
     '<button type="button" class="map-license-link" data-map-license>Lisensi Peta</button>',
     '<span class="map-license-separator" aria-hidden="true">|</span>',
     '<button type="button" class="map-license-link" data-ai-license>Lisensi AI</button>',
@@ -1328,7 +1358,7 @@ if (staticRoute) {
     maxZoom: 20,
     subdomains: "abcd",
     className: "its-carto-map-tile",
-    attribution: CARTO_ATTRIBUTION,
+    attribution: "",
   } as L.TileLayerOptions & { className: string; subdomains: string }).addTo(map);
 
   const satelliteLayer = L.tileLayer(
@@ -1337,7 +1367,10 @@ if (staticRoute) {
   );
 
   if (map.attributionControl) {
-    try { map.attributionControl.setPrefix("ITS Maps"); } catch { /* ignore */ }
+    try {
+      map.attributionControl.setPrefix("ITS Maps");
+      map.attributionControl.addAttribution(CARTO_ATTRIBUTION);
+    } catch { /* Attribution is best-effort in older WebView builds. */ }
   }
 
   // Add Overpass vector layer for clickable features (kept separate from POI markers)
@@ -1976,13 +2009,7 @@ if (staticRoute) {
       let pois = await fetchOverpassFeaturesForBounds(bounds).catch(() => [] as PoiRecord[]);
       if (token !== nearbyFetchToken) return;
       if (!pois.length) {
-        const c = currentPos;
-        pois = [
-          { id: 'ar-local-terminal', kind: 'terminal', title: 'Terminal Terdekat', description: '', address: '', imageUrl: POI_LIBRARY.terminal.imageUrl, rating: POI_LIBRARY.terminal.rating, icon: poiVisual('terminal').icon, lat: c.lat + 0.0014, lng: c.lng + 0.0011 },
-          { id: 'ar-local-station', kind: 'station', title: 'Stasiun Terdekat', description: '', address: '', imageUrl: POI_LIBRARY.station.imageUrl, rating: POI_LIBRARY.station.rating, icon: poiVisual('station').icon, lat: c.lat - 0.0011, lng: c.lng + 0.0016 },
-          { id: 'ar-local-shelter', kind: 'shelter', title: 'Shelter / Halte', description: '', address: '', imageUrl: POI_LIBRARY.shelter.imageUrl, rating: POI_LIBRARY.shelter.rating, icon: poiVisual('shelter').icon, lat: c.lat + 0.0009, lng: c.lng - 0.0015 },
-          { id: 'ar-local-cemetery', kind: 'cemetery', title: 'Pemakaman', description: '', address: '', imageUrl: POI_LIBRARY.cemetery.imageUrl, rating: POI_LIBRARY.cemetery.rating, icon: poiVisual('cemetery').icon, lat: c.lat - 0.0018, lng: c.lng - 0.0010 },
-        ];
+        setStatus("POI OSM belum tersedia untuk area ini");
       }
       pois = pois.slice(0, 12);
       activePoiLookup = new Map(pois.map((p) => [p.id, p]));
@@ -2236,6 +2263,12 @@ if (staticRoute) {
   }
 
   function syncPoiMarkers(anchor: L.LatLngExpression): void {
+    if (state.maplibreMap && state.baseMode !== "satellite") {
+      for (const marker of state.poiMarkers.values()) map.removeLayer(marker);
+      state.poiMarkers.clear();
+      return;
+    }
+
     const center = L.latLng(anchor);
     const radiusMeters = 400; // search radius for nearby POIs
 
@@ -2246,19 +2279,7 @@ if (staticRoute) {
     const lngDelta = Math.abs(radiusMeters / (111320 * Math.cos((lat * Math.PI) / 180)));
     const bounds = L.latLngBounds([lat - latDelta, lng - lngDelta], [lat + latDelta, lng + lngDelta]);
     void fetchOverpassFeaturesForBounds(bounds).then((pois) => {
-      let finalPois = pois;
-      // If Overpass returned no POIs for this area, always fall back to local sample POIs
-      // so the UI remains usable offline or when the API times out.
-      if (!pois || pois.length === 0) {
-        // fallback local POIs
-        const c = center;
-        finalPois = [
-          { id: 'local-school-1', kind: 'campus', title: 'SD Negeri 1', description: '', address: '', imageUrl: POI_LIBRARY.campus.imageUrl, rating: POI_LIBRARY.campus.rating, icon: poiVisual('campus').icon, lat: c.lat + 0.0012, lng: c.lng + 0.0012 },
-          { id: 'local-mall-1', kind: 'mall', title: 'Pusat Perbelanjaan', description: '', address: '', imageUrl: POI_LIBRARY.mall.imageUrl, rating: POI_LIBRARY.mall.rating, icon: poiVisual('mall').icon, lat: c.lat - 0.0014, lng: c.lng + 0.0018 },
-          { id: 'local-hospital-1', kind: 'hospital', title: 'Klinik Sehat', description: '', address: '', imageUrl: POI_LIBRARY.hospital.imageUrl, rating: POI_LIBRARY.hospital.rating, icon: poiVisual('hospital').icon, lat: c.lat + 0.0020, lng: c.lng - 0.0010 },
-          { id: 'local-parking-1', kind: 'parking', title: 'Parkir Umum', description: '', address: '', imageUrl: POI_LIBRARY.parking.imageUrl, rating: POI_LIBRARY.parking.rating, icon: poiVisual('parking').icon, lat: c.lat - 0.0018, lng: c.lng - 0.0015 },
-        ];
-      }
+      const finalPois = pois;
 
       const keep = new Set<string>();
       const iconSize = poiMarkerSizeByZoom();
@@ -2330,6 +2351,16 @@ if (staticRoute) {
       || fallback;
   }
 
+  function poiExplicitNameFromTags(tags: Record<string, string>): string {
+    return tags["name:id"]
+      || tags.name
+      || tags.official_name
+      || tags.short_name
+      || tags.brand
+      || tags.operator
+      || "";
+  }
+
   function poiAddressFromTags(tags: Record<string, string>): string {
     const parts = [
       tags["addr:street"],
@@ -2364,29 +2395,99 @@ if (staticRoute) {
 
   function visiblePoiLimit(): number {
     const zoom = map.getZoom();
-    if (zoom < 14) return 52;
-    if (zoom < 16) return 110;
-    if (zoom < 18) return 180;
-    return 240;
+    if (zoom < 14) return 24;
+    if (zoom < 16) return 56;
+    if (zoom < 18) return 110;
+    return 180;
+  }
+
+  async function fetchOverpassJson(query: string, kind: "poi" | "road"): Promise<any> {
+    const active = kind === "poi" ? overpassPoiInFlight : overpassRoadInFlight;
+    if (active?.query === query) return active.request;
+    const request = (async () => {
+      let lastError: unknown = new Error(`Overpass ${kind} tidak tersedia`);
+      const body = new URLSearchParams({ data: query }).toString();
+      for (const endpoint of OVERPASS_ENDPOINTS) {
+        try {
+          const res = await fetch(endpoint, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+              Accept: "application/json",
+            },
+            body,
+            signal: fetchTimeoutSignal(OVERPASS_TIMEOUT_MS),
+          });
+          if (!res.ok) {
+            rememberOverpassHttpStatus(kind, res.status);
+            lastError = new Error(`Overpass ${kind} HTTP ${res.status}`);
+            continue;
+          }
+          const data = await res.json();
+          clearOverpassCooldown(kind);
+          return data;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+      throw lastError;
+    })();
+    const entry = { query, request };
+    if (kind === "poi") overpassPoiInFlight = entry;
+    else overpassRoadInFlight = entry;
+    try {
+      return await request;
+    } finally {
+      if (kind === "poi" && overpassPoiInFlight === entry) overpassPoiInFlight = null;
+      if (kind === "road" && overpassRoadInFlight === entry) overpassRoadInFlight = null;
+    }
+  }
+
+  function clearOverpassCooldown(kind: "poi" | "road"): void {
+    if (kind === "poi") overpassPoiCooldownUntil = 0;
+    else overpassRoadCooldownUntil = 0;
   }
 
   function rankPoisForView(pois: PoiRecord[]): PoiRecord[] {
     const center = map.getCenter();
-    return pois
+    const zoom = map.getZoom();
+    const size = map.getSize();
+    const cellSize = zoom >= 18 ? 46 : zoom >= 16 ? 58 : 76;
+    const occupied = new Set<string>();
+    const ranked = pois
       .filter((poi) => isValidCoordinate(poi.lat, poi.lng))
+      .filter((poi) => zoom >= 15 || ["station", "terminal", "hospital", "campus"].includes(poi.kind))
       .sort((a, b) => {
         const priority = poiPriority(a) - poiPriority(b);
         if (priority !== 0) return priority;
         const da = center.distanceTo([a.lat, a.lng]);
         const db = center.distanceTo([b.lat, b.lng]);
         return da - db;
-      })
-      .slice(0, visiblePoiLimit());
+      });
+    const selected: PoiRecord[] = [];
+    for (const poi of ranked) {
+      const point = map.latLngToContainerPoint([poi.lat, poi.lng]);
+      if (point.x < -40 || point.y < -40 || point.x > size.x + 40 || point.y > size.y + 40) continue;
+      const key = `${Math.floor(point.x / cellSize)}:${Math.floor(point.y / cellSize)}`;
+      if (occupied.has(key)) continue;
+      occupied.add(key);
+      selected.push(poi);
+      if (selected.length >= visiblePoiLimit()) break;
+    }
+    return selected;
   }
 
   async function fetchOverpassFeaturesForBounds(bounds: L.LatLngBounds): Promise<PoiRecord[]> {
-    if (!OVERPASS_NETWORK_ENABLED) return [];
-    if (shouldSkipOverpass("poi")) return [];
+    const zoom = Math.max(13, Math.min(18, Math.floor(map.getZoom())));
+    const center = bounds.getCenter();
+    const scale = 2 ** zoom;
+    const tileX = Math.floor(((center.lng + 180) / 360) * scale);
+    const latitude = Math.max(-85.0511, Math.min(85.0511, center.lat)) * Math.PI / 180;
+    const tileY = Math.floor((1 - Math.asinh(Math.tan(latitude)) / Math.PI) / 2 * scale);
+    const cacheKey = `poi:${zoom}:${tileX}:${tileY}`;
+    const cached = await mapDetailCache.get<PoiRecord[]>(cacheKey, 24 * 60 * 60 * 1000);
+    const validCached = cached?.length ? cached : null;
+    if (!OVERPASS_NETWORK_ENABLED || shouldSkipOverpass("poi")) return validCached || [];
     const bbox = buildOverpassBBoxString(bounds);
     // Query common POI tags; return nodes + ways + relations with center
     const q = `
@@ -2441,21 +2542,11 @@ if (staticRoute) {
 `;
 
     try {
-      const res = await fetch("https://overpass-api.de/api/interpreter", {
-        method: "POST",
-        headers: { "Content-Type": "text/plain" },
-        body: q,
-        signal: fetchTimeoutSignal(OVERPASS_TIMEOUT_MS),
-      });
-      if (!res.ok) {
-        rememberOverpassHttpStatus("poi", res.status);
-        throw new Error(`Overpass HTTP ${res.status}`);
-      }
-      const data = await res.json();
+      const data = await fetchOverpassJson(q, "poi");
       const elements = Array.isArray(data.elements) ? data.elements : [];
       const pois: PoiRecord[] = elements.map((el: any) => {
         const tags = el.tags || {};
-        const name = poiNameFromTags(tags, `POI ${el.id}`);
+        const name = poiExplicitNameFromTags(tags);
         const lat = el.type === 'node' ? el.lat : (el.center && el.center.lat) || el.lat || 0;
         const lng = el.type === 'node' ? el.lon : (el.center && el.center.lon) || el.lon || 0;
         const kind = classifyPoiKind(tags);
@@ -2465,7 +2556,7 @@ if (staticRoute) {
         return {
           id: `overpass-${el.type}-${el.id}`,
           kind,
-          title: name || `POI ${el.id}`,
+          title: name,
           description: description || '',
           address: address || '',
           imageUrl: imageUrl || ITS_APP_ICON,
@@ -2473,11 +2564,13 @@ if (staticRoute) {
           icon: poiVisual(kind).icon,
           lat, lng,
         };
-      }).filter((p: PoiRecord) => isValidCoordinate(p.lat, p.lng));
-      return rankPoisForView(pois);
+      }).filter((p: PoiRecord) => Boolean(p.title) && isValidCoordinate(p.lat, p.lng));
+      const ranked = rankPoisForView(pois);
+      if (ranked.length) void mapDetailCache.set(cacheKey, ranked);
+      return ranked;
     } catch (err) {
-      console.debug("Overpass fetch failed, using local POI fallback:", err);
-      return [];
+      console.debug("Overpass fetch failed; no POI is fabricated:", err);
+      return validCached || [];
     }
   }
 
@@ -2587,8 +2680,14 @@ if (staticRoute) {
   }
 
   function mapLibrePitchByZoom(zoom: number): number {
-    if (zoom < 14) return 38;
-    return clamp(42 + (zoom - 14) * 6, 42, MAPLIBRE_3D_PITCH);
+    if (state.baseMode !== "3d") return 0;
+    const startZoom = 13.6;
+    const fullZoom = 17.2;
+    if (zoom <= startZoom) return 0;
+    if (zoom >= fullZoom) return MAPLIBRE_3D_PITCH;
+    const normalized = (zoom - startZoom) / (fullZoom - startZoom);
+    const smooth = normalized * normalized * (3 - 2 * normalized);
+    return MAPLIBRE_3D_PITCH * smooth;
   }
 
   function roadMedianStyle(road: RoadGuideRecord): L.PolylineOptions {
@@ -2750,38 +2849,44 @@ if (staticRoute) {
   }
 
   async function fetchRoadGuidesForBounds(bounds: L.LatLngBounds): Promise<RoadGuideBundle> {
-    if (!OVERPASS_NETWORK_ENABLED) return { roads: [], rails: [], crossings: [], waterways: [], greens: [] };
-    if (shouldSkipOverpass("road")) return { roads: [], rails: [], crossings: [], waterways: [], greens: [] };
+    const emptyBundle = (): RoadGuideBundle => ({
+      roads: [], rails: [], crossings: [], waterways: [], greens: [], signals: [], trees: [],
+    });
+    if (!OVERPASS_NETWORK_ENABLED) return emptyBundle();
+    if (shouldSkipOverpass("road")) return emptyBundle();
     const bbox = buildOverpassBBoxString(bounds);
+    const zoom = map.getZoom();
+    const roadClasses = zoom >= 15
+      ? "motorway|trunk|primary|secondary|tertiary|residential|unclassified|service|living_street|pedestrian|footway|path|cycleway|steps"
+      : "motorway|trunk|primary|secondary|tertiary";
+    const finePointQueries = zoom >= 15
+      ? `node["railway"~"level_crossing|crossing|tram_crossing"](${bbox});\n    node["highway"="crossing"](${bbox});`
+      : "";
+    const trafficSignalQuery = zoom >= 16 ? `node["highway"="traffic_signals"](${bbox});` : "";
+    const treeQueries = zoom >= 17
+      ? `way["natural"="tree_row"](${bbox});${zoom >= 18 ? `\n    node["natural"="tree"](${bbox});` : ""}`
+      : "";
     const q = `
   [out:json][timeout:18];
   (
-    way["highway"~"motorway|trunk|primary|secondary|tertiary|residential|unclassified|service|living_street|pedestrian|footway|path|cycleway|steps"](${bbox});
+    way["highway"~"${roadClasses}"](${bbox});
     way["railway"~"rail|light_rail|tram|subway|narrow_gauge"](${bbox});
-    node["railway"~"level_crossing|crossing|tram_crossing"](${bbox});
+    ${finePointQueries}
+    ${trafficSignalQuery}
+    ${treeQueries}
     way["waterway"~"river|stream|canal|drain|ditch"](${bbox});
     way["man_made"~"canal|drain|ditch"](${bbox});
     way["natural"="water"](${bbox});
     way["water"~"river|stream|canal|drain|ditch|pond|lake|reservoir"](${bbox});
     way["leisure"~"park|garden|recreation_ground"](${bbox});
     way["landuse"~"grass|forest|meadow|village_green|recreation_ground"](${bbox});
-    way["natural"~"wood|grassland|scrub|tree_row"](${bbox});
+    way["natural"~"wood|grassland|scrub"](${bbox});
   );
   out tags geom 650;
 `;
 
     try {
-      const res = await fetch("https://overpass-api.de/api/interpreter", {
-        method: "POST",
-        headers: { "Content-Type": "text/plain" },
-        body: q,
-        signal: fetchTimeoutSignal(OVERPASS_TIMEOUT_MS),
-      });
-      if (!res.ok) {
-        rememberOverpassHttpStatus("road", res.status);
-        throw new Error(`Overpass road HTTP ${res.status}`);
-      }
-      const data = await res.json();
+      const data = await fetchOverpassJson(q, "road");
       const elements = Array.isArray(data.elements) ? data.elements : [];
       const bundle: RoadGuideBundle = {
         roads: [],
@@ -2789,6 +2894,8 @@ if (staticRoute) {
         crossings: [],
         waterways: [],
         greens: [],
+        signals: [],
+        trees: [],
       };
 
       elements.forEach((el: any) => {
@@ -2797,12 +2904,32 @@ if (staticRoute) {
         if (el.type === "node") {
           const lat = Number(el.lat);
           const lng = Number(el.lon);
-          if (isValidCoordinate(lat, lng) && /level_crossing|crossing|tram_crossing/.test(tags.railway || "")) {
+          if (!isValidCoordinate(lat, lng)) return;
+          if (/level_crossing|crossing|tram_crossing/.test(tags.railway || "")) {
             bundle.crossings.push({
               id: `crossing-${el.id}`,
               name: tags.name || tags.ref || "Perlintasan kereta",
               latlng: L.latLng(lat, lng),
               type: "rail",
+            });
+          } else if (tags.highway === "traffic_signals") {
+            bundle.signals.push({
+              id: `signal-${el.id}`,
+              name: tags.name || tags.ref || "Lampu lalu lintas",
+              latlng: L.latLng(lat, lng),
+            });
+          } else if (tags.highway === "crossing") {
+            bundle.crossings.push({
+              id: `crossing-${el.id}`,
+              name: tags.name || tags.ref || "Penyeberangan",
+              latlng: L.latLng(lat, lng),
+              type: "road",
+            });
+          } else if (tags.natural === "tree") {
+            bundle.trees.push({
+              id: `tree-${el.id}`,
+              name: tags.name || "",
+              latlng: L.latLng(lat, lng),
             });
           }
           return;
@@ -2816,6 +2943,10 @@ if (staticRoute) {
           const lanes = numberTag(tags, "lanes") || (numberTag(tags, "lanes:forward") + numberTag(tags, "lanes:backward"));
           const roadType = detectRoadType(tags, name);
           const isRoundabout = tags.junction === "roundabout" || tags.junction === "circular";
+          const hasMappedMedian = tags.dual_carriageway === "yes"
+            || Boolean(tags.divider && tags.divider !== "no");
+          const hasMappedTreeLine = tags.tree_lined === "yes"
+            || tags["tree_lined:both"] === "yes";
           bundle.roads.push({
             id: `road-${el.id}`,
             name,
@@ -2823,14 +2954,9 @@ if (staticRoute) {
             highway: tags.highway,
             oneway: tags.oneway === "yes" || tags.oneway === "1" || isRoundabout,
             hasSidewalk: Boolean(tags.sidewalk && tags.sidewalk !== "no") || /footway|pedestrian|path/.test(tags.highway),
-            hasMedian: tags.dual_carriageway === "yes"
-              || Boolean(tags.divider && tags.divider !== "no")
-              || roadType === "avenue"
-              || roadType === "expressway",
-            treeLined: tags.tree_lined === "yes"
-              || tags["tree_lined:both"] === "yes"
-              || (roadType === "avenue" && !/flyover|bridge/.test(tags.layer || "")),
-            waterMedian: tags.waterway === "stream" || tags.water === "canal" || /\b(kali|sungai|kanal|sunter)\b/i.test(name),
+            hasMedian: hasMappedMedian,
+            treeLined: hasMappedTreeLine,
+            waterMedian: tags.waterway === "stream" || tags.water === "canal",
             isRoundabout,
             lanes,
             surface: tags.surface || "",
@@ -2872,14 +2998,143 @@ if (staticRoute) {
 
       return bundle;
     } catch (err) {
-      console.debug("Overpass road guide failed, using local road fallback:", err);
-      return { roads: [], rails: [], crossings: [], waterways: [], greens: [] };
+      console.debug("Overpass road guide failed; no map detail is fabricated:", err);
+      return emptyBundle();
     }
+  }
+
+  function mapDetailCollection(bundle: RoadGuideBundle): MapDetailFeatureCollection {
+    const features: MapDetailFeatureCollection["features"] = [];
+    const lineCoordinates = (points: L.LatLng[]) => points.map((point) => [point.lng, point.lat]);
+    const addLine = (id: string, kind: string, name: string, points: L.LatLng[], properties: Record<string, unknown> = {}) => {
+      if (points.length < 2) return;
+      features.push({
+        type: "Feature",
+        id,
+        properties: { kind, name, confidence: "verified", ...properties },
+        geometry: { type: "LineString", coordinates: lineCoordinates(points) },
+      });
+    };
+
+    bundle.roads.forEach((road) => {
+      const pedestrian = /footway|path|pedestrian|steps|cycleway/.test(road.highway);
+      addLine(road.id, pedestrian ? "pedestrian" : "road", road.name || road.ref, road.points, {
+        roadType: road.roadType,
+        highway: road.highway,
+        lanes: road.lanes,
+        oneway: road.oneway,
+        surface: road.surface,
+      });
+      if (road.hasMedian) addLine(`${road.id}-median`, "median", "", road.points);
+    });
+
+    bundle.rails.forEach((rail) => {
+      addLine(rail.id, "railway", rail.name, rail.points, { railway: rail.railway });
+    });
+
+    bundle.waterways.forEach((water) => {
+      const coordinates = lineCoordinates(water.points);
+      const polygon = water.points.length >= 4 && isClosedGuideRing(water.points);
+      features.push({
+        type: "Feature",
+        id: water.id,
+        properties: { kind: "waterway", name: water.name, waterway: water.waterway, confidence: "verified" },
+        geometry: polygon
+          ? { type: "Polygon", coordinates: [coordinates] }
+          : { type: "LineString", coordinates },
+      });
+    });
+
+    bundle.greens.forEach((green) => {
+      if (green.kind === "tree_row") {
+        addLine(green.id, "tree_row", green.name, green.points);
+        return;
+      }
+      if (green.points.length < 4 || !isClosedGuideRing(green.points)) return;
+      features.push({
+        type: "Feature",
+        id: green.id,
+        properties: { kind: "green", name: green.name, greenType: green.kind, confidence: "verified" },
+        geometry: { type: "Polygon", coordinates: [lineCoordinates(green.points)] },
+      });
+    });
+
+    bundle.crossings.forEach((crossing) => {
+      features.push({
+        type: "Feature",
+        id: crossing.id,
+        properties: { kind: "crossing", name: crossing.name, crossingType: crossing.type, confidence: "verified" },
+        geometry: { type: "Point", coordinates: [crossing.latlng.lng, crossing.latlng.lat] },
+      });
+    });
+
+    bundle.signals.forEach((signal) => {
+      features.push({
+        type: "Feature",
+        id: signal.id,
+        properties: { kind: "traffic_signal", name: signal.name, confidence: "verified" },
+        geometry: { type: "Point", coordinates: [signal.latlng.lng, signal.latlng.lat] },
+      });
+    });
+
+    bundle.trees.forEach((tree) => {
+      features.push({
+        type: "Feature",
+        id: tree.id,
+        properties: { kind: "tree", name: tree.name, confidence: "verified" },
+        geometry: { type: "Point", coordinates: [tree.latlng.lng, tree.latlng.lat] },
+      });
+    });
+
+    return { type: "FeatureCollection", features };
+  }
+
+  function mapDetailTileKey(bounds: L.LatLngBounds, zoom: number): string {
+    const zoomBucket = Math.max(11, Math.min(18, Math.floor(zoom)));
+    const center = bounds.getCenter();
+    const scale = 2 ** zoomBucket;
+    const tileX = Math.floor(((center.lng + 180) / 360) * scale);
+    const latitude = Math.max(-85.0511, Math.min(85.0511, center.lat)) * Math.PI / 180;
+    const tileY = Math.floor((1 - Math.asinh(Math.tan(latitude)) / Math.PI) / 2 * scale);
+    return `details:${zoomBucket}:${tileX}:${tileY}:${detailGroupsForZoom(zoom).join(",")}`;
+  }
+
+  let lastMapDetailKey = "";
+  let mapDetailRequestSequence = 0;
+
+  async function refreshMapLibreDetailLayer(force = false): Promise<void> {
+    const maplibreMap = state.maplibreMap;
+    if (!maplibreMap || state.baseMode === "satellite") return;
+    if (typeof maplibreMap.isStyleLoaded === "function" && !maplibreMap.isStyleLoaded()) return;
+    const zoom = map.getZoom();
+    if (zoom < 11) {
+      setMapDetailData(maplibreMap, EMPTY_MAP_DETAIL_COLLECTION);
+      return;
+    }
+
+    const bounds = map.getBounds();
+    const key = mapDetailTileKey(bounds, zoom);
+    if (!force && key === lastMapDetailKey) return;
+    lastMapDetailKey = key;
+    const requestId = ++mapDetailRequestSequence;
+    const cached = await mapDetailCache.get<MapDetailFeatureCollection>(key, 14 * 24 * 60 * 60 * 1000);
+    const validCached = cached?.features?.length ? cached : null;
+    if (validCached && requestId === mapDetailRequestSequence) setMapDetailData(maplibreMap, validCached);
+
+    const bundle = await fetchRoadGuidesForBounds(bounds.pad(0.12));
+    if (requestId !== mapDetailRequestSequence) return;
+    const collection = mapDetailCollection(bundle);
+    if (!collection.features.length) {
+      if (!validCached) setMapDetailData(maplibreMap, EMPTY_MAP_DETAIL_COLLECTION);
+      return;
+    }
+    setMapDetailData(maplibreMap, collection);
+    void mapDetailCache.set(key, collection);
   }
 
   async function refreshRoadGuideLayer(force = false): Promise<void> {
     if (!state.roadGuideLayer) state.roadGuideLayer = L.layerGroup().addTo(map);
-    if (state.baseMode !== "street") {
+    if (state.baseMode !== "street" || state.maplibreMap) {
       state.roadGuideLayer.clearLayers();
       return;
     }
@@ -3380,7 +3635,7 @@ if (staticRoute) {
       state.visionLayer.clearLayers();
       return;
     }
-    if (state.baseMode !== "street" || map.getZoom() < VISION_MIN_ZOOM) {
+    if (state.baseMode !== "street" || state.maplibreMap || map.getZoom() < VISION_MIN_ZOOM) {
       state.visionLayer.clearLayers();
       return;
     }
@@ -3420,11 +3675,12 @@ if (staticRoute) {
   }
 
   let lastOverpassFetchBounds: L.LatLngBounds | null = null;
+  let overpassLayerRequestSequence = 0;
 
   // Helper: Update MapLibre POI layer with GeoJSON features
   function updateMapLibrePoiLayer(pois: PoiRecord[]): void {
     const maplibreMap = state.maplibreMap;
-    if (!maplibreMap || state.baseMode !== "3d") return;
+    if (!maplibreMap || state.baseMode === "satellite") return;
 
     try {
       const features = pois.map(poi => ({
@@ -3433,7 +3689,8 @@ if (staticRoute) {
           id: poi.id,
           title: poi.title,
           kind: poi.kind,
-          "icon-emoji": poi.icon // Use emoji from POI record
+          priority: poiPriority(poi),
+          "icon-emoji": poi.icon,
         },
         geometry: { type: "Point", coordinates: [poi.lng, poi.lat] }
       }));
@@ -3452,29 +3709,30 @@ if (staticRoute) {
     // Avoid refetch if bounds similar
     if (lastOverpassFetchBounds && lastOverpassFetchBounds.contains(bounds.getSouthWest()) && lastOverpassFetchBounds.contains(bounds.getNorthEast())) return;
     lastOverpassFetchBounds = bounds.pad(0.2);
+    const requestId = ++overpassLayerRequestSequence;
     const pois = await fetchOverpassFeaturesForBounds(bounds);
+    if (requestId !== overpassLayerRequestSequence) return;
 
-    // If Overpass returned empty and we have no POI data yet, provide a local fallback
-    let finalPois = pois;
-    if (!pois || pois.length === 0) {
-      console.info("Overpass empty — using local POI fallback.");
-      const c = map.getCenter();
-      finalPois = [
-        { id: 'local-school-1', kind: 'campus', title: 'SD Negeri 1', description: '', address: '', imageUrl: POI_LIBRARY.campus.imageUrl, rating: POI_LIBRARY.campus.rating, icon: poiVisual('campus').icon, lat: c.lat + 0.0012, lng: c.lng + 0.0012 },
-        { id: 'local-worship-1', kind: 'worship', title: 'Masjid Al Furqan', description: '', address: '', imageUrl: POI_LIBRARY.worship.imageUrl, rating: POI_LIBRARY.worship.rating, icon: poiVisual('worship').icon, lat: c.lat - 0.0010, lng: c.lng - 0.0016 },
-        { id: 'local-mall-1', kind: 'mall', title: 'Pusat Perbelanjaan', description: '', address: '', imageUrl: POI_LIBRARY.mall.imageUrl, rating: POI_LIBRARY.mall.rating, icon: poiVisual('mall').icon, lat: c.lat - 0.0014, lng: c.lng + 0.0018 },
-        { id: 'local-hospital-1', kind: 'hospital', title: 'Klinik Sehat', description: '', address: '', imageUrl: POI_LIBRARY.hospital.imageUrl, rating: POI_LIBRARY.hospital.rating, icon: poiVisual('hospital').icon, lat: c.lat + 0.0020, lng: c.lng - 0.0010 },
-        { id: 'local-parking-1', kind: 'parking', title: 'Parkir Umum', description: '', address: '', imageUrl: POI_LIBRARY.parking.imageUrl, rating: POI_LIBRARY.parking.rating, icon: poiVisual('parking').icon, lat: c.lat - 0.0018, lng: c.lng - 0.0015 },
-      ];
-    }
+    // Keep verified OSM records during transient API failures. Do not invent
+    // nearby names or coordinates.
+    let finalPois = pois.length
+      ? pois
+      : Array.from(state.poiData.values()).filter((poi) => bounds.contains([poi.lat, poi.lng]));
 
     finalPois = rankPoisForView(finalPois);
+
+    if (pois.length) state.poiData.clear();
+    finalPois.forEach((poi) => state.poiData.set(poi.id, poi));
 
     // Update MapLibre POI layer (for 3D)
     updateMapLibrePoiLayer(finalPois);
 
     if (!state.overpassLayer) state.overpassLayer = L.layerGroup().addTo(map);
     state.overpassLayer.clearLayers();
+    if (state.maplibreMap && state.baseMode !== "satellite") {
+      updateTabletCategoryView();
+      return;
+    }
     finalPois.filter((poi) => poi.kind !== "other").forEach((poi) => {
       const marker = L.marker([poi.lat, poi.lng], {
         icon: makePoiIcon(poi, poiMarkerSizeByZoom()),
@@ -3500,16 +3758,12 @@ if (staticRoute) {
     const lat = ev.latlng.lat;
     const lng = ev.latlng.lng;
 
-    // In 3D mode, check if click is on a MapLibre POI
-    if (state.baseMode === '3d' && state.maplibreMap) {
+    // Resolve visible MapLibre POIs while Leaflet remains the interaction plane.
+    if (state.baseMode !== "satellite" && state.maplibreMap) {
       try {
-        const features = state.maplibreMap.querySourceFeatures("poi-source", {
-          sourceLayer: undefined
-        }).filter((f: any) => {
-          if (!f.properties || !f.geometry) return false;
-          const [lng2, lat2] = f.geometry.coordinates;
-          const dist = Math.sqrt(Math.pow(lat2 - lat, 2) + Math.pow(lng2 - lng, 2));
-          return dist < 0.003; // ~300m at this zoom level
+        const point = state.maplibreMap.project([lng, lat]);
+        const features = state.maplibreMap.queryRenderedFeatures(point, {
+          layers: ["poi-symbols", "poi-halo"],
         });
 
         if (features.length > 0) {
@@ -3547,11 +3801,7 @@ if (staticRoute) {
     );
     out center tags;
   `;
-      const res = await fetch("https://overpass-api.de/api/interpreter", {
-        method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: q,
-      });
-      if (!res.ok) return;
-      const data = await res.json();
+      const data = await fetchOverpassJson(q, "poi");
       const el = (data.elements || [])[0];
       if (!el) return;
       const tags = el.tags || {};
@@ -3576,10 +3826,12 @@ if (staticRoute) {
   });
 
   map.on('moveend', () => {
-    if (state.baseMode === '3d') {
-      if (state.overpassLayer) state.overpassLayer.clearLayers();
+    if (state.maplibreMap && state.baseMode !== "satellite") {
+      state.overpassLayer?.clearLayers();
       if (state.roadGuideLayer) state.roadGuideLayer.clearLayers();
       if (state.visionLayer) state.visionLayer.clearLayers();
+      void refreshOverpassLayer();
+      void refreshMapLibreDetailLayer();
       return;
     }
     void refreshOverpassLayer();
@@ -5045,6 +5297,10 @@ if (staticRoute) {
 
   // ─── Base map ───────────────────────────────────────────────────
 
+  function mapLibreSurfaceReady(): boolean {
+    return Boolean(state.maplibreContainer?.classList.contains("is-ready"));
+  }
+
   async function ensureMapLibreMap(): Promise<any | null> {
     if (state.maplibreMap) return state.maplibreMap;
 
@@ -5071,9 +5327,27 @@ if (staticRoute) {
         preserveDrawingBuffer: false,
         fadeDuration: 0,
       });
+      state.maplibreMap = maplibreMap;
+
+      let surfaceRevealed = false;
+      const revealRenderedSurface = () => {
+        if (surfaceRevealed || !state.maplibreContainer?.isConnected) return;
+        if (typeof maplibreMap.isStyleLoaded === "function" && !maplibreMap.isStyleLoaded()) return;
+        if (typeof maplibreMap.areTilesLoaded === "function" && !maplibreMap.areTilesLoaded()) return;
+        surfaceRevealed = true;
+        state.maplibreContainer.classList.add("is-ready");
+        if (state.baseMode !== "satellite" && map.hasLayer(streetLayer)) map.removeLayer(streetLayer);
+      };
+      maplibreMap.on("idle", revealRenderedSurface);
+      maplibreMap.on("render", revealRenderedSurface);
 
       maplibreMap.on("load", () => {
+        state.roadGuideLayer?.clearLayers();
+        state.visionLayer?.clearLayers();
         syncMapLibreView(true);
+        ensureMapDetailStyle(maplibreMap);
+        void refreshOverpassLayer();
+        void refreshMapLibreDetailLayer(true);
 
         // Some MapLibre builds do not implement setFog.
         const maybeSetFog = (maplibreMap as any).setFog;
@@ -5100,7 +5374,41 @@ if (staticRoute) {
           if (!maplibreMap.getSource("poi-source")) {
             maplibreMap.addSource("poi-source", {
               type: "geojson",
-              data: { type: "FeatureCollection", features: [] }
+              data: { type: "FeatureCollection", features: [] },
+              cluster: true,
+              clusterMaxZoom: 15,
+              clusterRadius: 46,
+            });
+          }
+
+          if (!maplibreMap.getLayer("poi-clusters")) {
+            maplibreMap.addLayer({
+              id: "poi-clusters",
+              type: "circle",
+              source: "poi-source",
+              filter: ["has", "point_count"],
+              paint: {
+                "circle-radius": ["step", ["get", "point_count"], 15, 8, 19, 20, 24],
+                "circle-color": "#ffffff",
+                "circle-stroke-color": "#2563eb",
+                "circle-stroke-width": 2,
+                "circle-opacity": 0.94,
+              },
+            });
+          }
+
+          if (!maplibreMap.getLayer("poi-cluster-count")) {
+            maplibreMap.addLayer({
+              id: "poi-cluster-count",
+              type: "symbol",
+              source: "poi-source",
+              filter: ["has", "point_count"],
+              layout: {
+                "text-field": ["get", "point_count_abbreviated"],
+                "text-size": 11,
+                "text-allow-overlap": true,
+              },
+              paint: { "text-color": "#0f172a" },
             });
           }
 
@@ -5109,6 +5417,7 @@ if (staticRoute) {
               id: "poi-halo",
               type: "circle",
               source: "poi-source",
+              filter: ["!", ["has", "point_count"]],
               paint: {
                 "circle-radius": ["interpolate", ["linear"], ["zoom"], 14, 4, 18, 10],
                 "circle-color": [
@@ -5139,13 +5448,19 @@ if (staticRoute) {
               id: "poi-symbols",
               type: "symbol",
               source: "poi-source",
+              filter: ["!", ["has", "point_count"]],
+              minzoom: 13,
               layout: {
-                "text-field": ["get", "icon-emoji"],
+                "text-field": ["get", "title"],
                 "text-font": ["Open Sans Regular", "Arial Unicode MS Regular"],
-                "text-size": 18,
-                "text-offset": [0, 0],
-                "text-allow-overlap": true,
-                "text-ignore-placement": true
+                "text-size": ["interpolate", ["linear"], ["zoom"], 13, 11, 18, 14],
+                "text-offset": [0, 1.25],
+                "text-anchor": "top",
+                "text-max-width": 12,
+                "text-allow-overlap": false,
+                "text-ignore-placement": false,
+                "text-optional": true,
+                "symbol-sort-key": ["get", "priority"],
               },
               paint: {
                 "text-color": "#111827",
@@ -5227,7 +5542,7 @@ if (staticRoute) {
             }
 
             // 3. Bangunan 3D Berwarna berdasarkan Tinggi Gedung
-            if (layer.type === 'fill-extrusion' || id.includes('building')) {
+            if (layer.type === 'fill-extrusion') {
               try {
                 const buildingHeightExpression = [
                   "interpolate", ["linear"], ["zoom"],
@@ -5262,9 +5577,33 @@ if (staticRoute) {
               }
             }
           });
+
+          const buildingFill = style.layers.find((layer: any) =>
+            layer.type === "fill" && (layer["source-layer"] === "building" || String(layer.id).includes("building")));
+          if (buildingFill && !maplibreMap.getLayer("its-building-extrusion")) {
+            const firstSymbol = style.layers.find((layer: any) => layer.type === "symbol")?.id;
+            maplibreMap.addLayer({
+              id: "its-building-extrusion",
+              type: "fill-extrusion",
+              source: buildingFill.source,
+              "source-layer": buildingFill["source-layer"],
+              minzoom: 14.2,
+              ...(Array.isArray(buildingFill.filter) ? { filter: buildingFill.filter } : {}),
+              paint: {
+                "fill-extrusion-color": "#d8dee8",
+                "fill-extrusion-height": [
+                  "interpolate", ["linear"], ["zoom"],
+                  14.2, 0,
+                  17.2, ["to-number", ["coalesce", ["get", "render_height"], ["get", "height"], ["*", ["to-number", ["coalesce", ["get", "building:levels"], 2]], 3], 6]],
+                ],
+                "fill-extrusion-base": ["to-number", ["coalesce", ["get", "render_min_height"], ["get", "min_height"], 0]],
+                "fill-extrusion-opacity": 0.88,
+              },
+            }, firstSymbol);
+          }
+          updateMapLibrePoiLayer(Array.from(state.poiData.values()));
         }
       });
-      state.maplibreMap = maplibreMap;
       return maplibreMap;
     } catch (err) {
       console.error("ensureMapLibreMap error:", err);
@@ -5289,6 +5628,14 @@ if (staticRoute) {
   function syncMapLibreView(force = false): void {
     const maplibreMap = state.maplibreMap;
     if (!maplibreMap) return;
+    if (!force) {
+      if (state.maplibreSyncFrame) return;
+      state.maplibreSyncFrame = window.requestAnimationFrame(() => {
+        state.maplibreSyncFrame = 0;
+        syncMapLibreView(true);
+      });
+      return;
+    }
     if (state.maplibreSyncing && !force) return;
 
     const center = map.getCenter();
@@ -5318,16 +5665,16 @@ if (staticRoute) {
         pitch,
 
       });
-      // Do not hide Leaflet POI markers in 3D — prefer custom Leaflet icons consistently
+      // MapLibre owns POI labels while active; Leaflet remains the interaction plane.
       if (state.overpassLayer) {
         state.overpassLayer.getLayers().forEach((layer: any) => {
-          if (layer._path) layer._path.style.display = '';
-          if (layer._icon) layer._icon.style.display = '';
+          if (layer._path) layer._path.style.display = "none";
+          if (layer._icon) layer._icon.style.display = "none";
         });
       }
       for (const marker of state.poiMarkers.values()) {
         const el = marker.getElement() as HTMLElement | null;
-        if (el) el.style.display = '';
+        if (el) el.style.display = "none";
       }
     } finally {
       state.maplibreSyncing = false;
@@ -5335,54 +5682,52 @@ if (staticRoute) {
   }
 
   async function setBaseMap(mode: BaseMapMode): Promise<void> {
-    if (state.baseMode === mode) return;
+    if (state.baseMode === mode && (mode === "satellite" || state.maplibreMap)) return;
 
-    // Reset any previous 3D CSS transform (legacy fallback)
     const mapEl = mapRoot as HTMLElement;
     mapEl.style.transform = "";
     mapEl.style.transformOrigin = "";
     mapEl.style.perspective = "";
     (mapEl.parentElement as HTMLElement | null)?.style.setProperty("perspective", "");
     mapEl.classList.remove("map-mode-3d");
+    state.baseMode = mode;
 
-    if (mode === "street") {
-      // remove any GL or satellite layer
-      await removeMapLibreMap();
-      if (map.hasLayer(satelliteLayer)) map.removeLayer(satelliteLayer);
-      if (!map.hasLayer(streetLayer)) streetLayer.addTo(map);
-    } else if (mode === "3d") {
-      // Prefer true 3D: render MapLibre GL above the Leaflet map.
-      if (map.hasLayer(satelliteLayer)) map.removeLayer(satelliteLayer);
-      if (map.hasLayer(streetLayer)) map.removeLayer(streetLayer);
-
-      const gl = await ensureMapLibreMap();
-      if (!gl) {
-        // fallback: use CSS tilt if MapLibre not available
-        if (!map.hasLayer(streetLayer)) streetLayer.addTo(map);
-        const wrapper = mapEl.parentElement as HTMLElement | null;
-        if (wrapper) wrapper.style.perspective = "800px";
-        mapEl.style.transform = "rotateX(45deg) scale(1.4)";
-        mapEl.style.transformOrigin = "50% 100%";
-        mapEl.style.transition = "transform 0.5s ease";
-        state.baseMode = "street";
-        return;
-      }
-
-      mapEl.classList.add("map-mode-3d");
-      syncMapLibreView(true);
-      map.invalidateSize();
-    } else {
-      // satellite
+    if (mode === "satellite") {
       await removeMapLibreMap();
       if (map.hasLayer(streetLayer)) map.removeLayer(streetLayer);
       if (!map.hasLayer(satelliteLayer)) satelliteLayer.addTo(map);
+    } else {
+      if (map.hasLayer(satelliteLayer)) map.removeLayer(satelliteLayer);
+      if (!mapLibreSurfaceReady() && !map.hasLayer(streetLayer)) streetLayer.addTo(map);
+      const gl = await ensureMapLibreMap();
+      if (!gl) {
+        if (!map.hasLayer(streetLayer)) streetLayer.addTo(map);
+        state.baseMode = "street";
+      } else {
+        if (mapLibreSurfaceReady() && map.hasLayer(streetLayer)) map.removeLayer(streetLayer);
+        mapEl.classList.toggle("map-mode-3d", mode === "3d");
+        const center = map.getCenter();
+        gl.easeTo({
+          center: [center.lng, center.lat],
+          zoom: map.getZoom(),
+          bearing: map.getBearing?.() ?? 0,
+          pitch: mapLibrePitchByZoom(map.getZoom()),
+          duration: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 520,
+          essential: true,
+        });
+        updateMapLibrePoiLayer(Array.from(state.poiData.values()));
+      }
     }
 
-    state.baseMode = mode;
     updateModeControlButtons();
-    void refreshRoadGuideLayer(true);
-    if (mode === "street") void refreshVisionLayer(true);
-    else state.visionLayer?.clearLayers();
+    if (!state.maplibreMap && state.baseMode === "street") {
+      void refreshRoadGuideLayer(true);
+      void refreshVisionLayer(true);
+    } else {
+      state.roadGuideLayer?.clearLayers();
+      state.visionLayer?.clearLayers();
+    }
+    map.invalidateSize();
   }
 
   // ─── Camera tile ────────────────────────────────────────────────
@@ -10779,10 +11124,21 @@ if (staticRoute) {
   }
   initMobileUI();
   void refreshSnapshot();
-  // Also fetch nearby POIs immediately so tablet filters have data even if devices are empty
-  void refreshOverpassLayer();
-  void refreshRoadGuideLayer(true);
-  void refreshVisionLayer(true);
+  // Start the CARTO vector renderer immediately. Leaflet remains the control and
+  // marker plane, so existing app interactions keep working without two visible bases.
+  void ensureMapLibreMap().then((gl) => {
+    if (gl && state.baseMode !== "satellite" && mapLibreSurfaceReady()) {
+      if (map.hasLayer(streetLayer)) map.removeLayer(streetLayer);
+      state.roadGuideLayer?.clearLayers();
+      state.visionLayer?.clearLayers();
+    }
+    lastOverpassFetchBounds = null;
+    void refreshOverpassLayer();
+    if (!gl) {
+      void refreshRoadGuideLayer(true);
+      void refreshVisionLayer(true);
+    }
+  });
 }
 
 // ─── PWA: Service Worker registration and install prompt handler ─────
@@ -10980,10 +11336,16 @@ function itsShowRoadmapStoryModal(): void {
   `;
   document.body.appendChild(modal);
   let closeRoadmapModal: () => void = () => undefined;
+  let roadmapClosing = false;
   const keyHandler = (keyEvent: KeyboardEvent) => {
     if (keyEvent.key === "Escape") closeRoadmapModal();
   };
   closeRoadmapModal = () => {
+    if (roadmapClosing) return;
+    roadmapClosing = true;
+    if (modal.classList.contains("its-ai-agent-target-stacked")) {
+      itsReleaseAgentPanelStack();
+    }
     window.removeEventListener("keydown", keyHandler);
     modal.classList.remove("open");
     document.body.classList.remove("map-license-panel-open");
@@ -11062,10 +11424,16 @@ function itsShowSiteInfoModal(kind: SiteInfoModalKind): void {
   `;
   document.body.appendChild(modal);
   let closeInfoModal: () => void = () => undefined;
+  let infoModalClosing = false;
   const keyHandler = (keyEvent: KeyboardEvent) => {
     if (keyEvent.key === "Escape") closeInfoModal();
   };
   closeInfoModal = () => {
+    if (infoModalClosing) return;
+    infoModalClosing = true;
+    if (modal.classList.contains("its-ai-agent-target-stacked")) {
+      itsReleaseAgentPanelStack();
+    }
     window.removeEventListener("keydown", keyHandler);
     modal.classList.remove("open");
     document.body.classList.remove("map-license-panel-open");
@@ -11111,10 +11479,16 @@ function itsShowMapLicenseModal(): void {
   `;
   document.body.appendChild(modal);
   let closeLicenseModal: () => void = () => undefined;
+  let mapLicenseClosing = false;
   const keyHandler = (keyEvent: KeyboardEvent) => {
     if (keyEvent.key === "Escape") closeLicenseModal();
   };
   closeLicenseModal = () => {
+    if (mapLicenseClosing) return;
+    mapLicenseClosing = true;
+    if (modal.classList.contains("its-ai-agent-target-stacked")) {
+      itsReleaseAgentPanelStack();
+    }
     window.removeEventListener("keydown", keyHandler);
     modal.classList.remove("open");
     document.body.classList.remove("map-license-panel-open");
@@ -11160,10 +11534,16 @@ function itsShowAiLicenseModal(): void {
   `;
   document.body.appendChild(modal);
   let closeLicenseModal: () => void = () => undefined;
+  let aiLicenseClosing = false;
   const keyHandler = (keyEvent: KeyboardEvent) => {
     if (keyEvent.key === "Escape") closeLicenseModal();
   };
   closeLicenseModal = () => {
+    if (aiLicenseClosing) return;
+    aiLicenseClosing = true;
+    if (modal.classList.contains("its-ai-agent-target-stacked")) {
+      itsReleaseAgentPanelStack();
+    }
     window.removeEventListener("keydown", keyHandler);
     modal.classList.remove("open");
     document.body.classList.remove("map-license-panel-open");
@@ -11831,20 +12211,27 @@ async function itsShowWindowsDownloadModal(): Promise<void> {
 
 function setupPromptSheetSwipe(sheetEl: HTMLElement, onClose: () => void): void {
   let startAxis = 0;
+  let startCrossAxis = 0;
   let currentAxis = 0;
   let dragging = false;
+  let directionLocked = false;
   let pointerId = -1;
   let startedAt = 0;
 
   sheetEl.addEventListener("pointerdown", (event) => {
     const target = event.target as HTMLElement;
     const startsOnHandle = promptSheetSwipeHandleTarget(target);
-    if (!startsOnHandle && target.closest("button, a, input, label, select, textarea")) return;
+    // Header areas double as swipe handles, but their controls must retain the
+    // original pointer target. Capturing a close-button pointer on the sheet
+    // retargets the click to <section> and makes the button appear unresponsive.
+    if (target.closest("button, a, input, label, select, textarea")) return;
     const horizontal = window.matchMedia("(min-width: 721px)").matches;
     if (!startsOnHandle && !promptCanStartDismiss(target, sheetEl, horizontal)) return;
     startAxis = horizontal ? event.clientX : event.clientY;
+    startCrossAxis = horizontal ? event.clientY : event.clientX;
     currentAxis = 0;
     dragging = true;
+    directionLocked = false;
     pointerId = event.pointerId;
     startedAt = performance.now();
     sheetEl.dataset.swipeAxis = horizontal ? "x" : "y";
@@ -11856,9 +12243,23 @@ function setupPromptSheetSwipe(sheetEl: HTMLElement, onClose: () => void): void 
     if (!dragging || event.pointerId !== pointerId) return;
     const horizontal = sheetEl.dataset.swipeAxis === "x";
     const axis = horizontal ? event.clientX : event.clientY;
-    currentAxis = Math.max(0, axis - startAxis);
+    const crossAxis = horizontal ? event.clientY : event.clientX;
+    const primaryDelta = axis - startAxis;
+    const crossDelta = crossAxis - startCrossAxis;
+    if (!directionLocked) {
+      if (Math.max(Math.abs(primaryDelta), Math.abs(crossDelta)) < 8) return;
+      if (Math.abs(crossDelta) > Math.abs(primaryDelta)) {
+        dragging = false;
+        sheetEl.style.transition = "";
+        sheetEl.style.transform = "";
+        return;
+      }
+      directionLocked = true;
+    }
+    currentAxis = Math.max(0, primaryDelta);
     if (currentAxis > 2) event.preventDefault();
     sheetEl.style.transform = horizontal ? `translateX(${currentAxis}px)` : `translateY(${currentAxis}px)`;
+    sheetEl.style.opacity = String(Math.max(0.72, 1 - currentAxis / Math.max(480, sheetEl.clientWidth * 2)));
     if (horizontal) {
       const remaining = Math.max(0, sheetEl.getBoundingClientRect().width - currentAxis);
       setPromptSidePanelWidth(remaining);
@@ -11870,6 +12271,7 @@ function setupPromptSheetSwipe(sheetEl: HTMLElement, onClose: () => void): void 
     dragging = false;
     pointerId = -1;
     sheetEl.style.transition = "";
+    sheetEl.style.opacity = "";
     const elapsed = Math.max(1, performance.now() - startedAt);
     const velocity = currentAxis / elapsed;
     if (currentAxis > 56 || velocity > 0.55) onClose();
@@ -11886,15 +12288,11 @@ function setupPromptSheetSwipe(sheetEl: HTMLElement, onClose: () => void): void 
 
 type ItsWebMcpResource = "home" | "documentation" | "method" | "privacy" | "licence" | "ai-license" | "roadmap" | "pdf" | "llms" | "about";
 
-let itsChatGenerator: any = null;
-let itsChatGeneratorPromise: Promise<any> | null = null;
-let itsChatGenerationQueue: Promise<void> = Promise.resolve();
 let itsWebMcpListenersInstalled = false;
 let itsWebMcpImperativeRegistered = false;
 let itsAgentModeEnabled = false;
 let itsAgentPanelTransitionActive = false;
 let itsAgentStackCleanup: (() => void) | null = null;
-let itsChatModelProgressListener: ((status: string) => void) | null = null;
 let itsLastRealPointer = { x: Math.max(16, window.innerWidth - 72), y: Math.max(16, window.innerHeight - 72), valid: false };
 
 const ITS_MODEL_IDS = {
@@ -11902,9 +12300,6 @@ const ITS_MODEL_IDS = {
   research: "onnx-community/Qwen2.5-0.5B-Instruct",
   vision: RF_DETR_ANDROID_MODEL_ID,
 } as const;
-
-let itsResearchGenerator: any = null;
-let itsResearchGeneratorPromise: Promise<any> | null = null;
 
 document.addEventListener("pointermove", (event) => {
   if ((event.target as HTMLElement | null)?.closest("#its-agent-cursor")) return;
@@ -12362,150 +12757,9 @@ async function itsSearchTrafficLocation(location: string): Promise<Record<string
   };
 }
 
-async function ensureItsChatModel(): Promise<any> {
-  if (itsChatGenerator) return itsChatGenerator;
-  if (itsChatGeneratorPromise) return itsChatGeneratorPromise;
-  itsChatGeneratorPromise = (async () => {
-    const transformers = await import("@huggingface/transformers") as any;
-    transformers.env.allowLocalModels = false;
-    transformers.env.allowRemoteModels = true;
-    transformers.env.useBrowserCache = true;
-    const progressCallback = (info: Record<string, unknown>) => {
-      if (info.status === "progress" && Number.isFinite(Number(info.progress))) {
-        const file = String(info.file || "");
-        itsChatModelProgressListener?.(/model_.*\.onnx(?:_data)?$/i.test(file)
-          ? `Memuat model bahasa lokal ${Math.round(Number(info.progress))}%`
-          : "Menyiapkan tokenizer model bahasa...");
-      } else if (info.status === "ready") {
-        itsChatModelProgressListener?.("Model bahasa lokal siap");
-      }
-    };
-    const options = { dtype: "q4", progress_callback: progressCallback };
-    if ("gpu" in navigator) {
-      try {
-        itsChatGenerator = await transformers.pipeline(
-          "text-generation",
-          "onnx-community/SmolLM2-135M-Instruct-ONNX",
-          { ...options, device: "webgpu" },
-        );
-        return itsChatGenerator;
-      } catch (error) {
-        console.warn("[ITS] WebGPU chat model unavailable, falling back to WASM", error);
-        itsChatModelProgressListener?.("WebGPU belum tersedia, beralih ke WASM");
-      }
-    }
-    itsChatGenerator = await transformers.pipeline(
-      "text-generation",
-      "onnx-community/SmolLM2-135M-Instruct-ONNX",
-      { ...options, device: "wasm" },
-    );
-    return itsChatGenerator;
-  })();
-  try {
-    return await itsChatGeneratorPromise;
-  } catch (error) {
-    itsChatGeneratorPromise = null;
-    throw error;
-  }
-}
-
-async function ensureItsResearchModel(): Promise<any> {
-  if (itsResearchGenerator) return itsResearchGenerator;
-  if (itsResearchGeneratorPromise) return itsResearchGeneratorPromise;
-
-  itsResearchGeneratorPromise = (async () => {
-    const transformers = await import("@huggingface/transformers") as any;
-    transformers.env.allowLocalModels = false;
-    transformers.env.allowRemoteModels = true;
-    transformers.env.useBrowserCache = true;
-    const progressCallback = (info: Record<string, unknown>) => {
-      if (info.status === "progress" && Number.isFinite(Number(info.progress))) {
-        const file = String(info.file || "");
-        itsChatModelProgressListener?.(/model_.*\.onnx(?:_data)?$/i.test(file)
-          ? `Memuat model riset lokal ${Math.round(Number(info.progress))}%`
-          : "Menyiapkan tokenizer model riset...");
-      } else if (info.status === "ready") {
-        itsChatModelProgressListener?.("Model riset lokal siap");
-      }
-    };
-    const options = { dtype: "q4", progress_callback: progressCallback };
-
-    if ("gpu" in navigator) {
-      try {
-        itsResearchGenerator = await transformers.pipeline(
-          "text-generation",
-          ITS_MODEL_IDS.research,
-          { ...options, device: "webgpu" },
-        );
-        return itsResearchGenerator;
-      } catch (error) {
-        console.warn("[ITS] WebGPU research model unavailable, falling back to WASM", error);
-        itsChatModelProgressListener?.("WebGPU belum tersedia, beralih ke WASM");
-      }
-    }
-
-    itsResearchGenerator = await transformers.pipeline(
-      "text-generation",
-      ITS_MODEL_IDS.research,
-      { ...options, device: "wasm" },
-    );
-    return itsResearchGenerator;
-  })();
-
-  try {
-    return await itsResearchGeneratorPromise;
-  } catch (error) {
-    itsResearchGeneratorPromise = null;
-    throw error;
-  }
-}
-
 window.addEventListener("pagehide", () => {
-  const models = [
-    itsChatGenerator,
-    itsResearchGenerator,
-  ] as Array<{ dispose?: () => Promise<void> | void } | null>;
-
-  itsChatGenerator = null;
-  itsChatGeneratorPromise = null;
-
-  itsResearchGenerator = null;
-  itsResearchGeneratorPromise = null;
-
-  models.forEach((model) => {
-    if (model?.dispose) {
-      void Promise.resolve(model.dispose()).catch(() => undefined);
-    }
-  });
+  disposeBrowserTextWorker();
 }, { once: true });
-
-function itsWithTimeout<T>(task: Promise<T>, ms: number, message: string): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const timer = window.setTimeout(() => reject(new Error(message)), ms);
-    task.then(
-      (value) => {
-        window.clearTimeout(timer);
-        resolve(value);
-      },
-      (error) => {
-        window.clearTimeout(timer);
-        reject(error);
-      },
-    );
-  });
-}
-
-function itsExtractGeneratedAnswer(output: unknown, prompt: string): string {
-  const first = Array.isArray(output) ? output[0] : output;
-  const generated = (first as { generated_text?: unknown })?.generated_text;
-  if (Array.isArray(generated)) {
-    const last = generated.at(-1) as { content?: unknown } | undefined;
-    if (typeof last?.content === "string") return last.content.trim();
-  }
-  if (typeof generated === "string") return generated.replace(prompt, "").trim();
-  if (typeof first === "string") return first.replace(prompt, "").trim();
-  return "";
-}
 
 function itsNormalizeResearchText(value: string): string {
   return value
@@ -13121,10 +13375,10 @@ async function itsAnswerResearchTask(
   let answer = itsDeterministicResearchAnswer(task.question, sources);
 
   try {
-    onStage?.("Menyusun jawaban dari sumber terverifikasi...");
-    const generator = await itsWithTimeout(ensureItsResearchModel(), 120000, "Model riset belum selesai dimuat.");
-    const output = await itsWithTimeout(
-      itsQueueChatGeneration(() => generator([
+    onStage?.("Skill Sintesis ilmiah: menyusun jawaban dari sumber terverifikasi");
+    const generated = await generateBrowserText(
+      "research",
+      [
         {
           role: "system",
           content: [
@@ -13136,11 +13390,11 @@ async function itsAnswerResearchTask(
           ].join("\n"),
         },
         { role: "user", content: `Pertanyaan: ${task.question}\n\nBUKTI:\n${itsResearchContext(sources.slice(0, 8))}` },
-      ], { max_new_tokens: 360, temperature: 0.1, do_sample: false, repetition_penalty: 1.08 })),
-      150000,
-      "Model riset terlalu lama menjawab.",
+      ],
+      { max_new_tokens: 360, temperature: 0.1, do_sample: false, repetition_penalty: 1.08 },
+      (message) => onStage?.(message),
+      150_000,
     );
-    const generated = itsExtractGeneratedAnswer(output, "").trim();
     if (itsGeneratedAnswerLooksUseful(generated, task.question) && itsResearchCitationsValid(generated, sources.length)) {
       answer = generated;
     }
@@ -13296,12 +13550,6 @@ function itsCompactAssistantContext(status: Record<string, unknown>): Record<str
       },
     },
   };
-}
-
-function itsQueueChatGeneration<T>(task: () => Promise<T>): Promise<T> {
-  const run = itsChatGenerationQueue.then(task, task);
-  itsChatGenerationQueue = run.then(() => undefined, () => undefined);
-  return run;
 }
 
 function itsResolveConversationalQuestion(question: string, history: ItsChatTurn[]): string {
@@ -13942,12 +14190,7 @@ function itsUserLocationCardHtml(device: Record<string, unknown>): string {
 function itsPoiCardHtml(device: Record<string, unknown>): string {
   const origin = itsRuntimeBridge().getUserLocation?.() || itsLatLng(device) || { lat: -6.977254, lng: 107.631817 };
   const runtimePois = itsRuntimeBridge().getPoiSnapshot?.() || [];
-  const fallbackPois: ItsRuntimePoiSnapshot[] = [
-    { id: "its-ai-rs", title: "Raspberry Pi 5 Controller", kind: "traffic", icon: "RS", lat: itsLatLng(device)?.lat || -6.977254, lng: itsLatLng(device)?.lng || 107.631817 },
-    { id: "its-ai-campus", title: "Kawasan Kampus", kind: "campus", icon: "Edu", lat: -6.97655, lng: 107.63262 },
-    { id: "its-ai-parking", title: "Area Parkir", kind: "parking", icon: "P", lat: -6.9791, lng: 107.6304 },
-  ];
-  const pois = (runtimePois.length ? runtimePois : fallbackPois)
+  const pois = runtimePois
     .map((poi) => ({
       poi,
       distance: itsChatDistanceMeters(origin.lat, origin.lng, poi.lat, poi.lng),
@@ -14175,6 +14418,52 @@ function itsVisibleAgentTarget(selector: string): HTMLElement | null {
   }) || null;
 }
 
+function itsAnimateAgentCursor(
+  cursor: HTMLElement,
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+): Promise<void> {
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    cursor.style.left = `${to.x}px`;
+    cursor.style.top = `${to.y}px`;
+    return itsDelay(30);
+  }
+  const distance = Math.hypot(to.x - from.x, to.y - from.y);
+  const duration = Math.max(320, Math.min(760, 300 + distance * 0.24));
+  const direction = to.x >= from.x ? 1 : -1;
+  const arc = Math.min(72, Math.max(20, distance * 0.12));
+  const controlA = {
+    x: from.x + (to.x - from.x) * 0.28 + direction * arc,
+    y: from.y + (to.y - from.y) * 0.18 - arc,
+  };
+  const controlB = {
+    x: from.x + (to.x - from.x) * 0.72 - direction * arc * 0.35,
+    y: from.y + (to.y - from.y) * 0.82 + arc * 0.2,
+  };
+  const startedAt = performance.now();
+  cursor.style.transition = "opacity 100ms ease, transform 100ms ease";
+  return new Promise((resolve) => {
+    const frame = (now: number) => {
+      const linear = Math.min(1, (now - startedAt) / duration);
+      const t = 1 - Math.pow(1 - linear, 3);
+      const inverse = 1 - t;
+      const x = inverse ** 3 * from.x
+        + 3 * inverse ** 2 * t * controlA.x
+        + 3 * inverse * t ** 2 * controlB.x
+        + t ** 3 * to.x;
+      const y = inverse ** 3 * from.y
+        + 3 * inverse ** 2 * t * controlA.y
+        + 3 * inverse * t ** 2 * controlB.y
+        + t ** 3 * to.y;
+      cursor.style.left = `${x}px`;
+      cursor.style.top = `${y}px`;
+      if (linear < 1) window.requestAnimationFrame(frame);
+      else resolve();
+    };
+    window.requestAnimationFrame(frame);
+  });
+}
+
 async function itsAgentClick(selector: string, fallback: () => void): Promise<void> {
   const target = itsVisibleAgentTarget(selector);
   const cursor = itsEnsureAgentCursor();
@@ -14186,9 +14475,7 @@ async function itsAgentClick(selector: string, fallback: () => void): Promise<vo
   document.body.classList.add("its-agent-cursor-active");
   cursor.classList.add("visible");
   await itsDelay(20);
-  cursor.style.left = `${destination.x}px`;
-  cursor.style.top = `${destination.y}px`;
-  await itsDelay(window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 40 : 480);
+  await itsAnimateAgentCursor(cursor, start, destination);
   cursor.classList.add("clicking");
   itsAgentPanelTransitionActive = true;
   try {
@@ -14199,9 +14486,7 @@ async function itsAgentClick(selector: string, fallback: () => void): Promise<vo
     itsAgentPanelTransitionActive = false;
   }
   cursor.classList.remove("clicking");
-  cursor.style.left = `${start.x}px`;
-  cursor.style.top = `${start.y}px`;
-  await itsDelay(window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 30 : 320);
+  await itsAnimateAgentCursor(cursor, destination, start);
   cursor.remove();
   document.body.classList.remove("its-agent-cursor-active");
 }
@@ -14893,7 +15178,7 @@ async function itsBuildAssistantResponse(
     }
     return { text: analysis.summary };
   }
-  if (flags.research || flags.formula || flags.webSearch) {
+  if (publicResearchAgent.shouldHandle(resolvedQuestion, history) || flags.research || flags.formula || flags.webSearch) {
     const research = await publicResearchAgent.answer({
       question: resolvedQuestion,
       history,
@@ -15019,13 +15304,14 @@ async function askItsMapsAssistant(question: string, onStage?: (stage: string) =
     return visualResponse;
   }
   try {
-    onStage?.("Memuat model lokal untuk memahami pertanyaan");
-    itsChatModelProgressListener = onStage || null;
-    const generator = await itsWithTimeout(
-      ensureItsChatModel(),
-      120000,
-      "Model bahasa lokal belum selesai dimuat.",
-    );
+    if (!isBrowserTextModelReady("chat")) {
+      onStage?.("Skill bahasa disiapkan di background; jawaban aman ditampilkan sekarang");
+      void warmBrowserTextModel("chat").catch((error) => {
+        console.warn("[ITS] Persiapan model bahasa background belum selesai", error);
+      });
+      return visualResponse;
+    }
+    onStage?.("Skill Pemahaman bahasa: membaca maksud dan konteks pertanyaan");
     const recentConversation = history.slice(-4).map((turn) => `${turn.role === "user" ? "Pengguna" : "Asisten"}: ${turn.content.slice(0, 320)}`).join("\n");
     const systemContent = [
       "Kamu adalah Asisten ITS Maps berbahasa Indonesia.",
@@ -15040,23 +15326,21 @@ async function askItsMapsAssistant(question: string, onStage?: (stage: string) =
       "",
     ].join("\n");
     const messages = [
-      { role: "system", content: systemContent },
-      { role: "user", content: resolvedQuestion },
+      { role: "system" as const, content: systemContent },
+      { role: "user" as const, content: resolvedQuestion },
     ];
-    onStage?.("Menganalisis pertanyaan dan data realtime");
-    const output = await itsWithTimeout(
-      itsQueueChatGeneration(() => generator(messages, { max_new_tokens: 48, temperature: 0.2, do_sample: false })),
-      60000,
-      "Model lokal terlalu lama menjawab.",
+    const answer = await generateBrowserText(
+      "chat",
+      messages,
+      { max_new_tokens: 72, temperature: 0.18, do_sample: false, repetition_penalty: 1.08 },
+      (message) => onStage?.(message),
+      75_000,
     );
-    const answer = itsExtractGeneratedAnswer(output, "");
     return { ...visualResponse, text: itsGeneratedAnswerLooksUseful(answer, resolvedQuestion) ? answer : visualResponse.text };
   } catch (error) {
     console.warn("[ITS] Local AI assistant fallback", error);
     onStage?.("Model lokal belum siap, memakai pembaca data realtime");
     return visualResponse;
-  } finally {
-    itsChatModelProgressListener = null;
   }
 }
 
@@ -15233,7 +15517,7 @@ function itsShowAiChatModal(): void {
           <span>Pertanyaan</span>
           <input name="question" type="text" autocomplete="off" placeholder="Tanya apa saja tentang ITS Maps..." required>
         </label>
-        <button type="submit">Kirim</button>
+        <button type="submit" data-ai-chat-send><span data-ai-send-label>Kirim</span><i data-ai-send-spinner aria-hidden="true"></i></button>
       </form>
     </div>`;
   document.body.appendChild(modal);
@@ -15241,9 +15525,15 @@ function itsShowAiChatModal(): void {
   const sheet = modal.querySelector<HTMLElement>(".its-ai-chat-sheet");
   const log = modal.querySelector<HTMLElement>("[data-ai-chat-log]");
   const input = modal.querySelector<HTMLInputElement>("input[name='question']");
+  const form = modal.querySelector<HTMLFormElement>("[data-ai-chat-form]");
+  const sendButton = modal.querySelector<HTMLButtonElement>("[data-ai-chat-send]");
+  const sendLabel = sendButton?.querySelector<HTMLElement>("[data-ai-send-label]");
+  const disposeLiveActivity = log ? mountAgentLiveActivity(log) : () => undefined;
   const conversation: ItsChatTurn[] = [];
+  let promptRunning = false;
   const close = () => {
     itsReleaseAgentPanelStack();
+    disposeLiveActivity();
     modal.classList.remove("open");
     clearPromptSidePanelWidth();
     window.setTimeout(() => modal.remove(), 220);
@@ -15255,12 +15545,15 @@ function itsShowAiChatModal(): void {
     node.classList.add("its-ai-typewriter");
     node.textContent = "";
     let index = 0;
+    const chunkSize = text.length > 1_500 ? 16 : text.length > 800 ? 8 : text.length > 360 ? 4 : 1;
+    const delay = text.length > 800 ? 7 : text.length > 360 ? 9 : 12;
     const tick = () => {
       node.textContent = text.slice(0, index);
       scrollLog();
-      index += 1;
-      if (index <= text.length) window.setTimeout(tick, Math.max(5, Math.min(22, 260 / Math.max(text.length, 1))));
+      index += chunkSize;
+      if (index <= text.length) window.setTimeout(tick, delay);
       else {
+        node.textContent = text;
         node.classList.remove("its-ai-typewriter");
         resolve();
       }
@@ -15288,11 +15581,24 @@ function itsShowAiChatModal(): void {
       item.appendChild(host);
       scrollLog();
       void itsHydrateSnapshotDetectionCards(host);
+      renderMathIn(host);
     }
+  };
+  const setPromptBusy = (busy: boolean) => {
+    promptRunning = busy;
+    form?.classList.toggle("is-busy", busy);
+    form?.setAttribute("aria-busy", String(busy));
+    if (input) input.disabled = busy;
+    if (sendButton) sendButton.disabled = busy;
+    if (sendLabel) sendLabel.textContent = busy ? "Memproses" : "Kirim";
+    modal.querySelectorAll<HTMLButtonElement>("[data-ai-chat-prompt], [data-ai-agent-toggle]").forEach((button) => {
+      button.disabled = busy;
+    });
   };
   const runPrompt = async (question: string) => {
     const trimmed = question.trim();
-    if (!trimmed) return;
+    if (!trimmed || promptRunning) return;
+    setPromptBusy(true);
     const previousConversation = conversation.slice();
     addMessage("user", trimmed);
     conversation.push({ role: "user", content: trimmed });
@@ -15311,6 +15617,9 @@ function itsShowAiChatModal(): void {
     } catch (error) {
       itsSetChatStatus();
       await addAssistantMessage(error instanceof Error ? error.message : "Chat AI belum dapat menjawab.");
+    } finally {
+      setPromptBusy(false);
+      input?.focus();
     }
   };
   modal.querySelector<HTMLButtonElement>("[data-ai-chat-close]")?.addEventListener("click", close);
@@ -15403,21 +15712,8 @@ function itsShowAiChatModal(): void {
     button.setAttribute("aria-pressed", String(itsAgentModeEnabled));
     button.textContent = itsAgentModeEnabled ? "Agent aktif" : "Agent";
     button.classList.toggle("active", itsAgentModeEnabled);
-    itsSetChatStatus(itsAgentModeEnabled ? "Agent in-page aktif; menyiapkan model bahasa..." : "Agent in-page dimatikan");
-    if (itsAgentModeEnabled) {
-      itsChatModelProgressListener = itsSetChatStatus;
-      void ensureItsChatModel().then(() => {
-        itsSetChatStatus("Model bahasa lokal siap");
-        window.setTimeout(() => itsSetChatStatus(), 1200);
-      }).catch(() => {
-        itsSetChatStatus("Model lokal belum siap; data RTDB tetap tersedia");
-        window.setTimeout(() => itsSetChatStatus(), 1800);
-      }).finally(() => {
-        itsChatModelProgressListener = null;
-      });
-    } else {
-      window.setTimeout(() => itsSetChatStatus(), 1200);
-    }
+    itsSetChatStatus(itsAgentModeEnabled ? "Agent in-page aktif; model hanya dimuat saat benar-benar dibutuhkan" : "Agent in-page dimatikan");
+    window.setTimeout(() => itsSetChatStatus(), 1600);
   });
   modal.querySelector<HTMLFormElement>("[data-ai-chat-form]")?.addEventListener("submit", (event) => {
     event.preventDefault();

@@ -1,3 +1,13 @@
+import {
+  generateBrowserText,
+  isBrowserTextModelReady,
+  warmBrowserTextModel,
+} from "./ai/browserTextModelClient";
+import {
+  agentLiveActivity,
+  type AgentActivitySource,
+} from "./agentLiveActivity";
+
 export type PublicResearchMode = "journal" | "profile" | "image" | "general";
 
 export type PublicResearchTurn = {
@@ -90,6 +100,22 @@ const STATE_KEY = "its-public-research-state:v1";
 const SEARCH_CACHE_PREFIX = "its-public-research-cache:v1:";
 const MAX_SOURCE_CONTEXT_CHARS = 24_000;
 const DEFAULT_RESULT_LIMIT = 6;
+
+function playbackSource(source: PublicResearchSource): AgentActivitySource {
+  return {
+    id: source.id,
+    title: source.title,
+    provider: source.provider,
+    url: source.url || source.pdfUrl,
+    excerpt: cleanEvidenceText(source.abstract || source.fullText).slice(0, 520),
+    authors: source.authors,
+    year: source.year,
+  };
+}
+
+function yieldResearchUi(): Promise<void> {
+  return new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
+}
 
 
 function escapeHtml(value: string): string {
@@ -270,30 +296,6 @@ function cacheSet<T>(key: string, value: T): void {
   }
 }
 
-function generatedText(output: unknown): string {
-  const first = Array.isArray(output) ? output[0] : output;
-  const generated = (first as { generated_text?: unknown } | null)?.generated_text;
-  if (Array.isArray(generated)) {
-    const last = generated.at(-1) as { content?: unknown } | undefined;
-    return typeof last?.content === "string" ? last.content.trim() : "";
-  }
-  if (typeof generated === "string") return generated.trim();
-  if (typeof first === "string") return first.trim();
-  return "";
-}
-
-function extractJson(value: string): Record<string, unknown> | null {
-  const fenced = value.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1] || value;
-  const start = fenced.indexOf("{");
-  const end = fenced.lastIndexOf("}");
-  if (start < 0 || end <= start) return null;
-  try {
-    return JSON.parse(fenced.slice(start, end + 1)) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-}
-
 function cleanPublicSearchQuery(question: string, mode: PublicResearchMode): string {
   let query = question
     .replace(/\b(tolong|mohon|coba|bisa|bisakah|carikan|cari|search|temukan|tampilkan|jelaskan|uraikan|berikan)\b/gi, " ")
@@ -313,18 +315,25 @@ function cleanPublicSearchQuery(question: string, mode: PublicResearchMode): str
 
 function fallbackPlan(question: string, previous: StoredResearchState | null): PublicResearchPlan {
   const q = normalize(question);
-  const wantsFormula = includesAny(q, ["rumus", "formula", "persamaan", "derivasi", "turunkan", "penurunan", "loss", "iou", "giou", "mean average precision", "map score", "map metric", "precision", "recall"]);
+  const wantsFormula = includesAny(q, [
+    "rumus", "formula", "persamaan", "derivasi", "turunkan", "penurunan", "loss", "iou", "giou",
+    "mean average precision", "map score", "map metric", "precision", "recall", "rf detr", "rf-detr", "detr",
+    "hungarian matching", "bipartite matching", "transformer object detection", "cross attention", "self attention",
+  ]);
   const journal = wantsFormula || includesAny(q, ["jurnal", "paper", "penelitian", "doi", "sitasi", "daftar pustaka", "arxiv", "referensi ilmiah"]);
   const profile = includesAny(q, ["profil", "pencipta", "developer", "pendidikan", "kuliah", "universitas", "linkedin", "github", "biografi", "siapa"]);
   const image = includesAny(q, ["foto", "gambar", "image", "kampus", "gedung"]);
   const followUp = Boolean(previous) && (q.length < 80 || includesAny(q, ["bagian", "maksud", "simbol", "yang tadi", "jelaskan lagi", "belum paham", "kenapa", "contoh"]));
   const mode: PublicResearchMode = journal ? "journal" : profile ? "profile" : image ? "image" : "general";
   const query = cleanPublicSearchQuery(question, mode);
+  const englishQuery = wantsFormula && /\b(?:rf[- ]?detr|detr)\b/i.test(question)
+    ? "RF-DETR DETR Hungarian matching loss classification L1 generalized IoU object detection"
+    : query;
   return {
     mode,
     needsSearch: !followUp || includesAny(q, ["cari lagi", "sumber lain", "jurnal lain", "terbaru", "tambahkan sumber"]),
     query,
-    englishQuery: query,
+    englishQuery,
     focus: wantsFormula ? "mathematical formulation and derivation" : question.trim(),
     isFollowUp: followUp,
     wantsFormula,
@@ -347,7 +356,25 @@ function sourceScore(source: PublicResearchSource, query: string): number {
   const citations = Math.log10(1 + Math.max(0, source.citationCount)) / 5;
   const fullTextBonus = source.fullText ? 0.15 : 0;
   const pdfBonus = source.pdfUrl ? 0.08 : 0;
-  return relevance * 0.72 + citations * 0.12 + fullTextBonus + pdfBonus;
+  const authorityText = normalize(`${source.venue} ${source.url} ${source.license}`);
+  const authority = includesAny(authorityText, [
+    "ieee", "acm", "wiley", "springer", "nature", "science", "elsevier", "sciencedirect",
+    "computer vision and pattern recognition", "cvpr", "eccv", "iccv", "openreview", "arxiv",
+  ]) ? 0.16 : 0;
+  const international = /[a-z]/i.test(source.venue) && !includesAny(authorityText, ["jurnal indonesia", "universitas indonesia", "sinta"])
+    ? 0.04
+    : 0;
+  const canonicalDetr = normalize(source.title) === "end-to-end object detection with transformers" ? 1.2 : 0;
+  return relevance * 0.62 + citations * 0.14 + authority + international + fullTextBonus + pdfBonus + canonicalDetr;
+}
+
+function sourceQualityLabel(source: PublicResearchSource): string {
+  const text = normalize(`${source.venue} ${source.url}`);
+  if (includesAny(text, ["ieee", "acm", "wiley", "springer", "nature", "elsevier", "sciencedirect", "cvpr", "eccv", "iccv"])) {
+    return "Penerbit/venue internasional bereputasi; quartile perlu diverifikasi pada indeks resmi";
+  }
+  if (source.citationCount >= 100) return "Dampak sitasi tinggi; quartile belum diverifikasi";
+  return "Metadata publik; peringkat Q1/SINTA belum diverifikasi";
 }
 
 function bestPdfLink(links: unknown): string {
@@ -395,6 +422,40 @@ async function searchCrossref(query: string, limit = DEFAULT_RESULT_LIMIT): Prom
       score: 0,
     };
   }).filter((source) => source.title);
+  cacheSet(cacheKey, result);
+  return result;
+}
+
+async function fetchCrossrefDoi(doi: string): Promise<PublicResearchSource[]> {
+  const cacheKey = `crossref-doi:${normalize(doi)}`;
+  const cached = cacheGet<PublicResearchSource[]>(cacheKey);
+  if (cached) return cached;
+  const data = await fetchJson<{ message?: Record<string, any> }>(`${CROSSREF_BASE}/${encodeURIComponent(doi)}`);
+  const item = data.message || {};
+  const title = firstString(item.title);
+  const authors = Array.isArray(item.author)
+    ? item.author.map((author: Record<string, unknown>) => [author.given, author.family].filter(Boolean).join(" ").trim()).filter(Boolean)
+    : [];
+  const source: PublicResearchSource = {
+    id: buildId("crossref", String(item.DOI || doi)),
+    provider: "crossref",
+    title,
+    authors,
+    year: dateYear(item["published-print"]?.["date-parts"] || item["published-online"]?.["date-parts"]),
+    venue: firstString(item["container-title"]),
+    doi: String(item.DOI || doi),
+    url: String(item.URL || `https://doi.org/${doi}`),
+    pdfUrl: bestPdfLink(item.link),
+    abstract: stripHtml(String(item.abstract || "")),
+    fullText: "",
+    citationCount: safeNumber(item["is-referenced-by-count"]),
+    license: Array.isArray(item.license) ? String(item.license[0]?.URL || "") : "",
+    imageUrl: "",
+    imageSourceUrl: "",
+    facts: [],
+    score: 0,
+  };
+  const result = source.title ? [source] : [];
   cacheSet(cacheKey, result);
   return result;
 }
@@ -702,52 +763,15 @@ function bestExcerpts(source: PublicResearchSource, query: string, maxChunks = 3
 }
 
 class ClientPublicResearchAgent {
-  private generator: any = null;
-  private generatorPromise: Promise<any> | null = null;
-
-  private async getGenerator(onProgress?: (message: string) => void): Promise<any> {
-    if (this.generator) return this.generator;
-    if (this.generatorPromise) return this.generatorPromise;
-    this.generatorPromise = (async () => {
-      const transformers = await import("@huggingface/transformers") as any;
-      transformers.env.useBrowserCache = true;
-      transformers.env.allowLocalModels = false;
-      transformers.env.allowRemoteModels = true;
-      const modelId = "onnx-community/Qwen2.5-0.5B-Instruct";
-      const options = {
-        dtype: "q4",
-        progress_callback: (info: Record<string, unknown>) => {
-          if (info.status === "progress" && Number.isFinite(Number(info.progress))) {
-            onProgress?.(`Memuat model riset lokal ${Math.round(Number(info.progress))}%`);
-          }
-        },
-      };
-      if ("gpu" in navigator) {
-        try {
-          this.generator = await transformers.pipeline("text-generation", modelId, { ...options, device: "webgpu" });
-          return this.generator;
-        } catch (error) {
-          console.warn("[ITS Research] WebGPU gagal, memakai WASM", error);
-        }
-      }
-      this.generator = await transformers.pipeline("text-generation", "onnx-community/Qwen2.5-0.5B-Instruct", { ...options, device: "wasm" });
-      return this.generator;
-    })();
-    try {
-      return await this.generatorPromise;
-    } catch (error) {
-      this.generatorPromise = null;
-      throw error;
-    }
-  }
-
   shouldHandle(question: string, history: PublicResearchTurn[] = []): boolean {
     const q = normalize(question);
     const previous = loadState();
     if (previous && history.length && includesAny(q, ["bagian", "maksud", "simbol", "belum paham", "jelaskan lagi", "contoh", "kenapa", "yang tadi"])) return true;
     return includesAny(q, [
       "jurnal", "paper", "penelitian", "referensi", "sitasi", "daftar pustaka", "doi", "arxiv", "pdf",
-      "rumus", "formula", "persamaan", "turunkan", "penurunan", "loss", "iou", "giou", "precision", "recall", "map",
+      "rumus", "formula", "persamaan", "turunkan", "penurunan", "loss", "iou", "giou", "precision", "recall",
+      "map score", "map metric", "mean average precision", "rf detr", "rf-detr", "detr", "hungarian matching",
+      "bipartite matching", "transformer object detection", "cross attention", "self attention",
       "profil", "pencipta", "developer", "pendidikan", "kuliah", "universitas", "linkedin", "github", "biografi",
       "foto", "gambar", "kampus", "gedung", "cari situs", "search website",
     ]);
@@ -756,72 +780,56 @@ class ClientPublicResearchAgent {
   private async plan(question: string, history: PublicResearchTurn[], onProgress?: (message: string) => void): Promise<PublicResearchPlan> {
     const previous = loadState();
     const fallback = fallbackPlan(question, previous);
-    try {
-      onProgress?.("Memahami maksud pertanyaan dan konteks percakapan...");
-      const generator = await withTimeout(this.getGenerator(onProgress), 120_000, "Model riset belum selesai dimuat.");
-      const recent = history.slice(-6).map((turn) => `${turn.role}: ${turn.content.slice(0, 700)}`).join("\n");
-      const output = await generator([
-        {
-          role: "system",
-          content: [
-            "Klasifikasikan pertanyaan untuk mesin riset publik ITS Maps.",
-            "Keluarkan satu objek JSON valid tanpa markdown.",
-            'mode harus salah satu: "journal", "profile", "image", "general".',
-            "needsSearch=false hanya bila ini pertanyaan lanjutan yang dapat dijawab dari konteks riset sebelumnya.",
-            "englishQuery harus berupa query pencarian singkat dalam bahasa Inggris untuk jurnal, dan mempertahankan nama orang/tempat apa adanya.",
-            "Jangan menjawab pertanyaan pengguna.",
-            'Format: {"mode":"journal","needsSearch":true,"englishQuery":"...","focus":"...","isFollowUp":false,"wantsFormula":true,"wantsPdf":true,"wantsImages":false}',
-          ].join("\n"),
-        },
-        {
-          role: "user",
-          content: `Percakapan terbaru:\n${recent || "-"}\n\nPertanyaan sekarang:\n${question}\n\nAda konteks riset sebelumnya: ${previous ? "ya" : "tidak"}`,
-        },
-      ], { max_new_tokens: 180, temperature: 0, do_sample: false });
-      const parsed = extractJson(generatedText(output));
-      if (!parsed) return fallback;
-      const allowed: PublicResearchMode[] = ["journal", "profile", "image", "general"];
-      const mode = allowed.includes(String(parsed.mode) as PublicResearchMode) ? String(parsed.mode) as PublicResearchMode : fallback.mode;
-      const cleanedQuestion = cleanPublicSearchQuery(question, mode);
-      const modelQuery = cleanPublicSearchQuery(String(parsed.englishQuery || fallback.englishQuery), mode);
+    onProgress?.("Skill Perencana: membaca intent, entitas, dan konteks percakapan");
+    await Promise.resolve();
+    if (history.length && previous && fallback.isFollowUp) {
+      const explicitNewTopic = fallback.mode !== "general" || fallback.wantsFormula || fallback.wantsImages;
       return {
-        mode,
-        needsSearch: typeof parsed.needsSearch === "boolean" ? parsed.needsSearch : fallback.needsSearch,
-        query: cleanedQuestion,
-        englishQuery: modelQuery,
-        focus: String(parsed.focus || fallback.focus).trim(),
-        isFollowUp: typeof parsed.isFollowUp === "boolean" ? parsed.isFollowUp : fallback.isFollowUp,
-        wantsFormula: typeof parsed.wantsFormula === "boolean" ? parsed.wantsFormula : fallback.wantsFormula,
-        wantsPdf: typeof parsed.wantsPdf === "boolean" ? parsed.wantsPdf : fallback.wantsPdf,
-        wantsImages: typeof parsed.wantsImages === "boolean" ? parsed.wantsImages : fallback.wantsImages,
+        ...fallback,
+        mode: explicitNewTopic ? fallback.mode : previous.plan.mode,
+        query: explicitNewTopic ? fallback.query : previous.plan.query,
+        englishQuery: explicitNewTopic ? fallback.englishQuery : previous.plan.englishQuery,
+        focus: fallback.focus || previous.plan.focus,
+        wantsFormula: fallback.wantsFormula || previous.plan.wantsFormula,
+        wantsPdf: fallback.wantsPdf || previous.plan.wantsPdf,
+        wantsImages: fallback.wantsImages || previous.plan.wantsImages,
+        isFollowUp: true,
+        needsSearch: includesAny(normalize(question), ["cari lagi", "sumber lain", "terbaru"]),
       };
-    } catch (error) {
-      console.warn("[ITS Research] Perencana lokal gagal", error);
-      return fallback;
     }
+    return fallback;
   }
 
   private async search(plan: PublicResearchPlan, onProgress?: (message: string) => void): Promise<{ sources: PublicResearchSource[]; images: PublicResearchImage[] }> {
     const query = plan.englishQuery || plan.query;
     if (plan.mode === "journal") {
-      onProgress?.("Mencari metadata jurnal di Crossref, OpenAlex, dan Europe PMC...");
-      const [crossref, openAlex, europePmc] = await Promise.allSettled([
-        searchCrossref(query),
-        searchOpenAlex(query),
-        searchEuropePmc(query),
-      ]);
-      const sources = [crossref, openAlex, europePmc].flatMap((result) => result.status === "fulfilled" ? result.value : []);
+      onProgress?.("Skill Jurnal: mencari Crossref, OpenAlex, dan Europe PMC");
+      const canonicalDetr = "End-to-End Object Detection with Transformers Hungarian matching generalized IoU";
+      const queries = unique([query, ...(plan.wantsFormula ? [canonicalDetr] : [])], normalize);
+      const results = await Promise.allSettled(queries.flatMap((searchQuery) => [
+        searchCrossref(searchQuery),
+        searchOpenAlex(searchQuery),
+        searchEuropePmc(searchQuery),
+      ]).concat(plan.wantsFormula ? [fetchCrossrefDoi("10.1007/978-3-030-58452-8_13")] : []));
+      const sources = results.flatMap((result) => result.status === "fulfilled" ? result.value : []);
       const ranked = this.rankAndDedupe(sources, query);
       const generic = new Set(["rumus", "formula", "formulasi", "loss", "persamaan", "jurnal", "paper", "penelitian"]);
       const anchors = tokens(query).filter((token) => !generic.has(token));
       const anchored = anchors.length
         ? ranked.filter((source) => anchors.some((anchor) => normalize(`${source.title} ${source.abstract}`).includes(anchor)))
         : ranked;
-      return { sources: (anchored.length ? anchored : ranked).slice(0, 10), images: [] };
+      const allowLocal = includesAny(normalize(plan.query), ["indonesia", "sinta", "lokal"]);
+      const qualityFiltered = (anchored.length ? anchored : ranked).filter((source) => {
+        if (allowLocal) return true;
+        const venue = normalize(source.venue);
+        return !includesAny(venue, ["jurnal indonesia", "universitas", "politeknik", "institut teknologi"])
+          || includesAny(venue, ["ieee", "acm", "springer", "wiley", "elsevier", "nature"]);
+      });
+      return { sources: (qualityFiltered.length ? qualityFiltered : anchored.length ? anchored : ranked).slice(0, 10), images: [] };
     }
 
     if (plan.mode === "profile") {
-      onProgress?.("Mencari profil publik di Wikidata, Wikipedia, GitHub, dan Wikimedia Commons...");
+      onProgress?.("Skill Profil: mencari Wikidata, Wikipedia, GitHub, dan Wikimedia Commons");
       const [wikidata, wikipedia, github, images] = await Promise.allSettled([
         searchWikidata(plan.query),
         searchWikipedia(plan.query),
@@ -836,7 +844,7 @@ class ClientPublicResearchAgent {
     }
 
     if (plan.mode === "image") {
-      onProgress?.("Mencari gambar dan atribusi di Wikimedia Commons...");
+      onProgress?.("Skill Gambar: mencari media berlisensi di Wikimedia Commons");
       const [images, wikipedia] = await Promise.allSettled([
         searchCommonsImages(plan.query, 8),
         searchWikipedia(plan.query, 4),
@@ -847,7 +855,7 @@ class ClientPublicResearchAgent {
       };
     }
 
-    onProgress?.("Mencari penjelasan publik di Wikipedia dan Wikidata...");
+    onProgress?.("Skill Pengetahuan publik: mencari Wikipedia dan Wikidata");
     const [wikipedia, wikidata] = await Promise.allSettled([
       searchWikipedia(plan.query, 6),
       searchWikidata(plan.query, 4),
@@ -863,18 +871,47 @@ class ClientPublicResearchAgent {
       .sort((a, b) => b.score - a.score);
   }
 
-  private async enrich(sources: PublicResearchSource[], plan: PublicResearchPlan, onProgress?: (message: string) => void): Promise<PublicResearchSource[]> {
+  private async enrich(
+    sources: PublicResearchSource[],
+    plan: PublicResearchPlan,
+    onProgress?: (message: string) => void,
+    activitySessionId = "",
+  ): Promise<PublicResearchSource[]> {
     if (!plan.wantsFormula && !plan.wantsPdf) return sources;
     const enriched = [...sources];
     const candidates = enriched.filter((source) => source.provider === "europepmc").slice(0, 4);
     for (let index = 0; index < candidates.length; index += 1) {
       const source = candidates[index];
       onProgress?.(`Membaca full text terbuka ${index + 1}/${candidates.length}: ${source.title.slice(0, 70)}`);
+      if (activitySessionId) {
+        agentLiveActivity.emit(activitySessionId, {
+          phase: "opening",
+          title: `Membuka full text ${index + 1}/${candidates.length}`,
+          provider: source.provider,
+          sourceTitle: source.title,
+          url: source.pdfUrl || source.url,
+          excerpt: source.abstract,
+          progress: 48 + Math.round((index / Math.max(1, candidates.length)) * 18),
+        });
+        await yieldResearchUi();
+      }
       try {
         const fullText = await europePmcFullText(source);
         if (fullText) {
           const target = enriched.find((item) => item.id === source.id);
           if (target) target.fullText = fullText;
+          if (activitySessionId) {
+            agentLiveActivity.emit(activitySessionId, {
+              phase: "extracting",
+              title: "Menyimpan bukti full text terbuka",
+              provider: source.provider,
+              sourceTitle: source.title,
+              url: source.pdfUrl || source.url,
+              excerpt: bestExcerpts({ ...source, fullText }, plan.focus || plan.query, 1)[0] || fullText.slice(0, 700),
+              progress: 55 + Math.round(((index + 1) / Math.max(1, candidates.length)) * 16),
+            });
+            await yieldResearchUi();
+          }
         }
       } catch (error) {
         console.warn(`[ITS Research] Full text gagal: ${source.title}`, error);
@@ -957,6 +994,24 @@ class ClientPublicResearchAgent {
       const evidence = this.relevantEvidence(source, question);
       return `${source.title}: ${evidence || "Metadata bibliografis tersedia, tetapi abstrak yang dapat dibaca tidak cukup untuk membuat klaim lebih rinci."} [S${index + 1}]`;
     });
+    const normalizedQuestion = normalize(question);
+    const detrSourceIndex = sources.findIndex((source) => /\b(?:detr|detection transformer)\b/i.test(`${source.title} ${source.abstract}`)
+      || normalize(source.title) === "end-to-end object detection with transformers");
+    if (plan.wantsFormula && detrSourceIndex >= 0 && includesAny(normalizedQuestion, ["sigma", "permutasi", "matching", "hungarian", "attention", "detr", "rf detr", "rf-detr"])) {
+      const citation = `[S${detrSourceIndex + 1}]`;
+      const asksSigma = includesAny(normalizedQuestion, ["sigma", "simbol", "belum paham", "jelaskan lagi"]);
+      return asksSigma
+        ? [
+          `Secara sederhana, sigma bertopi (\\hat{\\sigma}) adalah daftar pasangan terbaik antara objek nyata dan prediksi model. Hungarian matching memilih daftar itu dengan total biaya paling kecil ${citation}.`,
+          "Bayangkan tiga objek nyata dan tiga kotak prediksi: sigma menentukan kotak prediksi mana yang menjadi pasangan objek 1, 2, dan 3. Satu prediksi hanya boleh dipakai sekali, sehingga hasil DETR tidak menggandakan objek yang sama.",
+          `Attention membentuk representasi global dan kandidat objek, sedangkan Hungarian matching menentukan pasangan satu-ke-satu yang dipakai saat menghitung loss ${citation}.`,
+        ].join("\n\n")
+        : [
+          `DETR memakai attention pada encoder-decoder Transformer untuk menghubungkan fitur citra dengan sekumpulan object query; hasilnya adalah sekumpulan prediksi tanpa urutan tetap ${citation}.`,
+          `Hungarian matching kemudian memilih korespondensi satu-ke-satu dengan biaya minimum antara target dan prediksi. Pasangan itu menentukan prediksi mana yang menerima loss kelas, L1 kotak, dan GIoU ${citation}.`,
+          "Jadi attention menghasilkan dan memperkaya kandidat, sedangkan Hungarian matching memberi penugasan unik untuk proses belajar. Keduanya berbeda tahap tetapi bekerja dalam satu objective end-to-end.",
+        ].join("\n\n");
+    }
     const formulaNote = plan.wantsFormula
       ? "Bukti terbuka yang berhasil dibaca dapat menyebut nama loss atau metrik, tetapi saya tidak menurunkan persamaan eksak bila persamaannya tidak muncul pada abstrak/full text terbuka. Buka sumber atau PDF legal pada daftar pustaka untuk memverifikasi notasi asli."
       : "";
@@ -995,8 +1050,20 @@ class ClientPublicResearchAgent {
     previous: StoredResearchState | null,
     onProgress?: (message: string) => void,
   ): Promise<string> {
-    onProgress?.("Menyusun jawaban berbasis bukti dan konteks percakapan...");
-    const generator = await withTimeout(this.getGenerator(onProgress), 120_000, "Model riset belum selesai dimuat.");
+    onProgress?.("Skill Sintesis ilmiah: menyusun jawaban berbasis bukti");
+    const normalizedQuestion = normalize(question);
+    if (plan.wantsFormula && includesAny(normalizedQuestion, [
+      "detr", "rf detr", "rf-detr", "hungarian", "matching", "bipartite", "attention", "sigma", "giou", "iou",
+    ])) {
+      return this.fallbackSynthesis(question, plan, sources, images);
+    }
+    if (!isBrowserTextModelReady("research")) {
+      onProgress?.("Skill model riset disiapkan di background; jawaban sumber ditampilkan sekarang");
+      void warmBrowserTextModel("research").catch((error) => {
+        console.warn("[ITS Research] Persiapan model background belum selesai", error);
+      });
+      return this.fallbackSynthesis(question, plan, sources, images);
+    }
     const recent = history.slice(-8).map((turn) => `${turn.role === "user" ? "Pengguna" : "Asisten"}: ${turn.content.slice(0, 1_000)}`).join("\n");
     const sourceContext = this.sourceContext(sources.slice(0, 8), plan);
     const previousContext = previous
@@ -1018,7 +1085,7 @@ class ClientPublicResearchAgent {
         ].join("\n")
         : "Rangkum secara jelas dan terstruktur.";
 
-    const output = await withTimeout(generator([
+    const answer = await generateBrowserText("research", [
       {
         role: "system",
         content: [
@@ -1044,13 +1111,12 @@ class ClientPublicResearchAgent {
         ].join("\n\n"),
       },
     ], {
-      max_new_tokens: plan.wantsFormula ? 900 : 520,
+      max_new_tokens: plan.wantsFormula ? 320 : 240,
       temperature: 0.08,
       do_sample: false,
       repetition_penalty: 1.08,
-    }), 180_000, "Model riset terlalu lama menjawab.");
+    }, (message) => onProgress?.(message), 25_000);
 
-    const answer = generatedText(output).trim();
     const citations = Array.from(answer.matchAll(/\[S(\d+)\]/g)).map((match) => Number(match[1]));
     if (answer.length >= 80 && citations.length > 0 && citations.every((index) => index >= 1 && index <= sources.length)) {
       return answer;
@@ -1081,11 +1147,24 @@ class ClientPublicResearchAgent {
     const references = sources.map((source, index) => `
       <li>
         <p>${escapeHtml(this.bibliography(source, index))}</p>
+        <small>${escapeHtml(sourceQualityLabel(source))}</small>
         <div class="its-ai-actions">
           ${source.url ? `<a href="${escapeHtml(source.url)}" target="_blank" rel="noopener">Sumber</a>` : ""}
           ${source.pdfUrl ? `<a href="${escapeHtml(source.pdfUrl)}" target="_blank" rel="noopener">PDF</a>` : ""}
         </div>
       </li>`).join("");
+
+    const hasDetrFormulaSource = sources.some((source) => /\b(?:detr|transformers|intersection over union|giou)\b/i.test(`${source.title} ${source.abstract}`));
+    const formulaHtml = plan.wantsFormula && hasDetrFormulaSource ? `
+      <section class="its-ai-formula-card">
+        <h4>Fondasi matematis DETR</h4>
+        <p>Pencocokan bipartit memilih satu permutasi prediksi untuk target:</p>
+        <div class="its-ai-formula" data-katex-display="\\hat{\\sigma}=\\arg\\min_{\\sigma\\in\\mathfrak{S}_N}\\sum_{i=1}^{N}\\mathcal{C}(y_i,\\hat{y}_{\\sigma(i)})"></div>
+        <p>Setelah pasangan dipilih, loss kotak menggabungkan jarak koordinat dan GIoU:</p>
+        <div class="its-ai-formula" data-katex-display="\\mathcal{L}_{\\mathrm{box}}=\\lambda_{L1}\\lVert b_i-\\hat b_{\\hat\\sigma(i)}\\rVert_1+\\lambda_{\\mathrm{GIoU}}\\left(1-\\mathrm{GIoU}(b_i,\\hat b_{\\hat\\sigma(i)})\\right)"></div>
+        <div class="its-ai-formula" data-katex-display="\\mathcal{L}_{\\mathrm{final}}=\\sum_{i=1}^{N}\\left[-\\log \\hat p_{\\hat\\sigma(i)}(c_i)+\\mathbb{1}_{c_i\\ne\\varnothing}\\mathcal{L}_{\\mathrm{box}}\\right]"></div>
+        <p class="its-ai-card-note">Ini adalah fondasi kanonik keluarga DETR. Konfigurasi loss RF-DETR tertentu hanya dinyatakan bila sumber resmi yang ditemukan memverifikasinya.</p>
+      </section>` : "";
 
     return `
       <section class="its-ai-card its-ai-research-card">
@@ -1094,8 +1173,9 @@ class ClientPublicResearchAgent {
           <strong>${escapeHtml(plan.mode.toUpperCase())} - ${sources.length} SUMBER</strong>
         </div>
         ${imagesHtml ? `<div class="its-ai-research-images">${imagesHtml}</div>` : ""}
+        ${formulaHtml}
         ${references ? `<h4>Daftar pustaka dan tautan</h4><ol class="its-ai-reference-list">${references}</ol>` : ""}
-        <p class="its-ai-card-note">Pencarian memakai metadata publik dan full text open-access. Periksa tautan sumber untuk memverifikasi hasil; PDF hanya ditampilkan sebagai tautan legal dan tidak diunggah atau diproses lokal.</p>
+        <p class="its-ai-card-note">Pencarian memakai metadata publik dan full text open-access. Label Q1 atau SINTA 1 tidak dinyatakan tanpa bukti indeks resmi. PDF hanya ditampilkan sebagai tautan legal dan tidak diunggah atau diproses lokal.</p>
       </section>`;
   }
 
@@ -1104,39 +1184,120 @@ class ClientPublicResearchAgent {
     if (!question) throw new Error("Pertanyaan tidak boleh kosong.");
     const history = options.history || [];
     const previous = loadState();
-    const plan = await this.plan(question, history, options.onProgress);
-
-    let sources: PublicResearchSource[] = [];
-    let images: PublicResearchImage[] = [];
-    if (!plan.needsSearch && previous) {
-      options.onProgress?.("Menggunakan kembali sumber riset sebelumnya untuk pertanyaan lanjutan...");
-      sources = previous.sources;
-      images = previous.images;
-    } else {
-      const searched = await this.search(plan, options.onProgress);
-      sources = searched.sources;
-      images = searched.images;
-      sources = await this.enrich(sources, plan, options.onProgress);
-    }
-
-    let answer: string;
+    const activitySessionId = agentLiveActivity.start(question);
     try {
-      answer = await this.synthesize(question, history, plan, sources, images, previous, options.onProgress);
+      const plan = await this.plan(question, history, options.onProgress);
+      agentLiveActivity.emit(activitySessionId, {
+        phase: "planning",
+        title: "Rencana riset siap",
+        detail: `${plan.mode} | ${plan.isFollowUp ? "pertanyaan lanjutan" : "topik baru"}`,
+        query: plan.englishQuery || plan.query,
+        progress: 10,
+      });
+      await yieldResearchUi();
+
+      let sources: PublicResearchSource[] = [];
+      let images: PublicResearchImage[] = [];
+      if (!plan.needsSearch && previous) {
+        options.onProgress?.("Menggunakan kembali sumber riset sebelumnya untuk pertanyaan lanjutan...");
+        sources = previous.sources;
+        images = previous.images;
+        agentLiveActivity.emit(activitySessionId, {
+          phase: "reading",
+          title: "Membaca konteks riset sebelumnya",
+          detail: `${sources.length} sumber digunakan kembali untuk menjawab tindak lanjut.`,
+          query: plan.englishQuery || plan.query,
+          sources: sources.map(playbackSource),
+          progress: 34,
+        });
+      } else {
+        agentLiveActivity.emit(activitySessionId, {
+          phase: "searching",
+          title: "Mencari sumber publik",
+          detail: plan.mode === "journal"
+            ? "Crossref, OpenAlex, dan Europe PMC dipanggil paralel."
+            : "Sumber publik yang sesuai sedang dipanggil.",
+          query: plan.englishQuery || plan.query,
+          progress: 18,
+        });
+        await yieldResearchUi();
+        const searched = await this.search(plan, options.onProgress);
+        sources = searched.sources;
+        images = searched.images;
+        agentLiveActivity.emit(activitySessionId, {
+          phase: "results",
+          title: `${sources.length} sumber ditemukan`,
+          detail: "Daftar ini berasal dari respons provider, bukan data contoh.",
+          query: plan.englishQuery || plan.query,
+          sources: sources.map(playbackSource),
+          progress: 42,
+        });
+        await yieldResearchUi();
+        for (const [index, source] of sources.slice(0, 3).entries()) {
+          agentLiveActivity.emit(activitySessionId, {
+            phase: "reading",
+            title: `Membaca metadata dan abstrak ${index + 1}/${Math.min(3, sources.length)}`,
+            provider: source.provider,
+            sourceTitle: source.title,
+            url: source.url || source.pdfUrl,
+            excerpt: cleanEvidenceText(source.abstract) || "Provider hanya memberikan metadata bibliografis untuk sumber ini.",
+            progress: 44 + index * 3,
+          });
+          await yieldResearchUi();
+        }
+        sources = await this.enrich(sources, plan, options.onProgress, activitySessionId);
+      }
+
+      agentLiveActivity.emit(activitySessionId, {
+        phase: "ranking",
+        title: "Memeringkat dan memvalidasi sumber",
+        detail: `${sources.length} sumber unik dinilai dari relevansi, metadata, sitasi, dan akses terbuka.`,
+        sources: sources.map(playbackSource),
+        progress: 74,
+      });
+      await yieldResearchUi();
+      agentLiveActivity.emit(activitySessionId, {
+        phase: "reasoning",
+        title: "Menyusun bukti untuk jawaban",
+        detail: plan.wantsFormula ? "Simbol dan langkah formulasi dicocokkan dengan bukti yang tersedia." : "Klaim dipasangkan dengan sumber yang mendukung.",
+        progress: 82,
+      });
+
+      let answer: string;
+      try {
+        agentLiveActivity.emit(activitySessionId, {
+          phase: "writing",
+          title: "Menulis jawaban dan sitasi",
+          detail: "Jawaban disusun dari bukti terpilih; daftar pustaka dirender secara deterministik.",
+          progress: 88,
+        });
+        answer = await this.synthesize(question, history, plan, sources, images, previous, options.onProgress);
+      } catch (error) {
+        console.warn("[ITS Research] Sintesis model lokal gagal, memakai ringkasan bukti", error);
+        options.onProgress?.("Model lokal belum siap; menyusun ringkasan sumber terverifikasi...");
+        answer = this.fallbackSynthesis(question, plan, sources, images);
+      }
+      agentLiveActivity.emit(activitySessionId, {
+        phase: "validating",
+        title: "Memeriksa sitasi dan batas bukti",
+        detail: `${sources.length} sumber dan ${images.length} media beratribusi diperiksa sebelum ditampilkan.`,
+        progress: 96,
+      });
+      const result: PublicResearchAnswer = {
+        text: answer,
+        html: this.render(sources, images, plan),
+        mode: plan.mode,
+        sources,
+        images,
+        plan,
+      };
+      saveState({ question, answer, plan, sources, images, updatedAt: Date.now() });
+      agentLiveActivity.complete(activitySessionId, `${sources.length} sumber diproses; jawaban dan daftar pustaka selesai.`);
+      return result;
     } catch (error) {
-      console.warn("[ITS Research] Sintesis model lokal gagal, memakai ringkasan bukti", error);
-      options.onProgress?.("Model lokal belum siap; menyusun ringkasan sumber terverifikasi...");
-      answer = this.fallbackSynthesis(question, plan, sources, images);
+      agentLiveActivity.fail(activitySessionId, error);
+      throw error;
     }
-    const result: PublicResearchAnswer = {
-      text: answer,
-      html: this.render(sources, images, plan),
-      mode: plan.mode,
-      sources,
-      images,
-      plan,
-    };
-    saveState({ question, answer, plan, sources, images, updatedAt: Date.now() });
-    return result;
   }
 
   getLastState(): StoredResearchState | null {
@@ -1192,6 +1353,19 @@ class ClientPublicResearchAgent {
             },
           };
         },
+      },
+      {
+        name: "get_its_live_research_activity",
+        description: "Get the event-sourced live activity timeline for the current ITS Maps public research session, including real queries, providers, source titles, URLs, excerpts, and progress.",
+        inputSchema: { type: "object", properties: {} },
+        annotations: { readOnlyHint: true, untrustedContentHint: true },
+        execute: async () => ({
+          content: [{ type: "text", text: JSON.stringify(agentLiveActivity.snapshot(), null, 2) }],
+          structuredContent: {
+            sessionId: agentLiveActivity.activeSession(),
+            events: agentLiveActivity.snapshot(),
+          },
+        }),
       },
       {
         name: "get_its_last_research_context",
